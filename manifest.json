@@ -1,0 +1,13 @@
+{
+  "name": "CallBot AICC 포털",
+  "short_name": "CallBot",
+  "description": "콜봇 기반 AICC 통합 운영 포털",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf7f3",
+  "theme_color": "#be5535",
+  "icons": [
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
