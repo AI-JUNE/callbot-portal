@@ -126,7 +126,7 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
     else: sysp=_sys(phone); use_tools=True
     for _ in range(max_hops):
         payload={"systemInstruction":{"parts":[{"text":sysp}]},"contents":_to_contents(msgs),
-                 "generationConfig":{"maxOutputTokens":256}}
+                 "generationConfig":{"maxOutputTokens":1024}}
         if use_tools: payload["tools"]=[{"functionDeclarations":TOOLS}]
         resp=_call(model,payload); text,calls,(pi,po)=_parse(resp); usage["input"]+=pi; usage["output"]+=po
         if not calls:
