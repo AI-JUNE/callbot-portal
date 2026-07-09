@@ -1,5 +1,7 @@
 {
-  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/console", "destination": "/console.html" }
+  ],
   "redirects": [
     { "source": "/lp", "destination": "/", "permanent": false }
   ]
