@@ -1,8 +1,8 @@
 {
-  "rewrites": [
-    { "source": "/console", "destination": "/console.html" }
-  ],
-  "redirects": [
-    { "source": "/lp", "destination": "/", "permanent": false }
+  "routes": [
+    { "src": "/", "dest": "/home.html" },
+    { "src": "/lp/?", "status": 308, "headers": { "Location": "/" } },
+    { "src": "/console/?", "dest": "/console.html" },
+    { "handle": "filesystem" }
   ]
 }
