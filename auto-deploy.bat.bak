@@ -1,0 +1,10 @@
+@echo off
+cd /d "C:\Users\sukju\OneDrive\Desktop\Callbot\v2\callbot-portal"
+git config core.autocrlf false
+del /f /q ".git\index.lock" ".git\HEAD.lock" 2>nul
+git add -A
+git commit -m "auto-deploy"
+if errorlevel 1 (del /f /q ".git\index.lock" ".git\HEAD.lock" 2>nul & git commit -m "auto-deploy")
+git push origin main
+if errorlevel 1 (del /f /q ".git\index.lock" ".git\HEAD.lock" 2>nul & git push origin main)
+exit /b 0

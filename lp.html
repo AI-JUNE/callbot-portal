@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CallBot — 말로 응대하는 AI 콜센터</title>
+<meta name="description" content="CallBot은 STT·LLM·TTS와 상담지원 AI, 실시간 운영 콘솔, CPaaS 실전화 연계까지 하나로 묶은 AICC·CaaS 플랫폼입니다. 상담을 자동화하고, 사람이 놓치는 순간을 기술이 먼저 살핍니다."/>
+<meta property="og:title" content="CallBot — 말로 응대하는 AI 콜센터"/>
+<meta property="og:description" content="AICC·CaaS 통합 플랫폼. 음성·텍스트 상담 자동화, 상담지원 AI, 실시간 운영 콘솔, 무코드 실전화 연계."/>
+<meta property="og:type" content="website"/>
+<link rel="apple-touch-icon" href="/icon-192.png"/>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
+<style>
+:root{
+  --bg:#f6f5f3;--panel:#ffffff;--panel2:#f7f6f4;--line:#e9e6e1;--line2:#f0eee9;
+  --txt:#1b1a18;--mut:#5f5a54;--dim:#9c968e;
+  --accent:#2f6bff;--accent2:#6a4cff;--grad:linear-gradient(135deg,#2f6bff,#6a4cff);
+  --grad-soft:linear-gradient(135deg,#eef2ff,#f2edff);
+  --warm:#be5535;--warm2:#9f4226;--warmbg:#fbe9e1;
+  --green:#1a8f54;--greenbg:#dcf3e6;--amber:#c47d12;--red:#d23a5a;
+  --sh:0 1px 2px rgba(30,26,22,.05),0 8px 24px rgba(30,26,22,.06);
+  --sh-lg:0 12px 40px rgba(38,42,88,.14);
+  --r:18px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:'Pretendard','Pretendard Variable',-apple-system,'Segoe UI',Roboto,'Malgun Gothic',sans-serif;-webkit-font-smoothing:antialiased;letter-spacing:-0.015em;line-height:1.6;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1120px;margin:0 auto;padding:0 22px}
+.badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--accent);background:var(--grad-soft);border:1px solid #e2e0ff;padding:6px 13px;border-radius:999px;text-transform:uppercase}
+.eyebrow{font-size:12.5px;font-weight:800;letter-spacing:.12em;color:var(--warm);text-transform:uppercase;margin-bottom:14px}
+h1,h2,h3{letter-spacing:-0.035em;line-height:1.15;font-weight:800}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:15px;padding:14px 24px;border-radius:14px;border:1px solid transparent;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,background .15s}
+.btn-primary{background:var(--grad);color:#fff;box-shadow:0 8px 20px rgba(47,107,255,.28)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(47,107,255,.36)}
+.btn-ghost{background:#fff;color:var(--txt);border-color:var(--line)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+/* header */
+header{position:sticky;top:0;z-index:50;background:rgba(246,245,243,.82);backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid rgba(0,0,0,.05)}
+.hd{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:900;font-size:19px;letter-spacing:-.03em}
+.logo .mark{width:30px;height:30px;border-radius:9px;background:var(--grad);display:grid;place-items:center;box-shadow:0 4px 12px rgba(47,107,255,.32)}
+.hd nav{display:flex;gap:26px;font-size:14.5px;font-weight:600;color:var(--mut)}
+.hd nav a:hover{color:var(--txt)}
+@media(max-width:820px){.hd nav{display:none}}
+
+/* hero */
+.hero{position:relative;padding:74px 0 40px;text-align:center;overflow:hidden}
+.hero:before{content:"";position:absolute;top:-160px;left:50%;transform:translateX(-50%);width:900px;height:520px;background:radial-gradient(ellipse at center,rgba(106,76,255,.14),rgba(47,107,255,.05) 45%,transparent 70%);z-index:-1}
+.hero h1{font-size:clamp(34px,6vw,60px);margin:22px 0 0}
+.hero .grad-txt{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero p.lead{font-size:clamp(16px,2.2vw,19px);color:var(--mut);max-width:640px;margin:20px auto 0;font-weight:500}
+.hero .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+.chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:26px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--mut);background:#fff;border:1px solid var(--line);padding:8px 14px;border-radius:999px;box-shadow:var(--sh)}
+.chip svg{color:var(--green)}
+
+/* trust bar */
+.trust{padding:34px 0 8px;text-align:center}
+.trust .lbl{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;margin-bottom:16px}
+.trust .row{display:flex;gap:14px 34px;justify-content:center;flex-wrap:wrap;align-items:center}
+.trust .row span{font-size:15px;font-weight:800;color:#b7b1a8;letter-spacing:-.02em}
+
+/* sections */
+section.blk{padding:64px 0}
+.sec-head{max-width:680px;margin:0 auto 44px;text-align:center}
+.sec-head h2{font-size:clamp(26px,4vw,40px)}
+.sec-head p{color:var(--mut);font-size:17px;margin-top:16px;font-weight:500}
+
+/* feature grid */
+.grid{display:grid;gap:18px}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:860px){.g3,.g2{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:26px;box-shadow:var(--sh);transition:transform .18s ease,box-shadow .18s ease}
+.card:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}
+.ico{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;background:var(--grad-soft);color:var(--accent);margin-bottom:16px}
+.ico.warm{background:var(--warmbg);color:var(--warm)}
+.card h3{font-size:19px;margin-bottom:9px}
+.card p{color:var(--mut);font-size:14.5px;font-weight:500}
+
+/* split showcase */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:52px;align-items:center}
+.split.rev .txtcol{order:2}
+@media(max-width:900px){.split{grid-template-columns:1fr;gap:34px}.split.rev .txtcol{order:0}}
+.txtcol h2{font-size:clamp(24px,3.4vw,34px);margin:14px 0 16px}
+.txtcol p{color:var(--mut);font-size:16px;font-weight:500}
+.txtcol ul{list-style:none;margin-top:22px;display:flex;flex-direction:column;gap:13px}
+.txtcol ul li{display:flex;gap:11px;align-items:flex-start;font-size:15px;font-weight:600}
+.txtcol ul li .ck{flex:none;width:22px;height:22px;border-radius:50%;background:var(--greenbg);color:var(--green);display:grid;place-items:center;margin-top:1px}
+
+/* phone mockup */
+.phone{width:290px;margin:0 auto;background:#12141c;border-radius:38px;padding:11px;box-shadow:var(--sh-lg);position:relative}
+.phone .scr{background:#f4f6fb;border-radius:29px;overflow:hidden;min-height:512px;position:relative}
+.phone .notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:110px;height:22px;background:#12141c;border-radius:0 0 14px 14px;z-index:5}
+.p-top{background:var(--grad);color:#fff;padding:34px 18px 18px;text-align:center}
+.p-top .st{font-size:11px;opacity:.85;font-weight:700;display:flex;justify-content:space-between;padding:0 4px}
+.p-top .call{margin-top:14px;font-size:12.5px;font-weight:700;opacity:.92}
+.p-top .who{font-size:20px;font-weight:800;margin-top:3px}
+.p-body{padding:16px}
+.bubble{max-width:82%;padding:10px 13px;border-radius:14px;font-size:13px;font-weight:600;margin-bottom:10px;line-height:1.5}
+.bubble.bot{background:#fff;border:1px solid var(--line);color:var(--txt);border-bottom-left-radius:4px}
+.bubble.usr{background:var(--grad);color:#fff;margin-left:auto;border-bottom-right-radius:4px}
+.mic{margin:8px auto 0;width:58px;height:58px;border-radius:50%;background:var(--grad);display:grid;place-items:center;color:#fff;box-shadow:0 8px 20px rgba(47,107,255,.4)}
+.listening{text-align:center;font-size:12px;font-weight:700;color:var(--accent);margin-top:10px}
+.listening .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:5px;animation:pulse 1.3s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:6px}
+.menu-grid .mi{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 10px;text-align:center;font-size:12.5px;font-weight:700}
+.menu-grid .mi .mc{width:34px;height:34px;border-radius:10px;background:var(--grad-soft);color:var(--accent);display:grid;place-items:center;margin:0 auto 7px}
+
+/* console mockup */
+.console{background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-lg);overflow:hidden}
+.console .bar{display:flex;align-items:center;gap:7px;padding:12px 16px;border-bottom:1px solid var(--line2);background:var(--panel2)}
+.console .bar .d{width:11px;height:11px;border-radius:50%}
+.console .bar .t{margin-left:10px;font-size:12.5px;font-weight:700;color:var(--mut)}
+.console .body{padding:20px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:560px){.kpi-row{grid-template-columns:1fr 1fr}}
+.kpi{border:1px solid var(--line);border-radius:13px;padding:14px}
+.kpi .l{font-size:11.5px;color:var(--dim);font-weight:700}
+.kpi .v{font-size:23px;font-weight:900;margin-top:5px;letter-spacing:-.04em}
+.kpi .v small{font-size:12px;color:var(--green);font-weight:800;margin-left:4px}
+.chartbox{margin-top:14px;border:1px solid var(--line);border-radius:13px;padding:16px}
+.chartbox .ct{font-size:12.5px;font-weight:800;color:var(--mut);margin-bottom:12px;display:flex;justify-content:space-between}
+.bars{display:flex;align-items:flex-end;gap:10px;height:96px}
+.bars .b{flex:1;border-radius:6px 6px 0 0;background:var(--grad);opacity:.9}
+
+/* diff cards */
+.diff{background:linear-gradient(180deg,#fff,#faf9f7);border:1px solid var(--line);border-radius:var(--r);padding:28px;box-shadow:var(--sh)}
+.diff .tag{font-size:11.5px;font-weight:800;color:var(--warm);background:var(--warmbg);padding:5px 11px;border-radius:999px;display:inline-block;margin-bottom:14px}
+.diff h3{font-size:19px;margin-bottom:10px}
+.diff p{color:var(--mut);font-size:14.5px;font-weight:500}
+
+/* stats */
+.stats{background:#151722;border-radius:26px;padding:48px 30px;color:#fff;text-align:center}
+.stats .grid{grid-template-columns:repeat(4,1fr)}
+@media(max-width:760px){.stats .grid{grid-template-columns:1fr 1fr;gap:30px}}
+.stat .v{font-size:clamp(30px,5vw,46px);font-weight:900;letter-spacing:-.04em;background:linear-gradient(135deg,#7aa2ff,#b39bff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.stat .l{font-size:13.5px;color:#b9b6c4;font-weight:600;margin-top:8px}
+
+/* testimonials */
+.quote{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:26px;box-shadow:var(--sh)}
+.quote .stars{color:#f5a623;font-size:14px;letter-spacing:2px;margin-bottom:12px}
+.quote p{font-size:15px;font-weight:600;line-height:1.65}
+.quote .who{display:flex;align-items:center;gap:11px;margin-top:18px}
+.quote .av{width:40px;height:40px;border-radius:50%;background:var(--grad-soft);color:var(--accent);display:grid;place-items:center;font-weight:800}
+.quote .who b{font-size:14px;display:block}
+.quote .who span{font-size:12.5px;color:var(--dim)}
+
+/* faq */
+.faq{max-width:760px;margin:0 auto}
+.qi{border-bottom:1px solid var(--line);padding:2px 0}
+.qi summary{list-style:none;cursor:pointer;padding:20px 4px;font-size:16.5px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:14px}
+.qi summary::-webkit-details-marker{display:none}
+.qi summary .pl{flex:none;width:24px;height:24px;border-radius:7px;background:var(--grad-soft);color:var(--accent);display:grid;place-items:center;font-size:18px;transition:transform .2s}
+.qi[open] summary .pl{transform:rotate(45deg)}
+.qi p{color:var(--mut);font-size:15px;font-weight:500;padding:0 4px 22px}
+
+/* final cta */
+.final{text-align:center;background:var(--grad);border-radius:28px;padding:60px 30px;color:#fff;position:relative;overflow:hidden}
+.final:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 20% 20%,rgba(255,255,255,.18),transparent 40%),radial-gradient(circle at 80% 80%,rgba(255,255,255,.12),transparent 45%)}
+.final h2{font-size:clamp(26px,4vw,38px);position:relative}
+.final p{position:relative;font-size:17px;opacity:.94;margin:16px auto 0;max-width:520px;font-weight:500}
+.final .btn-white{position:relative;background:#fff;color:var(--accent);margin-top:28px}
+.final .btn-white:hover{transform:translateY(-2px)}
+
+/* footer */
+footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
+.ft{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:30px}
+@media(max-width:760px){.ft{grid-template-columns:1fr}}
+.ft p{color:var(--mut);font-size:14px;font-weight:500;margin-top:14px;max-width:320px}
+.ft h4{font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:14px;font-weight:800}
+.ft ul{list-style:none;display:flex;flex-direction:column;gap:10px;font-size:14px;font-weight:600;color:var(--mut)}
+.ft ul li:hover{color:var(--txt)}
+.copy{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);font-size:12.5px;color:var(--dim);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.demo-note{font-size:11px;color:var(--dim);font-weight:700}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hd">
+    <a class="logo" href="/lp">
+      <span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A2.5 2.5 0 016.5 3h2.2c.9 0 1.7.6 1.9 1.5l.6 2.3c.2.8-.1 1.6-.7 2.1l-1.2 1a13 13 0 005.3 5.3l1-1.2c.5-.6 1.3-.9 2.1-.7l2.3.6c.9.2 1.5 1 1.5 1.9v2.2A2.5 2.5 0 0118.5 21C10.5 21 4 14.5 4 6.5v-1z" fill="#fff"/></svg></span>
+      CallBot
+    </a>
+    <nav>
+      <a href="#why">왜 콜봇</a>
+      <a href="#features">핵심 기능</a>
+      <a href="#product">제품</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-primary" href="/" style="padding:10px 18px;font-size:14px">데모 콘솔 열기</a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg> AICC · CaaS 통합 플랫폼</span>
+    <h1>말로 응대하는<br/><span class="grad-txt">AI 콜센터</span>를 만듭니다</h1>
+    <p class="lead">전화가 밀려도, 밤이 깊어도 놓치지 않습니다. CallBot은 음성·텍스트 상담을 AI가 응대하고, 사람이 필요한 순간엔 상담사에게 바로 잇는 AICC·CaaS 플랫폼입니다.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="/">데모 콘솔 열기 →</a>
+      <a class="btn btn-ghost" href="#product">제품 둘러보기</a>
+    </div>
+    <div class="chips">
+      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> STT·LLM·TTS 내장</span>
+      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> 무코드 실전화 연계</span>
+      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> 24/7 무중단 응대</span>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST -->
+<div class="trust wrap">
+  <div class="lbl">하나의 콘솔에서 운영되는 채널</div>
+  <div class="row">
+    <span>음성 상담</span><span>텍스트·챗</span><span>보이는 ARS</span><span>아웃바운드</span><span>멀티모달</span><span>CPaaS 실전화</span>
+  </div>
+</div>
+
+<!-- WHY -->
+<section class="blk" id="why">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">WHY CALLBOT</div>
+      <h2>상담은 늘 부족하고,<br/>고객은 기다립니다</h2>
+      <p>인력을 더 뽑는 대신, 반복 응대를 AI에게 맡기세요. 단순 문의는 콜봇이 즉시 처리하고, 복잡한 건만 상담사에게 정확히 넘어갑니다. 사람은 더 중요한 대화에 집중합니다.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card">
+        <div class="ico warm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+        <h3>대기시간 제로</h3>
+        <p>피크 타임에도 콜봇이 동시에 수백 통을 받습니다. 고객은 기다리지 않고, 상담 포기율이 떨어집니다.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></div>
+        <h3>야간·주말도 무중단</h3>
+        <p>상담센터가 닫힌 시간에도 예약·조회·안내를 처리하고, 필요하면 담당자에게 콜백을 예약합니다.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 11a4 4 0 10-8 0M4 20a8 8 0 0116 0"/></svg></div>
+        <h3>상담사는 핵심 대화에</h3>
+        <p>반복 응대를 걷어내면 상담사는 이탈 방지·클레임 같은 고부가 대화에 집중할 수 있습니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="blk" id="features" style="background:linear-gradient(180deg,#fff,#faf9f7);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">CORE CAPABILITIES</div>
+      <h2>상담의 처음부터 끝까지,<br/>한 플랫폼에서</h2>
+      <p>대화를 알아듣고, 판단하고, 응답하고, 기록하고, 분석합니다. 흩어진 솔루션 대신 하나로 연결된 AICC 스택.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 013 3v6a3 3 0 01-6 0V6a3 3 0 013-3z"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div><h3>AI 대화 엔진</h3><p>STT로 알아듣고, 의도 분류·LLM으로 판단하고, 자연스러운 TTS로 답합니다. 시나리오 빌더와 A/B 테스트로 대화를 계속 개선합니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><h3>상담지원 AI (Assist)</h3><p>실시간 대화 요약, 다음 발화 추천, 지식 검색을 상담사 화면에 띄웁니다. TA·QA 자동채점과 코칭까지 이어집니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 4-6"/></svg></div><h3>실시간 운영 콘솔</h3><p>세션 모니터링·통계·전광판·알림을 한 화면에서. 채널 점유율, 응답현황, 통화 이력까지 실시간으로 봅니다.</p></div>
+      <div class="card"><div class="ico warm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5a2 2 0 012-2h3l2 5-2 1a12 12 0 006 6l1-2 5 2v3a2 2 0 01-2 2A16 16 0 013 5z"/></svg></div><h3>CPaaS 실전화 연계</h3><p>Twilio·ClawOps 등 통신망에 무코드로 연결. 웹훅 하나로 실인바운드 콜을 받고, 필요 시 상담사에게 즉시 전환합니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/></svg></div><h3>지식·검색 (sLLM·RAG)</h3><p>KMS 문서를 근거로 답하는 RAG, 요약·생성에 특화된 sLLM. 근거 없는 답이 아니라, 문서에 기반한 정확한 응대.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m13.5-6.5l-2 2m-7 7l-2 2m0-11l2 2m7 7l2 2"/></svg></div><h3>운영·품질 관리</h3><p>RBAC 권한, 공통코드·사유코드, 감사 로그, 전 화면 데이터 내보내기. 규정과 품질을 함께 관리합니다.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCT SHOWCASE 1 -->
+<section class="blk" id="product">
+  <div class="wrap">
+    <div class="split">
+      <div class="txtcol">
+        <div class="eyebrow">VOICE AI</div>
+        <h2>전화를 걸면,<br/>사람처럼 응대합니다</h2>
+        <p>고객이 말로 물으면 콜봇이 알아듣고 처리합니다. 예약·조회·안내는 끝까지 자동으로, 복잡한 요청은 상담사에게 맥락과 함께 넘깁니다.</p>
+        <ul>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 실시간 STT 전사와 감정·의도 인식</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 상황에 맞는 시나리오 자동 분기</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 상담사 전환 시 대화 요약 자동 전달</li>
+        </ul>
+      </div>
+      <div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="scr">
+            <div class="p-top">
+              <div class="st"><span>9:41</span><span>● 통화 중 02:14</span></div>
+              <div class="call">CallBot · 음성 상담</div>
+              <div class="who">고객 상담 응대</div>
+            </div>
+            <div class="p-body">
+              <div class="bubble bot">안녕하세요, 무엇을 도와드릴까요?</div>
+              <div class="bubble usr">지난주 주문한 거 배송이 언제 오나요?</div>
+              <div class="bubble bot">주문번호 끝 4자리를 말씀해 주시면 바로 조회해 드릴게요.</div>
+              <div class="bubble usr">8342요.</div>
+              <div class="bubble bot">내일 오후 도착 예정이에요. 문자로도 보내드릴까요?</div>
+              <div class="mic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3a3 3 0 013 3v6a3 3 0 01-6 0V6a3 3 0 013-3z"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div>
+              <div class="listening"><span class="dot"></span>듣고 있어요…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCT SHOWCASE 2 -->
+<section class="blk" style="background:linear-gradient(180deg,#fff,#faf9f7);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="split rev">
+      <div class="txtcol">
+        <div class="eyebrow">OPERATIONS CONSOLE</div>
+        <h2>모든 상담을<br/>한 화면에서 운영</h2>
+        <p>실시간 세션, 응답 지표, 채널 점유율, 통화 이력을 한 곳에서. 관리자는 전광판처럼 상황을 보고, 이상이 생기면 알림으로 먼저 압니다.</p>
+        <ul>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 인·아웃바운드 통합 대시보드</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> STT·SOE·TTS 시스템 응답현황</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 자동 QA 채점과 코칭 캘린더</li>
+        </ul>
+      </div>
+      <div>
+        <div class="console">
+          <div class="bar"><span class="d" style="background:#ff5f57"></span><span class="d" style="background:#febc2e"></span><span class="d" style="background:#28c840"></span><span class="t">CallBot · 에이전트 홈</span></div>
+          <div class="body">
+            <div class="kpi-row">
+              <div class="kpi"><div class="l">자동 처리율</div><div class="v">78%<small>▲6</small></div></div>
+              <div class="kpi"><div class="l">활성 세션</div><div class="v">142</div></div>
+              <div class="kpi"><div class="l">평균 응답</div><div class="v">0.9<small>초</small></div></div>
+              <div class="kpi"><div class="l">CSAT</div><div class="v">4.6</div></div>
+            </div>
+            <div class="chartbox">
+              <div class="ct"><span>시간대별 인입 콜</span><span style="color:var(--accent)">오늘</span></div>
+              <div class="bars">
+                <div class="b" style="height:38%"></div><div class="b" style="height:54%"></div><div class="b" style="height:70%"></div><div class="b" style="height:88%"></div><div class="b" style="height:64%"></div><div class="b" style="height:46%"></div><div class="b" style="height:72%"></div><div class="b" style="height:58%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DIFFERENTIATORS -->
+<section class="blk">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">WHY IT'S HARD TO COPY</div>
+      <h2>따라 하기 어려운 세 가지</h2>
+      <p>데모가 아니라, 이미 현장에서 돌아가는 대화·연계·운영 기술이 콜봇의 진입장벽입니다.</p>
+    </div>
+    <div class="grid g3">
+      <div class="diff">
+        <span class="tag">15년 AX·AICC 경험</span>
+        <h3>현장에서 검증된 대화 설계</h3>
+        <p>수많은 상담 시나리오에서 다듬어진 의도 분류·분기·예외 처리. 시나리오 빌더와 A/B 테스트로 대화 품질을 데이터로 개선합니다.</p>
+      </div>
+      <div class="diff">
+        <span class="tag">무코드 통신 연계</span>
+        <h3>웹훅 하나로 실전화 연결</h3>
+        <p>Twilio·ClawOps 등 통신망을 코드 없이 연결하고, 웹에서 바로 무료 시뮬레이션으로 검증. 상담사 전환은 Dial/SIP로 즉시.</p>
+      </div>
+      <div class="diff">
+        <span class="tag">근거 기반 응답</span>
+        <h3>sLLM·RAG로 헛소리 방지</h3>
+        <p>KMS 문서를 근거로만 답하는 RAG 구조. 요약·생성 특화 sLLM과 LLMOps로 품질·비용·안전을 함께 관리합니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="blk">
+  <div class="wrap">
+    <div class="stats">
+      <div class="grid">
+        <div class="stat"><div class="v" data-count="78" data-suffix="%">0%</div><div class="l">반복 문의 자동 처리</div></div>
+        <div class="stat"><div class="v" data-count="24" data-suffix="/7">0</div><div class="l">무중단 응대</div></div>
+        <div class="stat"><div class="v" data-count="0" data-suffix="초" data-dec="0.9">0초</div><div class="l">평균 첫 응답</div></div>
+        <div class="stat"><div class="v" data-count="1" data-suffix="개 콘솔">0</div><div class="l">채널을 하나로</div></div>
+      </div>
+      <p style="color:#8f8ca0;font-size:12px;margin-top:26px;font-weight:600">※ 수치는 제품 설정·시나리오 예시 기준의 참고값입니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="blk" style="background:linear-gradient(180deg,#fff,#faf9f7);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">VOICES</div>
+      <h2>현장의 이야기</h2>
+      <p>상담을 운영하는 사람들이 콜봇을 도입하며 달라진 점.</p>
+    </div>
+    <div class="grid g3">
+      <div class="quote">
+        <div class="stars">★★★★★</div>
+        <p>“밤사이 들어온 문의를 아침에 몰아서 처리하던 게 사라졌어요. 콜봇이 밤새 응대하고, 우린 예외 건만 봅니다.”</p>
+        <div class="who"><span class="av">센</span><div><b>상담센터장</b><span>이커머스 CS</span></div></div>
+      </div>
+      <div class="quote">
+        <div class="stars">★★★★★</div>
+        <p>“통신망 연결이 반나절이면 끝났어요. 웹에서 무료로 시나리오를 돌려보고 확신이 선 뒤에 실전화를 붙였습니다.”</p>
+        <div class="who"><span class="av">CX</span><div><b>CX 리드</b><span>구독 서비스</span></div></div>
+      </div>
+      <div class="quote">
+        <div class="stars">★★★★★</div>
+        <p>“상담사 화면에 요약과 다음 멘트가 떠서 신입도 금방 적응해요. QA 채점이 자동이라 코칭이 훨씬 쉬워졌습니다.”</p>
+        <div class="who"><span class="av">QA</span><div><b>품질 매니저</b><span>금융 콜센터</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="blk" id="faq">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">FAQ</div>
+      <h2>자주 묻는 질문</h2>
+    </div>
+    <div class="faq">
+      <details class="qi" open><summary>도입하려면 개발이 필요한가요?<span class="pl">+</span></summary><p>아니요. 시나리오 빌더로 대화 흐름을 설계하고, 통신망은 웹훅으로 무코드 연결합니다. 웹에서 무료 시뮬레이션으로 먼저 검증한 뒤 실전화를 붙일 수 있습니다.</p></details>
+      <details class="qi"><summary>기존 상담망·통신사를 그대로 쓸 수 있나요?<span class="pl">+</span></summary><p>Twilio·ClawOps 등 CPaaS와 연계되며, 상담사 전환은 Dial/SIP로 처리합니다. 실통화 과금은 실제 연결 시에만 발생하고, 기본은 무과금 드라이런으로 안전하게 테스트합니다.</p></details>
+      <details class="qi"><summary>콜봇이 모르는 질문은 어떻게 하나요?<span class="pl">+</span></summary><p>KMS 지식을 근거로 답하는 RAG 구조이며, 확신이 낮거나 복잡한 요청은 대화 요약과 함께 상담사에게 즉시 전환합니다. 고객이 다시 설명할 필요가 없습니다.</p></details>
+      <details class="qi"><summary>음성과 텍스트를 같이 운영할 수 있나요?<span class="pl">+</span></summary><p>네. 음성 상담, 텍스트·챗, 보이는 ARS, 아웃바운드, 멀티모달을 하나의 콘솔에서 함께 운영합니다. 통계와 이력도 통합해서 봅니다.</p></details>
+      <details class="qi"><summary>품질과 규정 관리는 어떻게 되나요?<span class="pl">+</span></summary><p>RBAC 권한, 감사 로그, 자동 QA 채점, TA 분석, 코칭 캘린더를 제공하고, 전 화면 데이터를 내보낼 수 있습니다. 품질과 컴플라이언스를 함께 관리합니다.</p></details>
+      <details class="qi"><summary>지금 바로 체험해 볼 수 있나요?<span class="pl">+</span></summary><p>네. 상단의 ‘데모 콘솔 열기’로 실제 운영 화면을 둘러보고, CPaaS 연계 테스트에서 웹에서 바로 무료 시뮬레이션을 실행할 수 있습니다.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="blk">
+  <div class="wrap">
+    <div class="final">
+      <h2>오늘, 상담을 자동화하세요</h2>
+      <p>데모 콘솔에서 실제 화면을 보고, 웹에서 바로 무료로 콜봇을 돌려보세요.</p>
+      <a class="btn btn-white" href="/">데모 콘솔 열기 →</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="ft">
+      <div>
+        <a class="logo" href="/lp"><span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A2.5 2.5 0 016.5 3h2.2c.9 0 1.7.6 1.9 1.5l.6 2.3c.2.8-.1 1.6-.7 2.1l-1.2 1a13 13 0 005.3 5.3l1-1.2c.5-.6 1.3-.9 2.1-.7l2.3.6c.9.2 1.5 1 1.5 1.9v2.2A2.5 2.5 0 0118.5 21C10.5 21 4 14.5 4 6.5v-1z" fill="#fff"/></svg></span> CallBot</a>
+        <p>음성·텍스트 상담을 AI로 자동화하는 AICC·CaaS 플랫폼. 사람이 놓치는 순간을 기술이 먼저 살핍니다.</p>
+      </div>
+      <div>
+        <h4>제품</h4>
+        <ul>
+          <li><a href="#features">핵심 기능</a></li>
+          <li><a href="#product">음성 AI</a></li>
+          <li><a href="/">운영 콘솔</a></li>
+          <li><a href="/">CPaaS 연계 테스트</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>바로가기</h4>
+        <ul>
+          <li><a href="/">데모 콘솔 열기</a></li>
+          <li><a href="#faq">자주 묻는 질문</a></li>
+          <li><a href="#why">왜 콜봇</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="copy">
+      <span>© 2026 CallBot · 운영 주식회사 고원(GOWON)</span>
+      <span class="demo-note">AICC · CaaS 플랫폼 · 데모 모드</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// FAQ: single-open accordion
+document.querySelectorAll('.qi').forEach(function(d){
+  d.addEventListener('toggle',function(){
+    if(d.open){document.querySelectorAll('.qi').forEach(function(o){if(o!==d)o.open=false;});}
+  });
+});
+// count-up on view
+function animate(el){
+  var dec=el.getAttribute('data-dec');
+  var suf=el.getAttribute('data-suffix')||'';
+  if(dec){ // decimal like 0.9
+    var target=parseFloat(dec),cur=0,step=target/26;
+    var t=setInterval(function(){cur+=step;if(cur>=target){cur=target;clearInterval(t);}el.textContent=cur.toFixed(1)+suf;},22);
+    return;
+  }
+  var target=parseInt(el.getAttribute('data-count'),10),cur=0;
+  var step=Math.max(1,Math.ceil(target/26));
+  var t=setInterval(function(){cur+=step;if(cur>=target){cur=target;clearInterval(t);}el.textContent=cur+suf;},22);
+}
+var seen=false;
+var io=new IntersectionObserver(function(es){
+  es.forEach(function(e){if(e.isIntersecting&&!seen){seen=true;document.querySelectorAll('.stat .v').forEach(animate);}});
+},{threshold:.4});
+var st=document.querySelector('.stats');if(st)io.observe(st);
+</script>
+</body>
+</html>
