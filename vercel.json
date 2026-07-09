@@ -1,8 +1,6 @@
 {
-  "routes": [
-    { "src": "/", "dest": "/home.html" },
-    { "src": "/lp/?", "status": 308, "headers": { "Location": "/" } },
-    { "src": "/console/?", "dest": "/console.html" },
-    { "handle": "filesystem" }
+  "cleanUrls": true,
+  "redirects": [
+    { "source": "/lp", "destination": "/", "permanent": false }
   ]
 }
