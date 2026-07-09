@@ -1,16 +1,19 @@
 # CallBot 자동 고도화 — 실행 상태
 
-- 실행 시각: 2026-07-06 (야간 자동 실행, callbot-night-auto-dev)
+- 실행 시각: 2026-07-09 (야간 자동 실행, callbot-night-auto-dev)
 - 상태: ✅ 정상 완료 (변경 있음)
-- 이번 회차 개선(접근성):
-  - 검색 성격 input 4종에 aria-label 부여(순수 속성 추가, 시각·동작 변화 없음):
-    scriptQ(스크립트 검색), kmsq3(지식 검색), cmdIn(화면·기능 검색),
-    세션ID·번호 검색(고객 통화 이력 세션 검색, id 없던 입력).
-    스크린리더가 각 검색창 용도를 음성 안내 가능. aria-label 총 32→36.
-- 빌드 스탬프: B71 → B72 (2026-07-06). 푸터 + 콘솔 로그(BUILD) 동기화.
-- 검증(전부 통과): node --check(구문 OK), titles↔view 39/39 정합,
-  중복 id 없음, 금지어 0, 신규 aria-label 4종 반영 확인.
-- 동기화: public/index.html(md5 동일), outputs/tts-upgrade/full/index.html(md5 동일),
-  callbot-voicebot-v8.zip 재패키징(무결성 OK, 21항목=파일19+디렉터리2, index·public/index 모두 B72, 금지어 0).
-- 참고: zip은 mktemp 샌드박스 로컬에서 빌드 후 mount로 cp(mount에서 zip 직접 생성 시 I/O 제약 있어 우회). CPaaS는 sim/dry-run 유지, git 미실행(배포는 작업 스케줄러 담당).
-- 다음 실행: 정상 계속. 남은 저위험 후보: placeholder만 있고 aria-label 없는 입력 14종(폼 입력류) 추가 라벨링.
+- 이번 회차 개선(접근성 — 아이콘 전용 버튼 aria-label 보강):
+  1) 아이콘(✕) 전용 삭제 버튼 7종(class="ndel")에 aria-label="삭제" 부여.
+     대상: rowDel×4, kpiDel, bDelNode, bDelRow. → 스크린리더에서 '삭제'로 읽힘.
+  2) 숨김 파일 입력(#kbFile, KMS 엑셀/CSV 업로드)에 aria-label="지식 파일 업로드" 부여.
+  · 순수 속성 추가만, 시각·동작 변화 없음(치환 8건, bash+python). 빌드 스탬프 B77 유지.
+- 검증(전부 통과): node --check(스크립트 블록 OK),
+  nav↔titles 39/39 정합(고아 0), 중복 정적 id 0, 금지어 0, NUL 0,
+  파일 끝(</body></html>) host Read 확인 정상.
+- 동기화: public/index.html 를 root 와 md5 동일(5d6bb559...)로 맞춤.
+- 미실행: git commit/push/deploy 없음(배포는 사람 승인). CPaaS sim/dry-run 유지.
+- ⚠️ 자동배포 중지 권고: auto-deploy.bat(git add/commit/push origin main) 여전히 존재
+  → Windows CallbotAutoDeploy 작업 스케줄러 중지 권장(사람 리뷰 전 자동 푸시 방지).
+- 다음 실행 후보: (a) engine.py 하드코딩 데모데이터 → 연동 인터페이스 추상화[사람 승인],
+  (b) confirm_refund 2단계 확인·감사로그[사람 승인], (c) api/ 엔드포인트 인증[사람 승인].
+  저위험: tabindex/포커스 순서 점검, 대비(contrast) 점검, 빈 title 속성 정리.
