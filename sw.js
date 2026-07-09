@@ -1,4 +1,4 @@
-var CACHE='callbot-b25';
+var CACHE='callbot-b81';
 var CORE=['/','/index.html','/manifest.json','/icon-192.png','/icon-512.png'];
 self.addEventListener('install',function(e){self.skipWaiting();e.waitUntil(caches.open(CACHE).then(function(c){return c.addAll(CORE).catch(function(){});}));});
 self.addEventListener('activate',function(e){e.waitUntil(caches.keys().then(function(ks){return Promise.all(ks.map(function(k){if(k!==CACHE)return caches.delete(k);}));}));self.clients.claim();});
