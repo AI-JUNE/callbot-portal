@@ -206,12 +206,16 @@ def trigger_campaign(numbers, scenario="care", meta=None):
     return {"mode": "live", "queued": len(calls), "calls": calls}
 
 
+import os as _os_g, sys as _sys_g
+_sys_g.path.insert(0, _os_g.path.dirname(__file__))
+import _guard
+
 class handler(BaseHTTPRequestHandler):
     def _send(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
@@ -226,11 +230,14 @@ class handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Webhook-Token")
         self.end_headers()
 
     def do_GET(self):
+        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=True)
+        if not _ok:
+            return _guard.deny(self, _c, _m)
         q = parse_qs(urlparse(self.path).query)
         if q.get("op", [""])[0] == "log":
             self._send({"ok": True, "live": LIVE, "recent": RECENT, "webhook": "/api/voice", "provider": CPAAS})
@@ -240,6 +247,9 @@ class handler(BaseHTTPRequestHandler):
                     "note": "CPaaS webhook adapter"})
 
     def do_POST(self):
+        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=True)
+        if not _ok:
+            return _guard.deny(self, _c, _m)
         try:
             n = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(n) if n else b""

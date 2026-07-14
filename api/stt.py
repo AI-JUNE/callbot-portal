@@ -47,6 +47,10 @@ def transcribe(audio_b64, mime):
         return ""
 
 
+import os as _os_g, sys as _sys_g
+_sys_g.path.insert(0, _os_g.path.dirname(__file__))
+import _guard
+
 class handler(BaseHTTPRequestHandler):
     def _send(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -57,9 +61,15 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(b)
 
     def do_GET(self):
+        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
+        if not _ok:
+            return _guard.deny(self, _c, _m)
         self._send({"ok": True, "engine": "Gemini STT", "model": MODEL, "key_present": bool(_key())})
 
     def do_POST(self):
+        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
+        if not _ok:
+            return _guard.deny(self, _c, _m)
         try:
             n = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(n) or "{}")

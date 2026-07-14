@@ -35,25 +35,35 @@ def run_assist(task, text, kb=""):
         return json.loads(m.group(0)) if m else {"raw": txt}
 
 
+import os as _os_g, sys as _sys_g
+_sys_g.path.insert(0, _os_g.path.dirname(__file__))
+import _guard
+
 class handler(BaseHTTPRequestHandler):
     def _send(self, code, obj):
         d = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
         self.end_headers()
         self.wfile.write(d)
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Webhook-Token")
         self.end_headers()
 
     def do_GET(self):
+        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
+        if not _ok:
+            return _guard.deny(self, _c, _m)
         self._send(200, {"ok": True, "tasks": ["summary", "ta", "qa", "kms"]})
 
     def do_POST(self):
+        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
+        if not _ok:
+            return _guard.deny(self, _c, _m)
         try:
             n = int(self.headers.get("content-length", 0))
             b = json.loads(self.rfile.read(n) or "{}")

@@ -1,22 +1,17 @@
 from __future__ import annotations
 import os, re, json, urllib.request
 
-_ORDER = {"order_id":"SSG-20260630-10042","store_name":"온라인몰","ordered_at":"어제 20:15",
-          "items":[{"name":"[생방송] 한우 1++ 선물세트 1.6kg","qty":1,"price":159000},{"name":"보냉백","qty":1,"price":0}],"status":"배송완료"}
+# 주문/환불 연동은 order_backend 인터페이스로 위임한다(기본: DemoOrderBackend =
+# 기존 하드코딩 데이터와 동일 응답). 실제 고객사 연동은 ORDER_BACKEND 환경변수로 교체.
+try:
+    from order_backend import get_backend, DEMO_ORDER  # Vercel 서버리스(api/ 평면 import)
+except ImportError:  # 로컬에서 패키지처럼 import 되는 경우
+    from api.order_backend import get_backend, DEMO_ORDER  # type: ignore
+
+_ORDER = DEMO_ORDER  # 하위 호환(외부에서 참조하던 이름 유지)
 
 def _dispatch(name, inp):
-    if name=="lookup_recent_order": return {"found":True,**_ORDER}
-    if name=="get_refund_policy":
-        mx=sum(i["price"]*i["qty"] for i in _ORDER["items"])
-        return {"eligible":True,"options":["refund","redelivery"],"max_refund":mx,"reason":"불량/오배송/단순변심에 따라 환불 또는 교환 처리"}
-    if name=="quote_refund":
-        pm={i["name"]:i["price"] for i in _ORDER["items"]}
-        items=inp.get("missing_items",[]); total=sum(pm.get(it["name"],0)*int(it.get("qty",1)) for it in items)
-        return {"refund_amount":total,"currency":"KRW"}
-    if name=="confirm_refund": return {"refund_id":"RF-DEMO1234","status":"accepted","eta_days":3}
-    if name=="request_redelivery": return {"redelivery_id":"RD-DEMO1234","eta_minutes":25}
-    if name=="escalate_to_agent": return {"transferred":True,"queue_position":2}
-    return {"error":f"unknown {name}"}
+    return get_backend().dispatch(name, inp)
 
 TOOLS=[
  {"name":"lookup_recent_order","description":"발신번호로 최근 주문 조회. 배달 문제 시 먼저.","parameters":{"type":"object","properties":{"phone":{"type":"string"}},"required":["phone"]}},
