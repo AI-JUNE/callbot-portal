@@ -64,100 +64,52 @@ def _xesc(s):
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _vml(inner):
-    return '<?xml version="1.0" encoding="UTF-8"?><Response>' + inner + '</Response>'
+def _twiml_gather(text):
+    return ('<?xml version="1.0" encoding="UTF-8"?><Response>'
+            '<Say language="ko-KR">%s</Say>'
+            '<Gather input="speech" language="ko-KR" speechTimeout="auto" action="/api/voice" method="POST">'
+            '<Say language="ko-KR">말씀해 주세요.</Say></Gather>'
+            '<Redirect method="POST">/api/voice</Redirect></Response>') % _xesc(text)
 
 
-def _action_url(cid):
-    base = os.environ.get("CALLBOT_BASE_URL", "https://callbot-portal.vercel.app").rstrip("/")
-    tok = (os.environ.get("CPAAS_WEBHOOK_TOKEN", "") or "").strip()
-    qs = []
-    if tok:
-        qs.append("t=" + tok)
-    if cid:
-        qs.append("cid=" + _xesc(cid))
-    return base + "/api/voice" + ("?" + "&amp;".join(qs) if qs else "")
+def _twiml_hangup(text):
+    return ('<?xml version="1.0" encoding="UTF-8"?><Response>'
+            '<Say language="ko-KR">%s</Say><Hangup/></Response>') % _xesc(text)
 
 
-def _say_then_record(text, cid):
-    # ClawOps VoiceML: <Gather input="speech"> 미지원 -> <Record> 로 발화 수집 후 action 콜백
-    return _vml(
-        '<Say language="ko-KR">%s</Say>'
-        '<Record maxLength="12" finishOnKey="#" playBeep="true" action="%s"/>'
-        '<Hangup/>' % (_xesc(text), _action_url(cid)))
-
-
-def _say_then_hangup(text):
-    return _vml('<Say language="ko-KR">%s</Say><Hangup/>' % _xesc(text))
-
-
-def _say_then_dial(text, number, caller_id, cid):
-    # ClawOps <Dial> 은 <Number> noun 만 지원(SIP 미지원)
-    return _vml(
-        '<Say language="ko-KR">%s</Say>'
-        '<Dial timeout="30" callerId="%s" action="%s"><Number>%s</Number></Dial>'
-        '<Say language="ko-KR">상담원 연결이 어렵습니다. 잠시 후 다시 이용해 주세요.</Say><Hangup/>'
-        % (_xesc(text), _xesc(caller_id), _action_url(cid), _xesc(number)))
+def _twiml_dial(text, target):
+    return ('<?xml version="1.0" encoding="UTF-8"?><Response>'
+            '<Say language="ko-KR">%s</Say><Dial>%s</Dial></Response>') % (_xesc(text), _xesc(target))
 
 
 def handle_twilio(p):
-    # ClawOps VoiceML(TwiML 호환) 인바운드 핸들러.
-    # 요청 파라미터: CallId, AccountId, From, To, CallStatus, Direction
-    # 콜백 파라미터: RecordingUrl, RecordingDuration, Digits, DialCallStatus
-    cid = p.get("CallId") or p.get("CallSid") or "call"
+    cid = p.get("CallSid", "tw-call")
     frm = p.get("From", "")
-    to = p.get("To", "")
-    status = (p.get("CallStatus", "") or "").lower()
-    rec_url = (p.get("RecordingUrl", "") or "").strip()
-    rec_dur = str(p.get("RecordingDuration", "") or "").strip()
-    dial_status = (p.get("DialCallStatus", "") or "").lower()
+    status = p.get("CallStatus", "")
+    speech = (p.get("SpeechResult", "") or "").strip()
     scenario = os.environ.get("CALLBOT_DEFAULT_SCENARIO", "refund")
-
-    # 통화 종료류
     if status in ("completed", "canceled", "busy", "no-answer", "failed"):
         _Session.drop(cid)
-        _log_call({"from": frm, "ev": "통화종료", "text": status})
-        return _say_then_hangup("이용해 주셔서 감사합니다.")
-
-    # Dial 결과 콜백
-    if dial_status:
-        if dial_status == "completed":
-            _Session.drop(cid)
-            return _say_then_hangup("상담이 종료되었습니다. 감사합니다.")
-        return _say_then_record("상담원 연결이 어렵습니다. 용건을 말씀해 주시면 도와드리겠습니다.", cid)
-
-    # 세션 (서버리스: best-effort, 없으면 프레시 시작)
+        _log_call({"from": frm, "ev": "통화종료", "text": ""})
+        return _twiml_hangup("이용해 주셔서 감사합니다.")
     sess = _Session.get(cid)
     if not sess:
         sess = {"messages": [], "scenario": scenario, "phone": frm}
         _Session.put(cid, sess)
         _log_call({"from": frm, "ev": "통화연결", "text": ""})
-
-    # 녹음 콜백이 아니면(=첫 진입) 인사 후 녹음 요청
-    if not rec_url:
-        return _say_then_record(GREETING, cid)
-
-    # 녹음 있음 -> STT
-    if rec_dur in ("", "0", "0.0"):
-        return _say_then_record("죄송합니다, 잘 못 들었어요. 다시 말씀해 주시겠어요?", cid)
-    user_text = _transcribe_url(rec_url)
-    if not user_text:
-        return _say_then_record("죄송합니다, 잘 못 들었어요. 다시 말씀해 주시겠어요?", cid)
-    _log_call({"from": frm, "ev": "고객발화", "text": user_text})
-
+    if not speech:
+        return _twiml_gather(GREETING)
+    _log_call({"from": frm, "ev": "고객발화", "text": speech})
     if run_turn:
-        sess["messages"].append({"role": "user", "content": user_text})
+        sess["messages"].append({"role": "user", "content": speech})
         r = run_turn(sess["messages"], phone=frm, scenario=sess["scenario"])
         sess["messages"] = r["messages"]
         _Session.put(cid, sess)
-        _log_call({"from": frm, "ev": "봇응답", "text": r.get("reply", "")})
+        _log_call({"from": frm, "ev": "봇응답", "text": r["reply"]})
         if r.get("transferred"):
-            agent = (os.environ.get("CALLBOT_AGENT_PHONE", "") or "").strip()
-            if agent:
-                return _say_then_dial("상담사에게 연결해 드리겠습니다. 잠시만 기다려 주세요.", agent, to, cid)
-            return _say_then_hangup("죄송합니다, 지금은 상담사 연결이 어렵습니다. 잠시 후 다시 이용해 주세요.")
-        return _say_then_record(r["reply"], cid)
-    return _say_then_hangup("현재 점검 중입니다. 잠시 후 다시 시도해 주세요.")
+            return _twiml_dial("상담사에게 연결해 드리겠습니다.", AGENT_SIP)
+        return _twiml_gather(r["reply"])
+    return _twiml_hangup("현재 점검 중입니다. 잠시 후 다시 시도해 주세요.")
 
 
 def _parse_event(body):
@@ -271,7 +223,7 @@ class handler(BaseHTTPRequestHandler):
     def _send_xml(self, xml, code=200):
         b = xml.encode("utf-8")
         self.send_response(code)
-        self.send_header("Content-Type", "application/xml; charset=utf-8")
+        self.send_header("Content-Type", "text/xml; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
