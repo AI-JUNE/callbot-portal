@@ -457,7 +457,7 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
       <div class="hamb" role="button" tabindex="0" aria-controls="sideNav" aria-expanded="false" aria-label="메뉴 열기" onclick="toggleSide()">☰</div>
       <div><h2 id="title">음성 상담</h2><div class="crumb" id="crumb">실시간 음성 상담 콘솔</div></div>
       <span class="sp"></span>
-      <div class="search">🔎 <input id="gsearch" autocomplete="off" aria-label="통합 검색" placeholder="주문·고객·상담 검색" oninput="doSearch()" onfocus="doSearch()"/><div class="popup" id="searchPop"></div></div>
+      <div class="search">🔎 <input id="gsearch" autocomplete="off" aria-label="통합 검색" placeholder="신청·고객·상담 검색" oninput="doSearch()" onfocus="doSearch()"/><div class="popup" id="searchPop"></div></div>
       <span class="stat" title="진행 중 활성 세션 수"><span class="dot"></span> 활성 <b id="activeCount">1</b></span>
       <span class="stat">💰 <b id="topCost">₩0</b></span>
       <label class="tog"><input type="checkbox" id="speak" checked onchange="saveSetting('speak',this.checked?'1':'0')"/> 봇 음성</label>
@@ -471,7 +471,7 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
       <section id="view-voice">
         <div class="chips" style="margin-bottom:10px"><b style="align-self:center;font-size:12px;color:var(--mut);margin-right:2px">데모 시나리오</b><span class="seg demoSel"><button class="on" data-k="welfare" onclick="pickDemo('welfare')">이음 복지 상담</button><button data-k="trio" onclick="pickDemo('trio')">3세대 매칭</button><button data-k="refund" onclick="pickDemo('refund')">반품·환불</button><button data-k="integrity" onclick="pickDemo('integrity')">여신 청렴도 조사</button><button data-k="overdue" onclick="pickDemo('overdue')">연체 안내</button></span></div>
         <div class="chips">
-          <span class="chip warm">⚡ 실시간 응대</span><span class="chip">✅ 자동완결(주문성공률)</span>
+          <span class="chip warm">⚡ 실시간 응대</span><span class="chip">✅ 자동완결(신청 완료율)</span>
           <span class="chip">🤝 상담원 Fallback</span><span class="chip">🔒 녹취·마스킹</span><span class="chip">🎧 뉴럴 음성</span>
         </div>
         <div class="voice">
@@ -483,7 +483,7 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
             <div class="bars" id="bars"></div>
             <div class="callbtns"><button class="btn-call" id="callBtn" onclick="startCall()"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1l-2.2 2.2z"/></svg> 통화 시작</button>
               <button class="btn-end hidden" id="endBtn" onclick="endCall()">⏹ 통화 종료</button></div>
-            <div class="chips" style="justify-content:center;margin-top:10px"><b style="align-self:center;font-size:11px;color:var(--dim);margin-right:2px">빠른 답변</b><button onclick="quickSay('네')">네</button><button onclick="quickSay('아니요')">아니요</button><button onclick="quickSay('반품하고 싶어요')">반품</button><button onclick="quickSay('환불해 주세요')">환불</button><button onclick="quickSay('상담원 연결해 주세요')">상담원</button> <button id="precBtn" onclick="precisionSTT()" style="border-color:var(--green);color:var(--green);font-weight:700">🎯 정밀 녹음(Gemini)</button> <label style="font-size:12px;color:var(--mut);display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="precRT" checked onchange="saveSetting('precrt',this.checked?'1':'0')"/> 실시간 정밀(Gemini)</label></div>
+            <div class="chips" style="justify-content:center;margin-top:10px"><b style="align-self:center;font-size:11px;color:var(--dim);margin-right:2px">빠른 답변</b><button onclick="quickSay('네')">네</button><button onclick="quickSay('아니요')">아니요</button><button onclick="quickSay('기초연금 신청하고 싶어요')">복지신청</button><button onclick="quickSay('3세대 매칭 신청할게요')">3세대매칭</button><button onclick="quickSay('코디네이터 연결해 주세요')">코디네이터</button> <button id="precBtn" onclick="precisionSTT()" style="border-color:var(--green);color:var(--green);font-weight:700">🎯 정밀 녹음(Gemini)</button> <label style="font-size:12px;color:var(--mut);display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="precRT" checked onchange="saveSetting('precrt',this.checked?'1':'0')"/> 실시간 정밀(Gemini)</label></div>
             <div class="transcript" id="tr"></div>
             <div class="vhint">연속 통화 모드 · 봇이 말한 뒤 자동으로 다시 듣습니다 (Chrome 권장)</div>
           </div>
@@ -1218,11 +1218,11 @@ function toast(m){var t=document.getElementById('toast');if(!t){t=document.creat
 function togglePop(id){var el=document.getElementById(id);var open=el&&el.classList.contains('show');closePops();if(el&&!open){el.classList.add('show');var b=el.parentElement;if(b&&b.getAttribute('aria-haspopup'))b.setAttribute('aria-expanded','true');}}
 function closePops(){document.querySelectorAll('.popup').forEach(function(p){p.classList.remove('show');});document.querySelectorAll('[aria-haspopup]').forEach(function(b){b.setAttribute('aria-expanded','false');});}
 document.addEventListener('click',function(e){if(!e.target.closest('.search')&&!e.target.closest('.iconbtn')&&!e.target.closest('.avatar'))closePops();});
-const ORDERS=[{id:'SSG-20260630-10042',name:'한우 1++ 선물세트',st:'배송완료',cust:'홍길동'},{id:'SSG-20260629-09981',name:'에어프라이어 5L',st:'배송중',cust:'김영희'},{id:'SSG-20260628-09877',name:'기능성 베개 2종',st:'반품접수',cust:'이철수'},{id:'SSG-20260627-09712',name:'한라봉 5kg',st:'배송완료',cust:'박민수'}];
+const ORDERS=[{id:'EUM-20260630-10042',name:'기초연금 신청',st:'접수완료',cust:'홍금례'},{id:'EUM-20260629-09981',name:'3세대 매칭(청년→어르신 돌봄)',st:'매칭중',cust:'김도윤'},{id:'EUM-20260628-09877',name:'돌봄 바우처 신청',st:'서류대기',cust:'이순자'},{id:'EUM-20260627-09712',name:'상생카드 봉사시간 조회',st:'완료',cust:'박민수'}];
 var _srchT=null;function doSearch(){clearTimeout(_srchT);_srchT=setTimeout(_doSearch,110);}
 function _doSearch(){var q=(document.getElementById('gsearch').value||'').trim();var pop=document.getElementById('searchPop');if(!q){pop.classList.remove('show');pop.innerHTML='';return;}
  var res=[];function add(c,t,v){res.push({c:c,t:t,v:v});}
- (typeof ORDERS!=='undefined'?ORDERS:[]).forEach(function(o){if((o.id+o.name+o.st+o.cust).indexOf(q)>=0)add('주문',o.id+' · '+o.name+' ('+o.st+')','monitor');});
+ (typeof ORDERS!=='undefined'?ORDERS:[]).forEach(function(o){if((o.id+o.name+o.st+o.cust).indexOf(q)>=0)add('신청',o.id+' · '+o.name+' ('+o.st+')','monitor');});
  (typeof CALLLOG!=='undefined'?CALLLOG:[]).forEach(function(c){if((c.sid+c.ph+c.cat+c.scn).indexOf(q)>=0)add('통화',c.sid+' · '+c.scn+' · '+c.rl,'calls');});
  (typeof AGT!=='undefined'?AGT:[]).forEach(function(a){if((a.name+a.type+a.ch+a.wf).indexOf(q)>=0)add('콜봇',a.name+' · '+a.wf,'agentmgmt');});
  (typeof KDOCS!=='undefined'?KDOCS:[]).forEach(function(d){if((d.t+d.dept+d.cat).indexOf(q)>=0)add('지식문서',d.t+' ('+d.st+')','kms');});
