@@ -836,8 +836,8 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
           <table><thead><tr><th>대표번호</th><th>시나리오명</th><th>유형</th><th>운영여부</th><th>등록일시</th><th>수정일시</th><th>수정자</th></tr></thead><tbody id="svcBody">
             <tr><td>1600-1234</td><td>주문/배송 인바운드</td><td>인바운드</td><td><span class="tag pos" onclick="svcToggle(this)" style="cursor:pointer">운영</span></td><td>2026-05-02</td><td>2026-06-20</td><td>김운영</td></tr>
             <tr><td>1600-1234</td><td>반품·교환·환불</td><td>인바운드</td><td><span class="tag pos" onclick="svcToggle(this)" style="cursor:pointer">운영</span></td><td>2026-05-02</td><td>2026-06-28</td><td>김운영</td></tr>
-            <tr><td>070-5163</td><td>이탈고객 재발신</td><td>아웃바운드</td><td><span class="tag pos" onclick="svcToggle(this)" style="cursor:pointer">운영</span></td><td>2026-05-10</td><td>2026-06-25</td><td>박환불</td></tr>
-            <tr><td>070-5163</td><td>무통장 미입금 안내</td><td>아웃바운드</td><td><span class="tag neu" onclick="svcToggle(this)" style="cursor:pointer">미운영</span></td><td>2026-06-01</td><td>2026-06-29</td><td>박환불</td></tr>
+            <tr><td>070-5163</td><td>이탈고객 재발신</td><td>아웃바운드</td><td><span class="tag pos" onclick="svcToggle(this)" style="cursor:pointer">운영</span></td><td>2026-05-10</td><td>2026-06-25</td><td>박서연</td></tr>
+            <tr><td>070-5163</td><td>무통장 미입금 안내</td><td>아웃바운드</td><td><span class="tag neu" onclick="svcToggle(this)" style="cursor:pointer">미운영</span></td><td>2026-06-01</td><td>2026-06-29</td><td>박서연</td></tr>
           </tbody></table></div>
       </section>
 
@@ -846,9 +846,9 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
           <div id="basisH"><table><thead><tr><th>휴일그룹</th><th>휴일</th><th>내용</th><th>등록자</th></tr></thead><tbody>
             <tr><td>공통 휴일</td><td>2026-01-01</td><td>신정</td><td>관리자</td></tr><tr><td>공통 휴일</td><td>2026-03-01</td><td>삼일절</td><td>관리자</td></tr><tr><td>은행영업외</td><td>토/일</td><td>주말</td><td>관리자</td></tr></tbody></table></div>
           <div id="basisC" class="hidden"><table><thead><tr><th>순서</th><th>내선번호</th><th>유형</th><th>등록일시</th><th>수정자</th></tr></thead><tbody>
-            <tr><td>1</td><td>7001</td><td>인바운드</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>2</td><td>7002</td><td>인바운드</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>3</td><td>8001</td><td>아웃바운드</td><td>2026-05-10</td><td>박환불</td></tr></tbody></table></div>
+            <tr><td>1</td><td>7001</td><td>인바운드</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>2</td><td>7002</td><td>인바운드</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>3</td><td>8001</td><td>아웃바운드</td><td>2026-05-10</td><td>박서연</td></tr></tbody></table></div>
           <div id="basisG" class="hidden"><table><thead><tr><th>순서</th><th>상담그룹</th><th>그룹연결번호</th><th>등록일시</th><th>수정자</th></tr></thead><tbody>
-            <tr><td>1</td><td>주문/배송팀</td><td>9001</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>2</td><td>반품팀</td><td>9002</td><td>2026-05-02</td><td>박환불</td></tr><tr><td>3</td><td>VIP팀</td><td>9003</td><td>2026-05-10</td><td>정민원</td></tr></tbody></table></div>
+            <tr><td>1</td><td>복지상담팀</td><td>9001</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>2</td><td>매칭지원팀</td><td>9002</td><td>2026-05-02</td><td>박서연</td></tr><tr><td>3</td><td>VIP팀</td><td>9003</td><td>2026-05-10</td><td>정민원</td></tr></tbody></table></div>
           <div class="hint" style="padding:12px 18px">휴일그룹·내선채널·상담그룹은 시나리오 운영설정·상담사 전환에서 사용됩니다.</div></div>
       </section>
 
@@ -857,7 +857,7 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
           <div id="logA"><div class="toolbar"><span class="chips2"><button class="on" onclick="segPick(this);renderLogs()">전체</button><button onclick="segPick(this);renderLogs()">수정</button><button onclick="segPick(this);renderLogs()">조회</button><button onclick="segPick(this);renderLogs()">삭제</button></span><span class="sp"></span><input id="logQ" aria-label="접속·녹취 로그 검색" oninput="renderLogs()" placeholder="이름·소속·IP 검색" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12px"/> <button onclick="exportXlsx()">⬇ 엑셀</button></div><table><thead><tr><th>순번</th><th>일자</th><th>시각</th><th>구분</th><th>소속</th><th>행번</th><th>이름</th><th>IP</th><th>작업 내용</th></tr></thead><tbody id="logABody"></tbody></table></div>
           <div id="logR" class="hidden"><table><thead><tr><th>순번</th><th>접속일자</th><th>접속시간</th><th>소속</th><th>행번</th><th>이름</th><th>녹취세션ID</th><th>녹취일시</th></tr></thead><tbody>
             <tr><td>1</td><td>2026-06-30</td><td>11:41</td><td>CS 1팀</td><td>E1023</td><td>김운영</td><td><a onclick="openWave(this)" style="color:var(--warm);cursor:pointer">S-260630-0421</a></td><td>11:42:18</td></tr>
-            <tr><td>2</td><td>2026-06-30</td><td>11:33</td><td>반품팀</td><td>E1099</td><td>박환불</td><td><a onclick="openWave(this)" style="color:var(--warm);cursor:pointer">S-260630-0419</a></td><td>11:31:55</td></tr>
+            <tr><td>2</td><td>2026-06-30</td><td>11:33</td><td>매칭지원팀</td><td>E1099</td><td>박서연</td><td><a onclick="openWave(this)" style="color:var(--warm);cursor:pointer">S-260630-0419</a></td><td>11:31:55</td></tr>
           </tbody></table></div>
           <div class="hint" style="padding:12px 18px">감사 로그 · 녹취 접근은 전수 기록(누가·언제·어떤 세션)됩니다.</div></div>
       </section>
@@ -1475,13 +1475,13 @@ function renderHist(){const b=$('#histBody');if(!history.length){b.innerHTML='<t
   b.innerHTML=history.map((h,i)=>{const tag=h.result==='완결'?'<span class="tag pos">완결</span>':h.result==='전환'?'<span class="tag neg">전환</span>':'<span class="tag neu">진행</span>';
   return `<tr><td>${i+1}</td><td>${esc(h.u)}</td><td>${esc(h.b)}</td><td><span class="tag intent">${h.intent}</span></td><td><span class="tag ${h.emo.c}">${h.emo.l}</span></td><td>${tag}</td><td class="k">${h.tok}</td></tr>`;}).join('');}
 function esc(s){return(s||'').replace(/</g,'&lt;');}
-const AGENTS=[{n:'김상담',r:'CS 1팀',s:'on',t:14},{n:'이지원',r:'CS 1팀',s:'busy',t:9},{n:'박환불',r:'반품팀',s:'on',t:21},{n:'최배송',r:'배송팀',s:'off',t:0},{n:'정민원',r:'VIP',s:'busy',t:6},{n:'한해결',r:'에스컬',s:'on',t:3}];
+const AGENTS=[{n:'김상담',r:'CS 1팀',s:'on',t:14},{n:'이지원',r:'CS 1팀',s:'busy',t:9},{n:'박서연',r:'매칭지원팀',s:'on',t:21},{n:'최민지',r:'배송팀',s:'off',t:0},{n:'정민원',r:'VIP',s:'busy',t:6},{n:'한해결',r:'에스컬',s:'on',t:3}];
 function renderAgents(){var g=document.getElementById('agrid');if(!g)return;
  g.innerHTML=AGENTS.map(function(a){var sp=a.s==='on'?'<span class="pill on">대기</span>':a.s==='busy'?'<span class="pill busy">통화중</span>':'<span class="pill off">오프</span>';var avg=(2.3+(a.t%5)*0.32).toFixed(1);
   return '<div class="agent"><div class="top"><div class="ava">'+a.n[0]+'</div><div><div class="nm">'+a.n+'</div><div class="rl">'+a.r+'</div></div><span style="margin-left:auto">'+sp+'</span></div><div class="mini"><span>오늘 처리</span><b>'+a.t+'건</b></div><div class="mini"><span>평균 응대</span><b>'+avg+'분</b></div></div>';}).join('');
  var sm=document.getElementById('agSummary');if(sm){var on=AGENTS.filter(function(a){return a.s==='on';}).length,busy=AGENTS.filter(function(a){return a.s==='busy';}).length,off=AGENTS.filter(function(a){return a.s==='off';}).length,tot=AGENTS.reduce(function(x,a){return x+a.t;},0);
   sm.innerHTML='<div class="kpi"><div class="l">상담사</div><div class="v">'+AGENTS.length+'명</div><div class="s">대기 '+on+' · 통화 '+busy+' · 오프 '+off+'</div></div><div class="kpi"><div class="l">오늘 처리콜</div><div class="v">'+tot+'건</div><div class="s">인계 Fallback 포함</div></div><div class="kpi"><div class="l">평균 응대</div><div class="v">3.1분</div><div class="s">SLA 5분 이내</div></div><div class="kpi"><div class="l">가동률</div><div class="v">'+Math.round((on+busy)/AGENTS.length*100)+'%</div><div class="s">실시간</div></div>';}}
-const KB=[['반품·교환·환불 정책','불량/오배송 무상 반품·교환. 단순변심 수거비 차감 후 환불. 신선식품 24시간 내.'],['환불 처리 기간','승인 후 결제수단 기준 2~3영업일.'],['교환 기준','동일상품 재고 시 수거 후 재배송 2~3일.'],['배송 조회','주문번호/송장 실시간 조회. 평균 1~2일.'],['멤버십/적립','등급별 적립률·쿠폰. 결제 확정 후 익일 반영.'],['상담원 전환 기준','정책 외·고액·반복 실패·고객 요청.']];
+const KB=[['기초연금 신청 안내','만 65세 이상·소득인정액 기준 충족 시 신청. 전화·방문 접수 가능, 신분증과 통장 사본 필요. 결과는 문자 안내.'],['3세대 매칭(품앗이)','청년·어르신·양육가정을 잇는 상생 품앗이. 활동 요일·동네 기준 매칭. 활동 시 봉사시간·상생카드 적립.'],['4단계 안전검증','참여 전 대면 면접·범죄경력 조회·아동학대 전력 확인·추천인 확인. 아동 관련 활동은 필수.'],['상생카드·봉사시간','활동 시간만큼 봉사시간 적립, 상생카드 포인트로 전환·사용. 적립은 활동 승인 후 반영.'],['필요 서류 안내','복지 신청별 서류 상이(신분증·소득 증빙·가족관계 등). 화면으로 목록 안내, 미비 시 코디네이터가 보완 안내.'],['코디네이터 전환 기준','복잡한 상담·서류 보완·직접 상담 요청 시 광산구 이음 코디네이터로 연결.']];
 function filterKb(){const q=($('#kbq').value||'').trim();const list=KB.filter(k=>!q||k[0].includes(q)||k[1].includes(q));
   $('#kbList').innerHTML=list.length?list.map(k=>`<div class="it"><b>${k[0]}</b><span class="summary">${k[1]}</span></div>`).join(''):'<div class="it" style="color:var(--dim)">검색 결과 없음</div>';}
 $('#msg').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
@@ -1549,7 +1549,7 @@ function rStatsvcTbl(f){var tb=document.getElementById('tbStatsvc');if(!tb)retur
  h+=rows.map(function(o){return '<tr><td>'+o.nm[0]+'</td><td>'+o.nm[1]+'</td><td>'+o.nm[2]+'</td>'+o.r.map(function(x){return '<td class="k">'+_fmt(x)+'</td>';}).join('')+'</tr>';}).join('');tb.innerHTML=h;}
 /* ===== 세션 통화로그(대화이력·통화이력 공용) ===== */
 function _set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-var CALLLOG=(function(){var rng=_rng(20260701),out=[],chans=['전화(IVR)','앱','웹챗'],svcs=[['주문','주문조회'],['배송','배송조회'],['반품','반품·교환'],['상품','상품문의'],['결제','결제문의']],emos=[['긍정','pos'],['중립','neu'],['불만','neg']],results=[['완결','완결','pos'],['멀티모달 완결','완결','pos'],['상담사 전환','전환','neu'],['연계 처리','전환','neu'],['콜봇 거부','이탈','neu'],['고객 이탈','이탈','neg']];
+var CALLLOG=(function(){var rng=_rng(20260701),out=[],chans=['전화(IVR)','앱','웹챗'],svcs=[['복지','복지신청'],['매칭','3세대매칭'],['안전','안전검증'],['카드','상생카드'],['서류','서류안내']],emos=[['긍정','pos'],['중립','neu'],['불만','neg']],results=[['완결','완결','pos'],['멀티모달 완결','완결','pos'],['상담사 전환','전환','neu'],['연계 처리','전환','neu'],['콜봇 거부','이탈','neu'],['고객 이탈','이탈','neg']];
  for(var i=0;i<120;i++){var day=Math.floor(rng()*30),hh=9+Math.floor(rng()*10),mm=Math.floor(rng()*60),sv=svcs[Math.floor(rng()*5)],em=emos[Math.floor(rng()*3)],rs=results[Math.floor(rng()*6)];
   out.push({day:day,t:('0'+hh).slice(-2)+':'+('0'+mm).slice(-2),ph:'010-'+(1000+Math.floor(rng()*9000))+'-****',sid:'S-'+_dstr(day).replace(/-/g,'').slice(2)+'-'+('000'+Math.floor(rng()*9999)).slice(-4),ch:chans[Math.floor(rng()*3)],cat:sv[0],scn:sv[1],emo:em,rl:rs[0],rf:rs[1],rc:rs[2],dur:Math.floor(rng()*8)+':'+('0'+Math.floor(rng()*60)).slice(-2),tok:200+Math.floor(rng()*1400)});}
  return out.sort(function(a,b){return a.day-b.day;});})();
@@ -1617,7 +1617,7 @@ function qaEdit(i,t){var v=parseInt(t);if(isNaN(v)||v<0)v=0;if(v>QAITEMS[i][1])v
 function qaGap(name){toast('이의제기(GAP) 등록: '+name);}
 function qaCoachAdd(){var inp=document.getElementById('qaCoachIn'),v=(inp.value||'').trim();if(!v){toast('코칭 내용을 입력하세요');return;}var log=document.getElementById('qaCoachLog'),t=new Date().toTimeString().slice(0,5);if(log.querySelector('.dim,[style*="dim"]')||/등록된 코칭이 없습니다/.test(log.innerHTML))log.innerHTML='';log.innerHTML='<div class="row" style="padding:6px 0"><span>'+t+' · '+esc(v)+'</span><span class="tag pos">등록</span></div>'+log.innerHTML;inp.value='';toast('코칭 등록됨');}
 /* ===== NLU 학습데이터·재학습 ===== */
-var INTENTS=[{name:'반품·교환·환불',cnt:4820,acc:96.2},{name:'주문·배송 조회',cnt:6310,acc:97.1},{name:'결제·정산 문의',cnt:2140,acc:93.4},{name:'상품 문의',cnt:1980,acc:92.0},{name:'멤버십·적립',cnt:1240,acc:94.5},{name:'불만·이슈',cnt:880,acc:90.8}];
+var INTENTS=[{name:'복지 신청(기초연금·바우처)',cnt:6310,acc:97.1},{name:'3세대 매칭 신청',cnt:4820,acc:96.2},{name:'안전검증 문의',cnt:2140,acc:93.4},{name:'상생카드·봉사시간',cnt:1980,acc:92.0},{name:'필요서류 안내',cnt:1240,acc:94.5},{name:'코디네이터 연결',cnt:880,acc:90.8}];
 var NLUPERF=[93,91,92,92];
 function renderNluData(){var el=document.getElementById('nluIntents');if(el){el.innerHTML=INTENTS.map(function(it,i){var tg=it.acc>=95?'pos':it.acc>=90?'neu':'neg',lb=it.acc>=95?'우수':it.acc>=90?'양호':'개선';return '<tr><td>'+it.name+'</td><td class="k">'+it.cnt.toLocaleString()+'</td><td class="k">'+it.acc.toFixed(1)+'%</td><td><span class="tag '+tg+'">'+lb+'</span></td><td><button onclick="nluAddUtter('+i+')">발화+</button></td></tr>';}).join('');}
  var cm=document.getElementById('nluCM');if(cm){var labs=['반품','주문','결제','상품','멤버십','불만'],h='<table style="font-size:13px;border-collapse:collapse;min-width:520px"><thead><tr><th style="padding:8px 14px"></th>'+labs.map(function(l){return '<th style="padding:8px 14px;font-weight:800">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
@@ -1967,7 +1967,7 @@ function kpiDel(i){CKPI.splice(i,1);saveCKpi();renderCKpi();}
 function saveCKpi(){try{localStorage.setItem('cb_ckpi',JSON.stringify(CKPI));}catch(e){}}
 function loadCKpi(){try{var v=JSON.parse(localStorage.getItem('cb_ckpi')||'[]');if(Array.isArray(v))CKPI=v;}catch(e){}renderCKpi();}
 /* NLU 라벨링 */
-var LBL_QUEUE=['환불 언제 처리되나요','포인트 어떻게 쓰나요','배송이 너무 늦어요','명의 변경하고 싶어요','영수증 재발급 되나요'],LBL_LOG=[];
+var LBL_QUEUE=['기초연금 언제 나오나요','봉사시간 어떻게 쌓나요','매칭 언제 되나요','서류 뭐가 필요한가요','안전검증 꼭 받아야 하나요'],LBL_LOG=[];
 function renderLblQueue(){var q=document.getElementById('lblQueue');if(q)q.innerHTML='<span style="font-size:11px;color:var(--dim);align-self:center">미분류 큐:</span>'+LBL_QUEUE.map(function(u){return '<span class="chip" style="cursor:pointer" onclick="document.getElementById(\'lblUtter\').value=this.textContent">'+u+'</span>';}).join('');
  var sel=document.getElementById('lblIntent');if(sel&&typeof INTENTS!=='undefined')sel.innerHTML=INTENTS.map(function(it){return '<option>'+it.name+'</option>';}).join('');
  var log=document.getElementById('lblLog');if(log)log.innerHTML=LBL_LOG.map(function(l){return '<div class="row" style="padding:4px 0;font-size:12px"><span>'+esc(l.u)+' → <b>'+l.i+'</b></span><span class="tag pos">라벨됨</span></div>';}).join('');}
@@ -1976,7 +1976,7 @@ function lblAdd(){var u=(document.getElementById('lblUtter').value||'').trim(),i
  if(typeof INTENTS!=='undefined'){var it=INTENTS.filter(function(x){return x.name===i;})[0];if(it)it.cnt++;if(typeof renderNluData==='function')renderNluData();}
  document.getElementById('lblUtter').value='';renderLblQueue();toast('라벨 저장: '+i+' (재학습 대기)');}
 /* ===== 감사로그·리포트예약·공지 ===== */
-var AUDITLOG=(function(){var rng=_rng(9911),out=[],acts=['수정','조회','삭제','등록','승인'],deps=['CS 1팀','반품팀','통계팀','VIP','운영팀'],names=['김운영','이통계','박환불','정민원','한해결','최배송'],menus=['서비스 설정','지식 등록','QA 평가','통계 조회','계정 권한','시나리오 배포'];
+var AUDITLOG=(function(){var rng=_rng(9911),out=[],acts=['수정','조회','삭제','등록','승인'],deps=['CS 1팀','매칭지원팀','통계팀','VIP','운영팀'],names=['김운영','이통계','박서연','정민원','한해결','최민지'],menus=['서비스 설정','지식 등록','QA 평가','통계 조회','계정 권한','시나리오 배포'];
  for(var i=0;i<40;i++){var day=Math.floor(rng()*7),hh=9+Math.floor(rng()*10),mm=Math.floor(rng()*60),ss=Math.floor(rng()*60);
   out.push({date:_dstr(day),t:('0'+hh).slice(-2)+':'+('0'+mm).slice(-2)+':'+('0'+ss).slice(-2),act:acts[Math.floor(rng()*acts.length)],dep:deps[Math.floor(rng()*deps.length)],emp:'E'+(1000+Math.floor(rng()*9000)),name:names[Math.floor(rng()*names.length)],ip:'10.20.'+Math.floor(rng()*255)+'.x',menu:menus[Math.floor(rng()*menus.length)]});}
  return out.sort(function(a,b){return (b.date+b.t).localeCompare(a.date+a.t);});})();
@@ -2042,7 +2042,7 @@ function scnVersions(){var vers=[];try{vers=JSON.parse(localStorage.getItem(_scn
  var list=vers.map(function(v,i){return (i+1)+') '+v.ts;}).join('\n');var pick=prompt('복원할 버전 번호 (1~'+vers.length+')\n'+list,'1');if(!pick)return;var idx=parseInt(pick)-1;if(idx<0||idx>=vers.length){toast('잘못된 번호');return;}
  try{var d=JSON.parse(vers[idx].data);SCN[curScn].flow=d.flow;SCN[curScn].edge=d.edge;SCN[curScn].script=d.script;renderBuilder(curScn);toast('버전 복원: '+vers[idx].ts);}catch(e){toast('복원 실패');}}
 /* 콜 리즌 코드 */
-var REASONS=[{code:'R-ORD',cat:'주문',name:'주문/배송 조회',type:'인바운드',cnt:1260,on:true},{code:'R-RTN',cat:'반품',name:'반품·교환·환불',type:'인바운드',cnt:980,on:true},{code:'R-PAY',cat:'결제',name:'결제·정산 문의',type:'인바운드',cnt:562,on:true},{code:'R-PRD',cat:'상품',name:'상품 문의',type:'인바운드',cnt:620,on:true},{code:'R-OB1',cat:'캠페인',name:'이탈고객 재컨택',type:'아웃바운드',cnt:410,on:true},{code:'R-OB2',cat:'안내',name:'미입금 안내',type:'아웃바운드',cnt:300,on:false}];
+var REASONS=[{code:'R-WLF',cat:'복지',name:'복지 신청(기초연금·바우처)',type:'인바운드',cnt:1260,on:true},{code:'R-TRI',cat:'매칭',name:'3세대 매칭 신청',type:'인바운드',cnt:980,on:true},{code:'R-SFT',cat:'안전',name:'안전검증 문의',type:'인바운드',cnt:562,on:true},{code:'R-CRD',cat:'카드',name:'상생카드·봉사시간',type:'인바운드',cnt:620,on:true},{code:'R-OB1',cat:'캠페인',name:'안부·복지 재안내',type:'아웃바운드',cnt:410,on:true},{code:'R-OB2',cat:'안내',name:'서류 보완 안내',type:'아웃바운드',cnt:300,on:false}];
 function renderReason(){var el=document.getElementById('reasonBody');if(!el)return;var tf='전체';document.querySelectorAll('#view-reason .seg button.on').forEach(function(b){tf=b.textContent.trim();});var q=((document.getElementById('reasonQ')||{}).value||'').trim();
  var rows=REASONS.filter(function(r){return (tf==='전체'||r.type===tf)&&(!q||(r.code+r.name+r.cat).indexOf(q)>=0);});
  el.innerHTML=rows.length?rows.map(function(r){var i=REASONS.indexOf(r);return '<tr><td><b>'+r.code+'</b></td><td>'+r.cat+'</td><td>'+r.name+'</td><td>'+r.type+'</td><td class="k">'+r.cnt.toLocaleString()+'</td><td><span class="tag '+(r.on?'pos':'neu')+'" onclick="reasonToggle('+i+')" style="cursor:pointer">'+(r.on?'사용':'미사용')+'</span></td><td><a onclick="toast(\'코드 '+r.code+' 상세\')" style="color:var(--accent);cursor:pointer">상세</a></td></tr>';}).join(''):'<tr><td colspan="7" style="color:var(--dim)">조건에 맞는 사유코드가 없습니다.</td></tr>';}
