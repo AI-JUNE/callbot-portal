@@ -1,39 +1,38 @@
 # CallBot 자동 고도화 — 실행 상태
 
-- 실행 시각: 2026-07-15 (callbot-night-auto-dev)
+- 실행 시각: 2026-07-21 (callbot-night-auto-dev · 야간 자동)
 - 상태: ✅ 정상 완료 (변경 있음 — **public/admin.html**)
-- 빌드 스탬프: **B91 → B92**
-- 이번 회차 항목: **콘솔 표 행 필터/검색 도입** (지난 회차 "다음 실행 후보" 1순위)
+- 빌드 스탬프: **B107 → B108**
+- 이번 회차 항목: **툴바 토글 토스트 다국어화(다크/큰글씨) 1건 + 빌드 스탬프·콘솔로그 정리 1건**
 
-## 이번 회차 구현
-### public/admin.html — 표 행 필터/검색 (신규)
-- B91에서 정렬을 넣었지만, 행이 많은 표는 정렬만으로 원하는 값 탐색이 어려움.
-- `tblFilterInit()` + `tfApply()` 추가.
-  - 적용 조건: 이미 정렬 적용된 표(`data-ts="1"`, 즉 구조가 안전한 표) **AND 데이터행 6개 이상**.
-    → 작은 표엔 검색창이 안 붙어 UI가 지저분해지지 않음. 구조 복잡한 표는 애초에 제외됨.
-  - `data-nofilter="1"` 로 개별 표 opt-out 가능.
-- 표 위에 검색창(`type=search`) + "지우기" 버튼 + "N / M 행" 카운트 삽입.
-  - 행 `textContent` 부분일치(대소문자 무시), 120ms 디바운스.
-  - 매칭 안 되는 행은 `display:none` (노드 유지 → 기존 inline 핸들러·정렬과 충돌 없음).
-  - 결과 0건이면 "검색 결과가 없습니다." 행 표시.
-- 접근성: 검색창 `aria-label`, 카운트 `aria-live="polite"`, **Esc 로 검색어 초기화**, 지우기 버튼 `aria-label`.
-- 동적 렌더 표 대응: `show()` 안에서 재호출 + 기존 디바운스 `MutationObserver`(250ms)에 함께 연결 → 재렌더 후에도 필터 재적용.
+## 이번 회차 구현 (public/admin.html)
+### 1) toggleDark·toggleBig 토스트 LANG 대응 (다국어화)
+- 문제: `toggleLang`은 토스트가 이미 ko/en/ja 대응인데, 형제 토글 `toggleDark`·`toggleBig` 토스트는 한국어 고정. EN/JA 모드에서 네비게이션은 번역되나 토글 피드백만 한국어라 UX 불일치(직전 회차 다음 후보로 명시됨).
+- 수정: 두 토스트를 `toast(({ko:...,en:...,ja:...})[LANG]||ko기본)` 패턴으로 변경. LANG 미정의/미지원 시 한국어로 폴백.
+  - 다크: `Dark mode on/off` · `ダークモードオン/オフ`
+  - 큰글씨: `Large text on/off` · `大きい文字オン/オフ`
+- 순수 additive. 상태 전환·aria-pressed·차트 리컬러 로직 변경 없음. PH/PJ 사전 미변경(지역 인라인 맵만 사용).
+
+### 2) 빌드 스탬프·콘솔 로그 정리
+- buildStamp `빌드 B107 · 2026-07-19` → `빌드 B108 · 2026-07-21`.
+- 콘솔 로그가 `BUILD B77 · 2026-07-08`로 정체(stale)돼 있던 것 → `BUILD B108 · 2026-07-21`로 동기화.
 
 ## 검증
-- `node --check` (admin.html / index.html 인라인 script 전체): 모두 OK.
-- nav ↔ view ↔ titles 정합: **39 / 39 / 39 완전 일치**, 차집합 0.
-- 중복 id: 0 (양쪽 파일)
-- 금지어(농협·라피치·IBK·날리지큐브·보이스봇·신세계·하나은행): 0
-- 파일 완전성: host Read 로 `</body></html>` 까지 확인 (admin.html 2,184줄).
-- 백업: `outputs/bak/admin.pre92.html`
-- CPaaS/발신/과금 관련 변경 없음. 커밋·푸시·배포 안 함.
+- inline `<script>` `node --check`: **OK** (구문 실패 0).
+- nav data-v distinct **40** (기존과 동일, 정합 유지). view- 섹션 39 + 동적 favNav 템플릿 1 → 정상.
+- 중복 id: **0(NONE)**
+- 금지어(농협·라피치·IBK·날리지큐브·보이스봇·신세계·하나은행): **0**
+- 토스트 편집 반영 확인: 다국어 문자열 2개소 검출.
+- 파일 완전성: host Read로 2,186줄 `</body></html>` 까지 확인.
+- 백업: `outputs/bak/admin.pre108.html`
+- CPaaS/발신/과금 변경 없음. 커밋·푸시·배포 안 함.
 
 ## 사람이 할 일
-- 리뷰 후 커밋·배포 (이 태스크는 커밋/푸시/배포하지 않음).
-- 브라우저 /admin 에서 육안 확인 권장: 행 많은 표(대화 이력·운영 통계·계정)에 검색창이 뜨는지, 정렬과 같이 써도 깨지지 않는지.
+- 브라우저 /admin 육안 확인: 언어를 EN/JA로 전환 후 🌙(다크)·가큰글씨 토글 시 토스트가 해당 언어로 노출되는지 확인. KO에서 기존과 동일한지도 확인.
+- 리뷰 후 직접 커밋·배포.
 - 미승인 대기: `proposals/api_auth.py`, `proposals/confirm_refund_guard.py`, `ORDER_BACKEND=http` 실연동.
 
 ## 다음 실행 후보
-- 콘솔: 필터/정렬 상태를 뷰 전환 후에도 유지할지 결정(현재는 재렌더 시 필터는 유지, 정렬은 초기화 — 불일치).
-- 콘솔: 필터 적용 중인 표에 CSV 내보내기(보이는 행만) 검토.
-- confirm_refund 2단계 확인 가드를 engine.py `_guard` 에 반영 (**[사람 승인 필요]** — 자동 적용 금지).
+- 콘솔: `setAccent`("테마 색상 변경")·`favToggle`("즐겨찾기 추가/해제")·`kbImport` 등 나머지 토스트도 LANG 대응 검토(이번 패턴 확장).
+- 콘솔: 사용자 메뉴 토글 항목(큰글씨·hicState·alertState)에 role=menuitemcheckbox+aria-checked 부여 검토(단 popup role=menu 필요·비메뉴 항목 혼재 → 신중).
+- 상용화: `api/engine.py` 하드코딩 데모데이터를 실연동 인터페이스로 추상화(구조 제안만).
