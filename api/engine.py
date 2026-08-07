@@ -9,6 +9,14 @@ try:
 except ImportError:  # 로컬에서 패키지처럼 import 되는 경우
     from api.order_backend import get_backend, DEMO_ORDER  # type: ignore
 
+try:  # 에스컬레이션 큐(P0-4) — 모듈 없으면 조용히 비활성(기본 동작 불변)
+    from escalation import QUEUE as _ESC_QUEUE
+except ImportError:
+    try:
+        from api.escalation import QUEUE as _ESC_QUEUE  # type: ignore
+    except ImportError:
+        _ESC_QUEUE = None
+
 _ORDER = DEMO_ORDER  # 하위 호환(외부에서 참조하던 이름 유지)
 
 def _dispatch(name, inp):
@@ -162,6 +170,15 @@ def _parse(resp):
     um=resp.get("usageMetadata",{}) or {}
     return t.strip(),calls,(um.get("promptTokenCount",0),um.get("candidatesTokenCount",0))
 
+def _esc_enqueue(reason,summary,scenario=""):
+    """상담사 전환 시 에스컬레이션 큐(escalation.QUEUE)에 티켓 기록 — best-effort sim.
+    큐 기록 실패는 통화 흐름에 영향 주지 않는다. 실제 상담원 배정·CTI 연동은 [승인 필요]."""
+    if _ESC_QUEUE is None: return None
+    try:
+        return _ESC_QUEUE.enqueue(session_id="sim-%s"%(scenario or "call"),reason=reason,summary=(summary or "")[:200],scenario=scenario)
+    except Exception:
+        return None
+
 def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
     model=os.environ.get("CALLBOT_GEMINI_MODEL","gemini-2.5-flash")
     mem=_mem(messages); log=[]; audit=[]; usage={"input":0,"output":0}; msgs=list(messages)
@@ -185,11 +202,17 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
             if c["name"] in _RISKY_TOOLS:
                 audit.append(_audit(c["name"],c["args"],mem,ok,reason))
             if not ok:
-                if esc: out=_dispatch("escalate_to_agent",{"reason":reason,"summary":str(c["args"])}); mem["transferred"]=True
+                if esc:
+                    out=_dispatch("escalate_to_agent",{"reason":reason,"summary":str(c["args"])}); mem["transferred"]=True
+                    tk=_esc_enqueue("guard",reason,scenario)
+                    if tk: log.append({"turn":"escalation","ticket":tk["id"],"reason":reason})
                 else: out={"blocked":True,"reason":reason}
                 log.append({"turn":"guard","tool":c["name"],"blocked":reason})
             else:
                 out=_dispatch(c["name"],c["args"]); log.append({"turn":"tool","tool":c["name"],"out":out})
+                if c["name"]=="escalate_to_agent":
+                    tk=_esc_enqueue(c["args"].get("reason","request"),c["args"].get("summary",""),scenario)
+                    if tk: log.append({"turn":"escalation","ticket":tk["id"],"reason":tk["reason"]})
                 if c["name"]=="lookup_recent_order" and out.get("found"): mem["order_id"]=out.get("order_id")
                 if c["name"]=="get_refund_policy" and out.get("eligible"): mem["max_refund"]=out.get("max_refund")
                 if c["name"]=="quote_refund":

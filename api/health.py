@@ -21,6 +21,41 @@ def _bool_env(*names):
     return False
 
 
+def _speech():
+    """STT/TTS 프로바이더 상태 요약 — 실호출·키 값 노출 없음 (P0-1 후속).
+
+    - requested: env(CALLBOT_STT_PROVIDER/CALLBOT_TTS_PROVIDER) 기준 요청 값.
+      미설정 시 기존 라이브 경로 기본값(stt=gemini, tts=edge).
+    - delegated: speech_providers 팩토리로 위임되는지 여부.
+    - active/forced_sim: 위임 시 실제 선택 결과. SPEECH_LIVE=0이면 비-sim 요청도
+      sim 강제(실호출 원천 차단) → forced_sim=True 로 표시.
+    """
+    stt_want = (os.environ.get("CALLBOT_STT_PROVIDER") or "").strip().lower()
+    tts_want = (os.environ.get("CALLBOT_TTS_PROVIDER") or "").strip().lower()
+    info = {
+        "speech_live": (os.environ.get("SPEECH_LIVE") or "0").strip() == "1",
+        "stt": {"requested": stt_want or "gemini", "delegated": bool(stt_want and stt_want != "gemini")},
+        "tts": {"requested": tts_want or "edge", "delegated": bool(tts_want and tts_want != "edge")},
+    }
+    if info["stt"]["delegated"] or info["tts"]["delegated"]:
+        try:
+            d = os.path.dirname(__file__)
+            if d not in sys.path:
+                sys.path.insert(0, d)
+            import speech_providers as sp
+            if info["stt"]["delegated"]:
+                p, m = sp._pick(sp._STT, "CALLBOT_STT_PROVIDER")
+                info["stt"]["active"] = p.name
+                info["stt"]["forced_sim"] = bool(m.get("forced_sim"))
+            if info["tts"]["delegated"]:
+                p, m = sp._pick(sp._TTS, "CALLBOT_TTS_PROVIDER")
+                info["tts"]["active"] = p.name
+                info["tts"]["forced_sim"] = bool(m.get("forced_sim"))
+        except Exception as e:  # 헬스는 절대 실패하지 않도록 best-effort
+            info["note"] = "speech_providers unavailable: %s" % e
+    return info
+
+
 def _payload():
     return {
         "ok": True,
@@ -37,8 +72,9 @@ def _payload():
             "api_key_gate": _bool_env("CALLBOT_API_KEY"),
             "strict_mode": (os.environ.get("CALLBOT_STRICT") or "").strip() == "1",
             "cpaas_webhook": _bool_env("CPAAS_WEBHOOK_TOKEN"),
-            "order_backend": (os.environ.get("ORDER_BACKEND") or "mock").strip(),
+            "order_backend": (os.environ.get("ORDER_BACKEND") or "demo").strip(),  # order_backend.get_backend() 기본값(demo)과 일치
         },
+        "speech": _speech(),
     }
 
 

@@ -1,38 +1,26 @@
-# CallBot 자동 고도화 — 실행 상태
+# 야간 자율 개발 상태 (2026-08-07 · 2차)
 
-- 실행 시각: 2026-07-21 (callbot-night-auto-dev · 야간 자동)
-- 상태: ✅ 정상 완료 (변경 있음 — **public/admin.html**)
-- 빌드 스탬프: **B107 → B108**
-- 이번 회차 항목: **툴바 토글 토스트 다국어화(다크/큰글씨) 1건 + 빌드 스탬프·콘솔로그 정리 1건**
+## 처리 항목 — 팝업 내부 클릭 버블링 버그 수정 (B133 → B134)
+### public/admin.html
+1. 버그 확인: 사용자 메뉴(userPop)의 .it 클릭 시 인라인 onclick(show+closePops) 실행 후 이벤트가 트리거(.avatar)의 onclick(togglePop)까지 버블링 → togglePop이 open=false로 판단해 팝업을 **다시 열던** 버그(직전 회차 '다음 후보' 2번). 테마 색상 스와치 클릭 시 메뉴가 닫히던 문제도 동일 원인.
+2. 수정: initPopA11y 말미에 userPop·notiPop에 click stopPropagation 리스너 추가(B134 주석). 메뉴 항목은 자체 closePops로 닫히고, 테마 스와치·알림 목록 클릭 시 팝업 유지. 벨/아바타 버튼 자체 토글은 영향 없음.
+3. 빌드 스탬프 B134 · 2026-08-07 (buildStamp·console.log, 2곳).
 
-## 이번 회차 구현 (public/admin.html)
-### 1) toggleDark·toggleBig 토스트 LANG 대응 (다국어화)
-- 문제: `toggleLang`은 토스트가 이미 ko/en/ja 대응인데, 형제 토글 `toggleDark`·`toggleBig` 토스트는 한국어 고정. EN/JA 모드에서 네비게이션은 번역되나 토글 피드백만 한국어라 UX 불일치(직전 회차 다음 후보로 명시됨).
-- 수정: 두 토스트를 `toast(({ko:...,en:...,ja:...})[LANG]||ko기본)` 패턴으로 변경. LANG 미정의/미지원 시 한국어로 폴백.
-  - 다크: `Dark mode on/off` · `ダークモードオン/オフ`
-  - 큰글씨: `Large text on/off` · `大きい文字オン/オフ`
-- 순수 additive. 상태 전환·aria-pressed·차트 리컬러 로직 변경 없음. PH/PJ 사전 미변경(지역 인라인 맵만 사용).
-
-### 2) 빌드 스탬프·콘솔 로그 정리
-- buildStamp `빌드 B107 · 2026-07-19` → `빌드 B108 · 2026-07-21`.
-- 콘솔 로그가 `BUILD B77 · 2026-07-08`로 정체(stale)돼 있던 것 → `BUILD B108 · 2026-07-21`로 동기화.
+## 검토 항목 — 리포트 setPeriod ↔ 모니터 monSetPeriod 상태 공유 (결론: 공유 안 함)
+- 의미가 다름: 모니터 칩(오늘/주/월)은 KPI 집계 기간, 리포트(일/주/월)는 리포트 산출 기준. '오늘'≠'일' 매핑 강제 시 화면 전환마다 의도치 않은 재렌더·토스트 발생, 사용자 멘탈모델 혼란. → 독립 유지로 종결(백로그에서 제외).
 
 ## 검증
-- inline `<script>` `node --check`: **OK** (구문 실패 0).
-- nav data-v distinct **40** (기존과 동일, 정합 유지). view- 섹션 39 + 동적 favNav 템플릿 1 → 정상.
-- 중복 id: **0(NONE)**
-- 금지어(농협·라피치·IBK·날리지큐브·보이스봇·신세계·하나은행): **0**
-- 토스트 편집 반영 확인: 다국어 문자열 2개소 검출.
-- 파일 완전성: host Read로 2,186줄 `</body></html>` 까지 확인.
-- 백업: `outputs/bak/admin.pre108.html`
-- CPaaS/발신/과금 변경 없음. 커밋·푸시·배포 안 함.
+- 인라인 스크립트 node --check OK, 중복 id 0, 금지어 0, nav↔view↔titles 정합 OK(차집합 공집합).
+- 기능 스모크(node, DOM 스텁): 패치 적용 시 .it 클릭 후 팝업 닫힘 유지, 패치 전 로직으로는 재열림(버그) 재현 — 통과.
+- 파일 끝 </html>(2302행) host Read 확인 — 잘림 없음. B134 스탬프 3곳(주석 포함).
+- 백업: outputs/admin_backup_B133.html(세션 한정). 배포는 CallbotAutoDeploy 자동 — git 미실행.
+
+## 백로그 현황
+- P0 1~6 전부 완료(변동 없음). 이번 회차: 직전 '다음 실행 후보' 2건 처리(버그 수정 1 + 검토 종결 1).
 
 ## 사람이 할 일
-- 브라우저 /admin 육안 확인: 언어를 EN/JA로 전환 후 🌙(다크)·가큰글씨 토글 시 토스트가 해당 언어로 노출되는지 확인. KO에서 기존과 동일한지도 확인.
-- 리뷰 후 직접 커밋·배포.
-- 미승인 대기: `proposals/api_auth.py`, `proposals/confirm_refund_guard.py`, `ORDER_BACKEND=http` 실연동.
+- 없음(리뷰만). 미승인 대기(변동 없음): proposals/api_auth.py, proposals/confirm_refund_guard.py, ORDER_BACKEND=http, SPEECH_LIVE/CPAAS_LIVE, RECORDING_LIVE, 실배정·CTI 연동. [승인 필요]
 
 ## 다음 실행 후보
-- 콘솔: `setAccent`("테마 색상 변경")·`favToggle`("즐겨찾기 추가/해제")·`kbImport` 등 나머지 토스트도 LANG 대응 검토(이번 패턴 확장).
-- 콘솔: 사용자 메뉴 토글 항목(큰글씨·hicState·alertState)에 role=menuitemcheckbox+aria-checked 부여 검토(단 popup role=menu 필요·비메뉴 항목 혼재 → 신중).
-- 상용화: `api/engine.py` 하드코딩 데모데이터를 실연동 인터페이스로 추상화(구조 제안만).
+- 검색 팝업(searchPop)·명령 팔레트 등 다른 오버레이에도 동일 버블링 점검(소).
+- 알림 목록(notiPop) 항목 '읽음 처리/모두 지우기' 데모 액션 추가(소, 로컬 상태만).

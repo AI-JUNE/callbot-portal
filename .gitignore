@@ -2,3 +2,6 @@
 .env*
 auto-deploy.bat
 all_extract.js
+
+__pycache__/
+*.pyc

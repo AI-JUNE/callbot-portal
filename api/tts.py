@@ -7,6 +7,23 @@ from http.server import BaseHTTPRequestHandler
 VOICE = os.environ.get("CALLBOT_TTS_VOICE", "ko-KR-SunHiNeural")
 
 
+def _alt_provider():
+    """P0-1 후속: 프로바이더 팩토리 위임(옵트인).
+
+    CALLBOT_TTS_PROVIDER 가 설정되고 'edge' 가 아니면 speech_providers 팩토리로 위임.
+    - 미설정(기본): 기존 edge-tts 경로 그대로 (라이브 동작 불변).
+    - sim: 오디오 미생성(빈 bytes) → JSON 메타 응답.
+    - clova/google/aws: SPEECH_LIVE=1 게이트 전까지 sim 강제 폴백. [승인 필요]
+    """
+    want = (os.environ.get("CALLBOT_TTS_PROVIDER") or "").strip().lower()
+    if not want or want == "edge":
+        return None
+    import sys as _s
+    _s.path.insert(0, os.path.dirname(__file__))
+    import speech_providers
+    return speech_providers.get_tts()
+
+
 def _synth(text):
     import edge_tts
     async def run():
@@ -34,7 +51,22 @@ class handler(BaseHTTPRequestHandler):
                 self.send_response(400)
                 self.end_headers()
                 return
-            audio = _synth(text)
+            alt = _alt_provider()
+            if alt is not None:
+                audio, meta = alt.synthesize(text, voice=VOICE)
+                if not audio:
+                    # sim 등 오디오 미생성 프로바이더 → 메타만 JSON 으로
+                    b = json.dumps(meta, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+                    self.send_header("Content-Length", str(len(b)))
+                    self.end_headers()
+                    self.wfile.write(b)
+                    return
+            else:
+                audio = _synth(text)
             self.send_response(200)
             self.send_header("Content-Type", "audio/mpeg")
             self.send_header("Cache-Control", "no-store")

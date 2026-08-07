@@ -10,6 +10,23 @@ def _key():
     return (os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
 
 
+def _alt_provider():
+    """P0-1 후속: 프로바이더 팩토리 위임(옵트인).
+
+    CALLBOT_STT_PROVIDER 가 설정되고 'gemini' 가 아니면 speech_providers 팩토리로 위임.
+    - 미설정(기본): 기존 Gemini 경로 그대로 (라이브 동작 불변).
+    - sim: 키·네트워크 호출 없는 결정적 응답.
+    - clova/google/aws: SPEECH_LIVE=1 게이트 전까지 sim 강제 폴백. [승인 필요]
+    """
+    want = (os.environ.get("CALLBOT_STT_PROVIDER") or "").strip().lower()
+    if not want or want == "gemini":
+        return None
+    import sys as _s
+    _s.path.insert(0, os.path.dirname(__file__))
+    import speech_providers
+    return speech_providers.get_stt()
+
+
 def transcribe(audio_b64, mime):
     key = _key()
     if not key:
@@ -64,7 +81,9 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             return _guard.deny(self, _c, _m)
-        self._send({"ok": True, "engine": "Gemini STT", "model": MODEL, "key_present": bool(_key())})
+        prov = (os.environ.get("CALLBOT_STT_PROVIDER") or "gemini").strip().lower()
+        self._send({"ok": True, "engine": "Gemini STT", "model": MODEL,
+                    "key_present": bool(_key()), "provider": prov})
 
     def do_POST(self):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
@@ -73,6 +92,11 @@ class handler(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(n) or "{}")
+            alt = _alt_provider()
+            if alt is not None:
+                r = alt.transcribe(body.get("audio", ""), body.get("mime", "audio/webm"))
+                self._send(r)
+                return
             text = transcribe(body.get("audio", ""), body.get("mime", "audio/webm"))
             self._send({"text": text, "model": MODEL})
         except Exception as e:
