@@ -418,6 +418,25 @@ body{letter-spacing:-.012em}
 .primary{box-shadow:0 6px 16px rgba(190,85,53,.24)}
 .primary:hover{background:var(--warm2);opacity:1}
 .chip{border-radius:100px;border-color:var(--line2)}
+
+/* ===== TOBE 정교화 2 — 테이블·세그먼트·아바타·스크롤 (목업 이미지5~8 기준) ===== */
+.avatar{background:linear-gradient(135deg,var(--warm),#d8703f)}
+th,td{padding:13px 18px;border-bottom:1px solid var(--line2)}
+thead th{background:var(--panel2);border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.02em;padding:11px 18px}
+tbody tr:nth-child(even) td{background:transparent}
+tbody tr:hover td{background:var(--panel2)}
+.seg,.chips2{border-radius:11px;border-color:var(--line2)}
+.seg button,.chips2 button{color:var(--mut);font-size:12.5px}
+.seg button.on,.chips2 button.on{background:var(--warm);color:#fff}
+.seg button+button,.chips2 button+button{border-left-color:var(--line2)}
+.iconbtn{border-color:var(--line2)}
+.toolbar{border-bottom:1px solid var(--line2)}
+.kpi .s{display:inline-flex;align-items:center;gap:3px}
+/* 스크롤바 (따뜻한 서브틀) */
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-thumb{background:#E4D8CC;border-radius:10px;border:2px solid transparent;background-clip:content-box}
+*::-webkit-scrollbar-thumb:hover{background:#D3C1B0;background-clip:content-box}
+*::-webkit-scrollbar-track{background:transparent}
 </style>
 </head>
 <body>
