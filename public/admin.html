@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>CallBot · 콜봇 관리 포털</title>
+<title>이음 콜봇 · 관리 콘솔</title>
 <meta name="description" content="CallBot 콜봇 관리 포털 — 음성·텍스트 상담, 실시간 모니터링, 통계·품질관리 통합 콘솔"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#be5535"/>
@@ -378,6 +378,46 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
 .tf-x:hover{background:rgba(0,0,0,.05)}
 .tf-cnt{font-size:11px;opacity:.6;white-space:nowrap}
 .tf-none{font-size:12px;opacity:.6;padding:10px 2px}
+
+/* ======================================================================
+   TOBE 디자인 시스템 업그레이드 (씨크래프 목업 기준)
+   기존 클래스 위에 덮어써 콘솔 전체가 일관되게 상속 · 다크모드 안전
+   ====================================================================== */
+:root{
+  --line:#ECE4DB;--line2:#F3ECE4;
+  --sh:0 1px 2px rgba(120,66,40,.045),0 4px 16px rgba(120,66,40,.06);
+  --sh-lg:0 20px 46px rgba(120,66,40,.13),0 6px 18px rgba(120,66,40,.07);
+}
+body:not(.dark){--bg:#F7F3EF}
+body{letter-spacing:-.012em}
+
+/* 사이드바 */
+.side{padding:16px 14px;border-right:1px solid var(--line2)}
+.brand{padding:8px 8px 16px;margin-bottom:6px;border-bottom:1px solid var(--line2)}
+.nav a{padding:10px 12px;border-radius:11px;font-size:13.5px;font-weight:600;position:relative;transition:background .15s ease,color .15s ease}
+.nav a .ic{width:20px;font-size:15px}
+.nav a.on{background:var(--warmbg);color:var(--warm2);box-shadow:none;font-weight:700}
+.nav a.on::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:0 4px 4px 0;background:var(--warm)}
+.nav a:hover:not(.on){background:var(--panel2);color:var(--txt)}
+
+/* 탑바 · 검색 · 상태칩 */
+.topbar{padding:15px 30px;border-bottom:1px solid var(--line2);background:rgba(255,255,255,.85)}
+.topbar h2{font-size:19px;letter-spacing:-.022em}
+.search{border-radius:12px;background:var(--panel2);border-color:var(--line2);width:280px}
+.stat{border-radius:100px;border-color:var(--line2)}
+
+/* 카드 · KPI */
+.card{border-radius:16px;border-color:var(--line2);box-shadow:var(--sh)}
+.card:hover{box-shadow:var(--sh-lg)}
+.kpi{border-radius:16px;border-color:var(--line2);box-shadow:var(--sh);padding:16px 18px}
+.kpi:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}
+.kpi .l{font-size:11.5px;color:var(--mut)}
+.kpi .v{font-size:26px;letter-spacing:-.025em;margin-top:9px}
+
+/* 버튼 · 칩 */
+.primary{box-shadow:0 6px 16px rgba(190,85,53,.24)}
+.primary:hover{background:var(--warm2);opacity:1}
+.chip{border-radius:100px;border-color:var(--line2)}
 </style>
 </head>
 <body>
@@ -385,7 +425,7 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
 <div class="app show" id="app">
   <a href="#mainwrap" class="skip">본문 바로가기</a>
   <aside class="side" id="sideNav" role="navigation" aria-label="주 메뉴">
-    <div class="brand" onclick="show('home')" style="cursor:pointer"><span class="logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1l-2.2 2.2z"/></svg></span><div class="nm">CallBot</div></div>
+    <div class="brand" onclick="show('home')" style="cursor:pointer"><span class="logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1l-2.2 2.2z"/></svg></span><div class="nm">이음 콜봇<small>관리 콘솔</small></div></div>
     <div class="navsec" id="favSec" style="display:none">⭐ 즐겨찾기</div>
     <nav class="nav" id="favNav" aria-label="즐겨찾기 메뉴"></nav>
     <div class="navsec">콜봇 데모</div>
