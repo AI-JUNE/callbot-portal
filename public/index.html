@@ -7,19 +7,19 @@
 <meta name="description" content="STT·LLM·TTS 사람 같은 음성 AI가 전화 인입부터 응대·안내까지 처리하고, 보이는 ARS로 화면까지 함께 안내합니다. 이음 3세대 상생 복지 AI 콜센터."/>
 <meta property="og:title" content="이음 콜봇 · 24시간 멈추지 않는 AI 콜센터"/>
 <meta property="og:description" content="AI × CPaaS × 보이는 ARS로 완성하는 차세대 복지 상담 경험"/>
-<meta name="theme-color" content="#BE5535"/>
+<meta name="theme-color" content="#2563EB"/>
 <link rel="preconnect" href="https://cdn.jsdelivr.net"/>
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"/>
 <style>
 :root{
-  --terra:#BE5535; --terra-2:#A5442A; --terra-3:#8f3a23; --terra-soft:#F4E3D8; --terra-tint:#FBEFE6;
-  --cream:#FBF6F0; --cream-2:#F6ECE2; --ink:#2A211C; --ink-2:#4A3E37; --mut:#8A7A6E; --dim:#B4A69B;
-  --line:#EEE2D7; --line-2:#F2E9E1; --white:#fff; --panel:#fff;
-  --green:#1E9E63; --greenbg:#E7F5EE; --blue:#2f6bff; --amber:#E08A2B; --red:#D2503F;
-  --nav-ink:#3a2f28;
-  --sh-sm:0 1px 2px rgba(70,40,25,.05), 0 1px 3px rgba(70,40,25,.05);
-  --sh:0 4px 14px rgba(120,66,40,.07), 0 2px 6px rgba(120,66,40,.05);
-  --sh-lg:0 24px 60px rgba(120,66,40,.14), 0 8px 24px rgba(120,66,40,.08);
+  --terra:#2563EB; --terra-2:#1D4ED8; --terra-3:#1E40AF; --terra-soft:#C7DAFB; --terra-tint:#EEF4FF;
+  --cream:#F6F8FC; --cream-2:#EEF2F9; --ink:#0F172A; --ink-2:#334155; --mut:#64748B; --dim:#94A3B8;
+  --line:#E2E8F0; --line-2:#EEF2F7; --white:#fff; --panel:#fff;
+  --green:#16A34A; --greenbg:#E7F6EC; --blue:#2563EB; --amber:#D97706; --red:#EF4444;
+  --nav-ink:#1E293B;
+  --sh-sm:0 1px 2px rgba(15,23,42,.05), 0 1px 3px rgba(15,23,42,.05);
+  --sh:0 4px 14px rgba(15,23,42,.07), 0 2px 6px rgba(15,23,42,.05);
+  --sh-lg:0 24px 60px rgba(15,23,42,.16), 0 8px 24px rgba(15,23,42,.09);
   --r:16px; --r-sm:12px; --r-lg:22px;
   --wrap:1180px;
 }
@@ -50,7 +50,7 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(251,246,240,.82);bac
   border-bottom:1px solid var(--line-2)}
 .nav-in{display:flex;align-items:center;gap:14px;height:68px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em}
-.brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--terra),#E0794C);
+.brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--terra),#60A5FA);
   display:grid;place-items:center;color:#fff;box-shadow:0 4px 12px rgba(190,85,53,.35)}
 .brand b{color:var(--terra)}
 .nav-links{display:flex;gap:6px;margin-left:18px}
@@ -61,33 +61,37 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(251,246,240,.82);bac
 .nav-right .login:hover{color:var(--terra-2)}
 
 /* ===== Hero ===== */
-.hero{position:relative;overflow:hidden;padding:64px 0 40px}
+.hero{position:relative;overflow:hidden;padding:72px 0 64px;background:linear-gradient(180deg,#0F172A 0%,#121F40 55%,#0C1830 100%)}
 .hero::before{content:"";position:absolute;inset:0;z-index:0;
   background:
-    radial-gradient(720px 420px at 82% 8%, rgba(224,121,76,.16), transparent 60%),
-    radial-gradient(680px 460px at 12% 30%, rgba(190,85,53,.10), transparent 62%);
+    radial-gradient(760px 440px at 82% 4%, rgba(37,99,235,.40), transparent 60%),
+    radial-gradient(680px 480px at 8% 36%, rgba(37,99,235,.20), transparent 62%);
   pointer-events:none}
 .hero-grid{position:relative;z-index:1;display:grid;grid-template-columns:1.02fr 1.15fr;gap:52px;align-items:center}
-.hero h1{font-size:clamp(38px,5.2vw,62px);line-height:1.06;font-weight:800;letter-spacing:-.045em;margin:20px 0 0}
-.hero h1 .g{background:linear-gradient(90deg,var(--terra),#E0794C);-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero .lead{margin-top:22px;font-size:18px;color:var(--ink-2);max-width:520px}
+.hero .eyebrow{background:rgba(37,99,235,.16);border-color:rgba(96,165,250,.38);color:#BFDBFE}
+.hero h1{font-size:clamp(38px,5.2vw,62px);line-height:1.06;font-weight:800;letter-spacing:-.045em;margin:20px 0 0;color:#fff}
+.hero h1 .g{background:linear-gradient(90deg,#60A5FA,#93C5FD);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lead{margin-top:22px;font-size:18px;color:#CBD5E1;max-width:520px}
+.hero .lead b{color:#fff}
 .hero-cta{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+.hero-cta .btn-ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(148,163,184,.32)}
+.hero-cta .btn-ghost:hover{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(148,163,184,.5)}
 .trust{display:flex;gap:10px;margin-top:30px;flex-wrap:wrap}
-.trust .t{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.72);border:1px solid var(--line);
-  border-radius:12px;padding:9px 13px;box-shadow:var(--sh-sm)}
-.trust .t .ic{width:26px;height:26px;border-radius:8px;background:var(--terra-tint);display:grid;place-items:center;color:var(--terra-2)}
-.trust .t b{font-size:13px;font-weight:700;display:block;line-height:1.15}
-.trust .t span{font-size:11px;color:var(--mut)}
+.trust .t{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.06);border:1px solid rgba(148,163,184,.22);
+  border-radius:12px;padding:9px 13px;box-shadow:none}
+.trust .t .ic{width:26px;height:26px;border-radius:8px;background:rgba(37,99,235,.22);display:grid;place-items:center;color:#93C5FD}
+.trust .t b{font-size:13px;font-weight:700;display:block;line-height:1.15;color:#fff}
+.trust .t span{font-size:11px;color:#94A3B8}
 
 /* hero visual */
 .hero-vis{position:relative}
 .mock{background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-lg);overflow:hidden}
 .mock-top{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line-2);background:#fff}
-.mock-top .dots{display:flex;gap:6px}.mock-top .dots i{width:10px;height:10px;border-radius:50%;background:#E6D8CC}
+.mock-top .dots{display:flex;gap:6px}.mock-top .dots i{width:10px;height:10px;border-radius:50%;background:#E2E8F0}
 .mock-top .mbrand{display:flex;align-items:center;gap:7px;font-weight:800;font-size:13px;margin-left:4px}
-.mock-top .mbrand .lg{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--terra),#E0794C)}
+.mock-top .mbrand .lg{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--terra),#60A5FA)}
 .mock-top .pill{margin-left:auto;font-size:11px;color:var(--green);background:var(--greenbg);padding:3px 9px;border-radius:100px;font-weight:700}
-.mock-body{padding:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:linear-gradient(180deg,#fff, #FDFAF6)}
+.mock-body{padding:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:linear-gradient(180deg,#fff, #F8FAFF)}
 .kpi{background:#fff;border:1px solid var(--line-2);border-radius:12px;padding:11px 12px;box-shadow:var(--sh-sm)}
 .kpi .l{font-size:11px;color:var(--mut);font-weight:600}
 .kpi .v{font-size:19px;font-weight:800;margin-top:3px;letter-spacing:-.02em}
@@ -98,22 +102,22 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(251,246,240,.82);bac
 .mcard .ct{font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:8px;display:flex;justify-content:space-between}
 .spark{width:100%;height:74px;display:block}
 .donut{width:96px;height:96px;border-radius:50%;margin:2px auto 6px;
-  background:conic-gradient(var(--terra) 0 40%, #E0794C 40% 62%, #E7B98F 62% 82%, #F0DCCB 82% 100%);
+  background:conic-gradient(var(--terra) 0 40%, #60A5FA 40% 62%, #93C5FD 62% 82%, #DBEAFE 82% 100%);
   -webkit-mask:radial-gradient(circle 30px at center, transparent 98%, #000 100%);mask:radial-gradient(circle 30px at center, transparent 98%, #000 100%)}
 .legend{font-size:10.5px;color:var(--mut)}
 .legend div{display:flex;align-items:center;gap:6px;margin-top:4px}
 .legend i{width:8px;height:8px;border-radius:3px}
 /* floating phone card */
-.phone{position:absolute;left:-34px;bottom:-26px;width:210px;background:#241a15;border-radius:22px;padding:16px 15px 15px;
-  box-shadow:var(--sh-lg);border:1px solid #3a2a20;color:#fff}
+.phone{position:absolute;left:-34px;bottom:-26px;width:210px;background:#0F172A;border-radius:22px;padding:16px 15px 15px;
+  box-shadow:var(--sh-lg);border:1px solid #1E293B;color:#fff}
 .phone .ph-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}
-.phone .ph-h .av{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--terra),#E0794C);display:grid;place-items:center;font-size:12px}
-.phone .ph-sub{font-size:10.5px;color:#C9B6A8;margin:2px 0 12px 34px}
+.phone .ph-h .av{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--terra),#60A5FA);display:grid;place-items:center;font-size:12px}
+.phone .ph-sub{font-size:10.5px;color:#94A3B8;margin:2px 0 12px 34px}
 .wave{display:flex;align-items:center;justify-content:center;gap:3px;height:44px;margin:6px 0 14px}
-.wave i{width:3px;border-radius:3px;background:linear-gradient(180deg,#E0794C,var(--terra));animation:w 1s ease-in-out infinite}
+.wave i{width:3px;border-radius:3px;background:linear-gradient(180deg,#60A5FA,var(--terra));animation:w 1s ease-in-out infinite}
 @keyframes w{0%,100%{height:8px}50%{height:34px}}
 .ph-btns{display:flex;justify-content:center;gap:12px}
-.ph-btns b{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:14px;background:#3a2a20}
+.ph-btns b{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:14px;background:#1E293B}
 .ph-btns .end{background:var(--red)}
 
 /* ===== value 3up ===== */
@@ -148,20 +152,20 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(251,246,240,.82);bac
 .msg .who{font-size:10.5px;color:var(--dim);margin-bottom:3px;font-weight:700}
 .msg.bot{align-self:flex-start;background:var(--cream-2);border:1px solid var(--line-2);border-bottom-left-radius:5px}
 .msg.user{align-self:flex-end;background:var(--terra);color:#fff;border-bottom-right-radius:5px}
-.msg.user .who{color:#f6d9c9}
+.msg.user .who{color:#BFDBFE}
 .ins-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}
 .ins-kpis .k{background:var(--cream);border:1px solid var(--line-2);border-radius:12px;padding:11px}
 .ins-kpis .k .l{font-size:11px;color:var(--mut);font-weight:600}
 .ins-kpis .k .v{font-size:18px;font-weight:800;margin-top:3px}
 .ins-row{display:grid;grid-template-columns:1fr 1.3fr;gap:12px;margin-top:12px;align-items:center}
 .bars{display:flex;align-items:flex-end;gap:7px;height:96px;padding-top:8px}
-.bars i{flex:1;border-radius:5px 5px 0 0;background:linear-gradient(180deg,#E0794C,var(--terra));opacity:.9}
+.bars i{flex:1;border-radius:5px 5px 0 0;background:linear-gradient(180deg,#60A5FA,var(--terra));opacity:.9}
 
 /* ===== stats band ===== */
-.stats{background:linear-gradient(180deg,#fff,#FDFAF6);border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2)}
+.stats{background:linear-gradient(180deg,#fff,#F8FAFF);border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2)}
 .stats .g{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;text-align:center}
 .stats .s .v{font-size:clamp(30px,3.6vw,44px);font-weight:800;letter-spacing:-.03em;
-  background:linear-gradient(90deg,var(--terra),#E0794C);-webkit-background-clip:text;background-clip:text;color:transparent}
+  background:linear-gradient(90deg,var(--terra),#60A5FA);-webkit-background-clip:text;background-clip:text;color:transparent}
 .stats .s .l{font-weight:700;margin-top:4px}
 .stats .s p{color:var(--mut);font-size:13.5px;margin-top:4px}
 
@@ -188,21 +192,21 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(251,246,240,.82);bac
 .cta{background:linear-gradient(120deg,var(--terra-3),var(--terra));border-radius:var(--r-lg);padding:44px 46px;
   display:flex;align-items:center;justify-content:space-between;gap:24px;color:#fff;box-shadow:var(--sh-lg);flex-wrap:wrap}
 .cta h2{font-size:clamp(24px,3vw,32px);font-weight:800;letter-spacing:-.02em}
-.cta p{color:#f7e3d8;margin-top:8px}
+.cta p{color:#DBEAFE;margin-top:8px}
 .cta .btn-primary{background:#fff;color:var(--terra-2);box-shadow:0 8px 20px rgba(0,0,0,.16)}
-.cta .btn-primary:hover{background:#FFF3EB}
+.cta .btn-primary:hover{background:#EFF4FF}
 .cta .btn-ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}
 .cta .btn-ghost:hover{background:rgba(255,255,255,.12);color:#fff}
 
 /* ===== footer ===== */
-footer{background:#241a15;color:#d9cabf;margin-top:8px}
+footer{background:#0F172A;color:#94A3B8;margin-top:8px}
 .foot{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:28px;padding:56px 0 28px}
 .foot .brand{color:#fff}.foot .brand .logo{box-shadow:none}
 .foot p{font-size:13.5px;color:#b3a397;margin-top:12px;max-width:280px}
 .foot h4{font-size:13px;color:#fff;font-weight:700;margin-bottom:12px}
 .foot a{display:block;font-size:13.5px;color:#c3b3a7;padding:5px 0}
 .foot a:hover{color:#fff}
-.foot-bot{border-top:1px solid #3a2a20;padding:18px 0;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:12.5px;color:#9a897d}
+.foot-bot{border-top:1px solid #1E293B;padding:18px 0;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:12.5px;color:#64748B}
 
 @media(max-width:960px){
   .hero-grid{grid-template-columns:1fr;gap:36px}.hero-vis{margin-top:8px}
@@ -268,18 +272,18 @@ footer{background:#241a15;color:#d9cabf;margin-top:8px}
             <div class="mcard">
               <div class="ct"><span>시간대별 인입 추이</span><span style="color:var(--dim);font-weight:600">일별</span></div>
               <svg class="spark" viewBox="0 0 320 74" preserveAspectRatio="none">
-                <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#BE5535" stop-opacity=".22"/><stop offset="1" stop-color="#BE5535" stop-opacity="0"/></linearGradient></defs>
+                <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563EB" stop-opacity=".22"/><stop offset="1" stop-color="#2563EB" stop-opacity="0"/></linearGradient></defs>
                 <path d="M0,58 L40,50 L80,54 L120,34 L160,40 L200,22 L240,30 L280,16 L320,24 L320,74 L0,74 Z" fill="url(#g1)"/>
-                <path d="M0,58 L40,50 L80,54 L120,34 L160,40 L200,22 L240,30 L280,16 L320,24" fill="none" stroke="#BE5535" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M0,58 L40,50 L80,54 L120,34 L160,40 L200,22 L240,30 L280,16 L320,24" fill="none" stroke="#2563EB" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </div>
             <div class="mcard">
               <div class="ct"><span>채널 분포</span></div>
               <div class="donut"></div>
               <div class="legend">
-                <div><i style="background:#BE5535"></i>전화 58.7%</div>
-                <div><i style="background:#E0794C"></i>웹 24.3%</div>
-                <div><i style="background:#E7B98F"></i>카카오 10.6%</div>
+                <div><i style="background:#2563EB"></i>전화 58.7%</div>
+                <div><i style="background:#60A5FA"></i>웹 24.3%</div>
+                <div><i style="background:#93C5FD"></i>카카오 10.6%</div>
               </div>
             </div>
           </div>
@@ -313,7 +317,7 @@ footer{background:#241a15;color:#d9cabf;margin-top:8px}
 </section>
 
 <!-- FEATURES -->
-<section class="sec" id="features" style="background:linear-gradient(180deg,#FDF8F2,#FBF6F0)">
+<section class="sec" id="features" style="background:linear-gradient(180deg,#F8FAFF,#F6F8FC)">
   <div class="wrap">
     <div class="sec-head">
       <h2>핵심 기능</h2>
@@ -403,7 +407,7 @@ footer{background:#241a15;color:#d9cabf;margin-top:8px}
 </section>
 
 <!-- FAQ -->
-<section class="sec" id="faq" style="background:linear-gradient(180deg,#FDF8F2,#FBF6F0)">
+<section class="sec" id="faq" style="background:linear-gradient(180deg,#F8FAFF,#F6F8FC)">
   <div class="wrap">
     <div class="sec-head"><h2>자주 묻는 질문</h2></div>
     <div class="faq">
@@ -436,7 +440,7 @@ footer{background:#241a15;color:#d9cabf;margin-top:8px}
 <footer>
   <div class="wrap foot">
     <div>
-      <a class="brand" href="/"><span class="logo">이</span><span style="color:#fff">이음<b style="color:#E0794C"> 콜봇</b></span></a>
+      <a class="brand" href="/"><span class="logo">이</span><span style="color:#fff">이음<b style="color:#60A5FA"> 콜봇</b></span></a>
       <p>AI × CPaaS × 보이는 ARS로 완성하는 3세대 상생 복지 AI 콜센터. 광주 광산구 이음.</p>
     </div>
     <div><h4>제품</h4><a href="#features">핵심 기능</a><a href="#showcase">운영 콘솔</a><a href="/admin">관리자 콘솔</a></div>

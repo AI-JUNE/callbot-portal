@@ -6,7 +6,7 @@
 <title>이음 콜봇 · 관리 콘솔</title>
 <meta name="description" content="CallBot 콜봇 관리 포털 — 음성·텍스트 상담, 실시간 모니터링, 통계·품질관리 통합 콘솔"/>
 <link rel="manifest" href="/manifest.json"/>
-<meta name="theme-color" content="#be5535"/>
+<meta name="theme-color" content="#2563EB"/>
 <link rel="apple-touch-icon" href="/icon-192.png"/>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net"/>
@@ -65,7 +65,7 @@ body.dark .search input::placeholder,body.dark input::placeholder{color:#7d7873}
 /* login */
 .login{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:radial-gradient(120% 80% at 50% 0%,#fbf1ec,#f6f5f3)}
 .loginbox{width:380px;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 40px rgba(40,32,26,.1);padding:30px 28px;text-align:center}
-.loginbox .lg{width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#be5535,#d8703f);display:grid;place-items:center;font-size:26px;margin:0 auto 14px}
+.loginbox .lg{width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#2563EB,#3B82F6);display:grid;place-items:center;font-size:26px;margin:0 auto 14px}
 .loginbox h1{font-size:18px;margin:0 0 4px}.loginbox p{color:var(--mut);font-size:13px;margin:0 0 22px}
 .loginbox .sso{width:100%;background:var(--warm);color:#fff;border:0;border-radius:11px;padding:13px;font-weight:800;font-size:15px;cursor:pointer}
 .loginbox .lin{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:12px 13px;margin-bottom:9px;font-size:14px;outline:none}
@@ -78,7 +78,7 @@ body.dark .search input::placeholder,body.dark input::placeholder{color:#7d7873}
 .app.show{display:grid}
 .side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 12px;overflow:auto}
 .brand{display:flex;align-items:center;gap:10px;padding:6px 8px 14px}
-.brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#be5535,#d8703f);display:grid;place-items:center;font-size:16px;box-shadow:var(--sh);flex-shrink:0}
+.brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#3B82F6);display:grid;place-items:center;font-size:16px;box-shadow:var(--sh);flex-shrink:0}
 .brand .nm{font-weight:800;font-size:18px;line-height:1;letter-spacing:-.01em}.brand .nm small{display:block;color:var(--dim);font-weight:700;font-size:9px;letter-spacing:.05em;margin-top:2px}
 .navsec{color:var(--dim);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:13px 10px 5px;font-weight:800}
 .nav a{display:flex;align-items:center;gap:10px;color:var(--mut);text-decoration:none;padding:9px 11px;border-radius:9px;margin-bottom:1px;cursor:pointer;font-weight:600;font-size:13px}
@@ -236,7 +236,7 @@ tbody tr{animation:rowIn .32s ease both}@keyframes rowIn{from{opacity:0;transfor
 .kpi .s{font-size:11px;color:var(--dim);margin-top:3px;font-weight:600}
 .kpi .s.w{color:var(--warm2)}
 .kpi:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(40,32,26,.11)}
-.kpi:before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#be5535,#d8703f,#2f6bff)}
+.kpi:before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#2563EB,#3B82F6,#60A5FA)}
 .nav a{transition:background .15s,color .15s,transform .1s}
 .nav a:active{transform:scale(.98)}
 .nav a.on{background:linear-gradient(135deg,rgba(190,85,53,.15),rgba(47,107,255,.08))}
@@ -437,6 +437,24 @@ tbody tr:hover td{background:var(--panel2)}
 *::-webkit-scrollbar-thumb{background:#E4D8CC;border-radius:10px;border:2px solid transparent;background-clip:content-box}
 *::-webkit-scrollbar-thumb:hover{background:#D3C1B0;background-clip:content-box}
 *::-webkit-scrollbar-track{background:transparent}
+
+/* ======================================================================
+   D-ARS 컬러 스킴 적용 — 테라코타 -> 로열 블루/네이비 (d-ars.vercel.app 기준)
+   기존 --warm 계열 토큰을 재정의해 사이드바·버튼·카드 액센트 전체를 블루로 전환
+   ====================================================================== */
+:root{
+  --warm:#2563EB; --warm2:#1D4ED8; --warmbg:#EEF4FF; --accent:#2563EB;
+  --grad:linear-gradient(135deg,#2563EB,#3B82F6);
+}
+body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
+  --sh:0 1px 2px rgba(15,23,42,.05),0 4px 16px rgba(15,23,42,.06);
+  --sh-lg:0 20px 46px rgba(15,23,42,.13),0 6px 18px rgba(15,23,42,.07);}
+.brand .logo{background:linear-gradient(135deg,#2563EB,#3B82F6)!important}
+.avatar{background:linear-gradient(135deg,#2563EB,#3B82F6)!important}
+.primary{box-shadow:0 6px 16px rgba(37,99,235,.24)}
+.nav a.on::before{background:#2563EB}
+.chip.warm{background:#EEF4FF;color:#1D4ED8;border-color:rgba(37,99,235,.22)}
+.tag.neu{background:#EEF4FF;color:#1D4ED8}
 </style>
 </head>
 <body>
@@ -1238,7 +1256,7 @@ function toggleBig(){var on=document.body.classList.toggle('big');var bb=$('#big
 
 var curDemo='welfare';
 
-function rRadar(id,l,d){destroy(id);charts[id]=new Chart($('#'+id),{type:'radar',data:{labels:l,datasets:[{data:d,borderColor:'#be5535',backgroundColor:'rgba(190,85,53,.18)',pointBackgroundColor:'#be5535'}]},options:{responsive:true,maintainAspectRatio:false,animation:ANIMD,plugins:{legend:{display:false}},scales:{r:{grid:{color:'#eee'},angleLines:{color:'#eee'},ticks:{display:false}}}}});}
+function rRadar(id,l,d){destroy(id);charts[id]=new Chart($('#'+id),{type:'radar',data:{labels:l,datasets:[{data:d,borderColor:'#2563EB',backgroundColor:'rgba(37,99,235,.18)',pointBackgroundColor:'#2563EB'}]},options:{responsive:true,maintainAspectRatio:false,animation:ANIMD,plugins:{legend:{display:false}},scales:{r:{grid:{color:'#eee'},angleLines:{color:'#eee'},ticks:{display:false}}}}});}
 function rTa(){mkBar('taType',['예금','대출','카드','외환','펀드','민원'],[320,280,210,140,90,60]);mkDonut('taSent',['긍정','중립','부정'],[58,30,12],['#1a8f54','#6b6660','#d23a5a']);mkLine('taKw',['월','화','수','목','금','토','일'],[120,140,110,180,200,90,95]);rRadar('taRel',['환불','배송','불량','교환','품질','응대'],[8,6,9,5,7,8]);}
 function rNlu(){mkBar('nluPerf',['정확율','재현율','F1','정확도'],NLUPERF.map(function(x){return Math.round(x*10)/10;}));}
 var CHR={ta:rTa,nlu:rNlu};
@@ -1501,7 +1519,7 @@ function renderDash(){const tot=totIn+totOut;$('#kCalls').textContent=turns+' �
   mkBar('cVol',['09','10','11','12','13','14','15','16','17','18'],DAYS[0].inHr.map(function(v,i){return Math.max(0,(i===9?v+turns*40:v)+Math.round(Math.sin(liveTick*0.7+i)*9));}));
   mkDonut('cType',['콜봇처리','연계·멀티모달','상담사연결','거부·이탈'],[DAYS[0].inRes[0]+completed,DAYS[0].inRes[1]+DAYS[0].inRes[2]+Math.max(tools-completed,0),DAYS[0].inRes[4]+escalated,DAYS[0].inRes[5]+DAYS[0].inRes[6]],['#2f6bff','#7c3aed','#1a8f54','#d23a5a']);
   const cum=[];let a=0;costSeries.forEach(c=>{a+=c;cum.push(Math.round(a*100)/100);});mkLine('cCost',cum.length?cum.map((_,i)=>'턴'+(i+1)):['9시','11시','13시','15시','17시','19시'],cum.length?cum:[1.8,2.6,2.1,3.4,2.9,3.2]);
-  var _ce=CALLLOG.filter(function(c){return c.day<1;}),_ep=_ce.filter(function(c){return c.emo[1]==='pos';}).length,_en=_ce.filter(function(c){return c.emo[1]==='neg';}).length;mkDonut('cEmo',['긍정','중립','불만'],[_ep*9+emo.pos+40,(_ce.length-_ep-_en)*9+emo.neu+30,_en*9+emo.neg+8],['#1a8f54','#be5535','#d23a5a']);
+  var _ce=CALLLOG.filter(function(c){return c.day<1;}),_ep=_ce.filter(function(c){return c.emo[1]==='pos';}).length,_en=_ce.filter(function(c){return c.emo[1]==='neg';}).length;mkDonut('cEmo',['긍정','중립','불만'],[_ep*9+emo.pos+40,(_ce.length-_ep-_en)*9+emo.neu+30,_en*9+emo.neg+8],['#16a34a','#2563EB','#ef4444']);
   const f=$('#feed');f.innerHTML=feed.length?feed.map(x=>`<div class="it"><b>${x.t}</b> ${x.d.replace(/</g,'&lt;')}<span class="tm">${x.tm}</span></div>`).join(''):'<div class="it">아직 활동이 없습니다.<span class="tm">--:--</span></div>';}
 let period='일';
 function setPeriod(pp,btn){period=pp;document.querySelectorAll('.periodbtns button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderReport();toast(pp+' 기준으로 전환했습니다');}
@@ -1510,7 +1528,7 @@ function renderReport(){var t=DAYS.map(function(d){return d.inTot+d.outTot;}),la
  else{dat=[0,1,2,3].map(function(w){return t.slice(w*7,w*7+7).reduce(function(a,b){return a+b;},0);}).reverse();lab=['4주전','3주전','2주전','최근주'];}
  mkBar('rVol',lab,dat);
  var sum=(period==='일'?t.slice(0,7):t.slice(0,28)).reduce(function(a,b){return a+b;},0);
- var _cmp=document.getElementById('cmpToggle');if(_cmp&&_cmp.checked){var _si=document.getElementById('schedInfo');if(_si)_si.textContent='📊 전기간 비교: 인입 +6.2% · 자동완결 +3.1%p · AHT -12s · CSAT +0.2';}mkDonut('rCh',['전화(IVR)','앱','웹챗'],[Math.round(sum*0.58),Math.round(sum*0.27),Math.round(sum*0.15)],['#be5535','#2f6bff','#1a8f54']);
+ var _cmp=document.getElementById('cmpToggle');if(_cmp&&_cmp.checked){var _si=document.getElementById('schedInfo');if(_si)_si.textContent='📊 전기간 비교: 인입 +6.2% · 자동완결 +3.1%p · AHT -12s · CSAT +0.2';}mkDonut('rCh',['전화(IVR)','앱','웹챗'],[Math.round(sum*0.58),Math.round(sum*0.27),Math.round(sum*0.15)],['#2563EB','#60A5FA','#16a34a']);
  var _cr=_rng(77);var csat=lab.map(function(_,i){return +(4.05+_cr()*0.45+i*0.02).toFixed(2);});if(typeof CSAT_SCORES!=='undefined'&&CSAT_SCORES.length){var _av=CSAT_SCORES.reduce(function(a,b){return a+b;},0)/CSAT_SCORES.length;csat[csat.length-1]=+_av.toFixed(2);}if(document.getElementById('rCsat'))mkLine('rCsat',lab,csat,'#1a8f54');}
 document.addEventListener('keydown',function(e){if(e.key!=='Tab')return;var m=document.querySelector('.wavebg.on,.csatbg.on,#cmdbg.on,#tourbg.on');if(!m){var _sd=document.getElementById('scnDiffBg');if(_sd&&_sd.style.display==='flex')m=_sd;}if(!m)return;var f=Array.prototype.filter.call(m.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])'),function(el){return el.offsetParent!==null;});if(!f.length)return;var first=f[0],last=f[f.length-1];if(!m.contains(document.activeElement)){e.preventDefault();first.focus();}else if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}},true);
 /* 모달 포커스 복귀/초기 포커스 (B85): 열릴 때 여는 요소 기억 + 내부 초기 포커스, 닫힐 때 원래 위치로 복귀 */
@@ -1908,7 +1926,7 @@ function applyLang(){var b=document.getElementById('langBtn');if(b)b.textContent
  if(typeof curView!=='undefined'&&typeof titles!=='undefined'&&titles[curView]){var t=document.getElementById('title');if(t)t.textContent=tr(titles[curView][0]);}}
 function toggleLang(){var _o=['ko','en','ja'];LANG=_o[(_o.indexOf(LANG)+1)%3];saveSetting('lang',LANG);applyLang();toast({ko:'한국어',en:'English (navigation)',ja:'日本語 (ナビ)'}[LANG]);}
 /* ===== 테마 색상·KB 업로드·PWA ===== */
-var ACCENTS=['#be5535','#2f6bff','#7c3aed','#1a8f54','#c47d12','#d23a5a'];
+var ACCENTS=['#2563EB','#60A5FA','#7c3aed','#16a34a','#c47d12','#d23a5a'];
 function renderAccentSw(){var el=document.getElementById('accSw');if(!el)return;el.innerHTML=ACCENTS.map(function(c){return '<span onclick="setAccent(\''+c+'\')" title="'+c+'" style="width:16px;height:16px;border-radius:50%;background:'+c+';display:inline-block;cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)"></span>';}).join('');}
 function setAccent(c){try{document.documentElement.style.setProperty('--accent',c);document.documentElement.style.setProperty('--warm',c);}catch(e){}saveSetting('accent',c);toast(({ko:'테마 색상 변경',en:'Accent color changed',ja:'テーマカラー変更'})[LANG]||'테마 색상 변경');}
 function kbImport(ev){var f=ev.target.files&&ev.target.files[0];if(!f)return;ensureXLSX().then(function(){_kbParse(f);}).catch(function(){toast(({ko:'스프레드시트 라이브러리 로딩 실패',en:'Spreadsheet library failed to load',ja:'スプレッドシートライブラリの読み込みに失敗'})[LANG]||'스프레드시트 라이브러리 로딩 실패');});ev.target.value='';}
@@ -1949,7 +1967,7 @@ function _spark(vals,color){var w=100,h=26,mn=Math.min.apply(null,vals),mx=Math.
  var pts=vals.map(function(v,i){return (i/(vals.length-1)*w).toFixed(1)+','+(h-((v-mn)/rg)*(h-4)-2).toFixed(1);});
  var last=pts[pts.length-1].split(',');
  return '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none"><polyline fill="none" stroke="'+color+'" stroke-width="2" points="'+pts.join(' ')+'"/><circle cx="'+last[0]+'" cy="'+last[1]+'" r="2.4" fill="'+color+'"/></svg>';}
-function renderSparks(){var seed={stt:[90,91,92,91,93,92,94,92],acc:[88,90,91,90,92,91,91,91],lat:[1.8,1.6,1.5,1.7,1.4,1.5,1.4,1.4],ord:[54,56,55,58,57,59,58,58]},col={stt:'#1a8f54',acc:'#2f6bff',lat:'#c47d12',ord:'#be5535'};
+function renderSparks(){var seed={stt:[90,91,92,91,93,92,94,92],acc:[88,90,91,90,92,91,91,91],lat:[1.8,1.6,1.5,1.7,1.4,1.5,1.4,1.4],ord:[54,56,55,58,57,59,58,58]},col={stt:'#1a8f54',acc:'#2f6bff',lat:'#c47d12',ord:'#2563EB'};
  document.querySelectorAll('#view-home .spark').forEach(function(el){var k=el.getAttribute('data-sp');if(seed[k])el.innerHTML=_spark(seed[k],col[k]);});}
 /* ===== 상담사 리더보드 ===== */
 function renderLeader(){var el=document.getElementById('agLeaderBody');if(!el||typeof AGENTS==='undefined')return;
@@ -1981,7 +1999,7 @@ function _pager(id,total,page,ps,cb){var el=document.getElementById(id);if(!el){
  var pages=Math.max(1,Math.ceil(total/ps));if(page>pages)page=pages;
  el.innerHTML='<span style="color:var(--dim);margin-right:auto">총 '+total.toLocaleString()+'건 · '+page+'/'+pages+' 페이지</span><button id="'+id+'p"'+(page<=1?' disabled':'')+'>‹ 이전</button><button id="'+id+'n"'+(page>=pages?' disabled':'')+'>다음 ›</button>';
  var p=document.getElementById(id+'p'),nx=document.getElementById(id+'n');if(p)p.onclick=function(){cb(page-1);};if(nx)nx.onclick=function(){cb(page+1);};}
-function mkGauge(id,val,max,base){base=base||'#be5535';destroy(id);max=max||100;var rest=Math.max(0,max-val);var el=$('#'+id);if(!el)return;
+function mkGauge(id,val,max,base){base=base||'#2563EB';destroy(id);max=max||100;var rest=Math.max(0,max-val);var el=$('#'+id);if(!el)return;
  charts[id]=new Chart(el,{type:'doughnut',data:{datasets:[{data:[val,rest],backgroundColor:[base,'rgba(140,130,120,.14)'],borderWidth:0,circumference:180,rotation:270,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,cutout:'74%',animation:ANIMD,plugins:{legend:{display:false},tooltip:{enabled:false}}},plugins:[{id:'gv',afterDraw:function(c){var a=c.chartArea;if(!a)return;var ctx=c.ctx,x=(a.left+a.right)/2,y=a.bottom-4;ctx.save();ctx.textAlign='center';var ink=(getComputedStyle(document.body).getPropertyValue('--txt')||'#22201d').trim();ctx.fillStyle=ink;ctx.font="800 24px 'Pretendard',sans-serif";ctx.fillText(Math.round(val),x,y);ctx.fillStyle='#a39d95';ctx.font="600 10px 'Pretendard'";ctx.fillText('/'+max,x,y+14);ctx.restore();}}]});}
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('button'):null;if(!b||b.disabled)return;var r=b.getBoundingClientRect(),sp=document.createElement('span');sp.className='ripple';var d=Math.max(r.width,r.height);sp.style.width=sp.style.height=d+'px';sp.style.left=(e.clientX-r.left-d/2)+'px';sp.style.top=(e.clientY-r.top-d/2)+'px';b.appendChild(sp);setTimeout(function(){sp.remove&&sp.remove();},560);},true);
 /* ===== A/B 프롬프트 편집 ===== */
