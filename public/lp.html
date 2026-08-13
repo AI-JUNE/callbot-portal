@@ -169,7 +169,9 @@ section.blk{padding:64px 0}
 
 /* footer */
 footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
-.ft{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:30px}
+.ft{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:30px}
+.legal-links a{color:var(--mut);text-decoration:underline;text-underline-offset:3px;font-weight:600}
+.legal-links a:hover{color:var(--accent)}
 @media(max-width:760px){.ft{grid-template-columns:1fr}}
 .ft p{color:var(--mut);font-size:14px;font-weight:500;margin-top:14px;max-width:320px}
 .ft h4{font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:14px;font-weight:800}
@@ -471,9 +473,17 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
           <li><a href="#why">도입 이유</a></li>
         </ul>
       </div>
+      <div>
+        <h4>약관·정책</h4>
+        <ul>
+          <li><a href="/terms">이용약관</a></li>
+          <li><a href="/privacy">개인정보처리방침</a></li>
+        </ul>
+      </div>
     </div>
     <div class="copy">
       <span>© 2026 CallBot · 운영 주식회사 고원(GOWON)</span>
+      <span class="legal-links"><a href="/terms">이용약관</a> · <a href="/privacy">개인정보처리방침</a></span>
       <span class="demo-note">AICC · CaaS 플랫폼 · 데모 모드</span>
     </div>
   </div>
