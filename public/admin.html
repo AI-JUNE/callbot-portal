@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>이음 콜봇 · 관리 콘솔</title>
+<title>AICC Portal · 관리 콘솔</title>
 <meta name="description" content="CallBot 콜봇 관리 포털 — 음성·텍스트 상담, 실시간 모니터링, 통계·품질관리 통합 콘솔"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#2563EB"/>
@@ -462,7 +462,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
 <div class="app show" id="app">
   <a href="#mainwrap" class="skip">본문 바로가기</a>
   <aside class="side" id="sideNav" role="navigation" aria-label="주 메뉴">
-    <div class="brand" onclick="show('home')" style="cursor:pointer"><span class="logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1l-2.2 2.2z"/></svg></span><div class="nm">이음 콜봇<small>관리 콘솔</small></div></div>
+    <div class="brand" onclick="show('home')" style="cursor:pointer"><span class="logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1l-2.2 2.2z"/></svg></span><div class="nm">AICC Portal<small>관리 콘솔</small></div></div>
     <div class="navsec" id="favSec" style="display:none">⭐ 즐겨찾기</div>
     <nav class="nav" id="favNav" aria-label="즐겨찾기 메뉴"></nav>
     <div class="navsec">콜봇 데모</div>
@@ -546,7 +546,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
     <div id="noticeBar" style="display:none"></div>
     <div class="wrap" id="mainwrap">
       <section id="view-voice">
-        <div class="chips" style="margin-bottom:10px"><b style="align-self:center;font-size:12px;color:var(--mut);margin-right:2px">데모 시나리오</b><span class="seg demoSel"><button class="on" data-k="welfare" onclick="pickDemo('welfare')">이음 복지 상담</button><button data-k="trio" onclick="pickDemo('trio')">3세대 매칭</button><button data-k="refund" onclick="pickDemo('refund')">반품·환불</button><button data-k="integrity" onclick="pickDemo('integrity')">여신 청렴도 조사</button><button data-k="overdue" onclick="pickDemo('overdue')">연체 안내</button></span></div>
+        <div class="chips" style="margin-bottom:10px"><b style="align-self:center;font-size:12px;color:var(--mut);margin-right:2px">데모 시나리오</b><span class="seg demoSel"><button class="on" data-k="welfare" onclick="pickDemo('welfare')">고객 문의 상담</button><button data-k="trio" onclick="pickDemo('trio')">예약·접수</button><button data-k="refund" onclick="pickDemo('refund')">반품·환불</button><button data-k="integrity" onclick="pickDemo('integrity')">여신 청렴도 조사</button><button data-k="overdue" onclick="pickDemo('overdue')">연체 안내</button></span></div>
         <div class="chips">
           <span class="chip warm">⚡ 실시간 응대</span><span class="chip">✅ 자동완결(신청 완료율)</span>
           <span class="chip">🤝 상담원 Fallback</span><span class="chip">🔒 녹취·마스킹</span><span class="chip">🎧 뉴럴 음성</span>
@@ -560,7 +560,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
             <div class="bars" id="bars"></div>
             <div class="callbtns"><button class="btn-call" id="callBtn" onclick="startCall()"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.3 1l-2.2 2.2z"/></svg> 통화 시작</button>
               <button class="btn-end hidden" id="endBtn" onclick="endCall()">⏹ 통화 종료</button></div>
-            <div class="chips" style="justify-content:center;margin-top:10px"><b style="align-self:center;font-size:11px;color:var(--dim);margin-right:2px">빠른 답변</b><button onclick="quickSay('네')">네</button><button onclick="quickSay('아니요')">아니요</button><button onclick="quickSay('기초연금 신청하고 싶어요')">복지신청</button><button onclick="quickSay('3세대 매칭 신청할게요')">3세대매칭</button><button onclick="quickSay('코디네이터 연결해 주세요')">코디네이터</button> <button id="precBtn" onclick="precisionSTT()" style="border-color:var(--green);color:var(--green);font-weight:700">🎯 정밀 녹음(Gemini)</button> <label style="font-size:12px;color:var(--mut);display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="precRT" checked onchange="saveSetting('precrt',this.checked?'1':'0')"/> 실시간 정밀(Gemini)</label></div>
+            <div class="chips" style="justify-content:center;margin-top:10px"><b style="align-self:center;font-size:11px;color:var(--dim);margin-right:2px">빠른 답변</b><button onclick="quickSay('네')">네</button><button onclick="quickSay('아니요')">아니요</button><button onclick="quickSay('예약 변경하고 싶어요')">예약변경</button><button onclick="quickSay('예약·접수 신청할게요')">예약접수</button><button onclick="quickSay('상담원 연결해 주세요')">상담원</button> <button id="precBtn" onclick="precisionSTT()" style="border-color:var(--green);color:var(--green);font-weight:700">🎯 정밀 녹음(Gemini)</button> <label style="font-size:12px;color:var(--mut);display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="precRT" checked onchange="saveSetting('precrt',this.checked?'1':'0')"/> 실시간 정밀(Gemini)</label></div>
             <div class="transcript" id="tr"></div>
             <div class="vhint">연속 통화 모드 · 봇이 말한 뒤 자동으로 다시 듣습니다 (Chrome 권장)</div>
           </div>
@@ -578,8 +578,8 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
       </section>
       <section id="view-chat" class="hidden">
         <div class="grid">
-          <div class="card" style="display:flex;flex-direction:column"><h3>💬 실시간 대화</h3><div style="padding:10px 14px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:12px;color:var(--mut)">데모</b><span class="seg demoSel"><button class="on" data-k="welfare" onclick="pickDemo('welfare')">이음 복지 상담</button><button data-k="trio" onclick="pickDemo('trio')">3세대 매칭</button><button data-k="refund" onclick="pickDemo('refund')">반품·환불</button><button data-k="integrity" onclick="pickDemo('integrity')">여신 청렴도 조사</button><button data-k="overdue" onclick="pickDemo('overdue')">연체 안내</button></span></div><div id="chat"></div>
-            <div class="hint">예: “기초연금 신청하고 싶어요” → “주민센터 안 가고 되나요?” → “네”.</div>
+          <div class="card" style="display:flex;flex-direction:column"><h3>💬 실시간 대화</h3><div style="padding:10px 14px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:12px;color:var(--mut)">데모</b><span class="seg demoSel"><button class="on" data-k="welfare" onclick="pickDemo('welfare')">고객 문의 상담</button><button data-k="trio" onclick="pickDemo('trio')">예약·접수</button><button data-k="refund" onclick="pickDemo('refund')">반품·환불</button><button data-k="integrity" onclick="pickDemo('integrity')">여신 청렴도 조사</button><button data-k="overdue" onclick="pickDemo('overdue')">연체 안내</button></span></div><div id="chat"></div>
+            <div class="hint">예: “예약 변경하고 싶어요” → “주민센터 안 가고 되나요?” → “네”.</div>
             <div class="inbar"><input id="msg" aria-label="메시지 입력" placeholder="메시지 입력 후 Enter…" autocomplete="off"/><button class="primary" onclick="send()">보내기</button></div></div>
           <div style="display:flex;flex-direction:column;gap:16px">
             <div class="card"><h3>📈 토큰 / 비용</h3><div class="row"><span>이번 턴</span><b id="tturn">in 0 / out 0</b></div>
@@ -610,8 +610,8 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
             </div>
             <div class="hint" style="margin-bottom:14px">아래 버튼은 <b>실제 배포된 API</b>를 호출합니다. 전화망을 타지 않으므로 통신비는 발생하지 않습니다(과금은 실통화 라이브 전환 시에만).</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="primary" onclick="cpaasSim('welfare')">▶ 이음 복지신청</button>
-              <button class="primary" onclick="cpaasSim('trio')">▶ 3세대 매칭</button>
+              <button class="primary" onclick="cpaasSim('welfare')">▶ AICC Portal 예약변경</button>
+              <button class="primary" onclick="cpaasSim('trio')">▶ 예약·접수</button>
               <button class="primary" onclick="cpaasSim('refund')">▶ 환불</button>
               <button class="primary" onclick="cpaasSim('order')">▶ 주문조회</button>
               <button class="primary" onclick="cpaasSim('redelivery')">▶ 재배달</button>
@@ -684,7 +684,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
           <div class="hint" style="padding:12px 18px">에이전트 생성·수정·유형 설정 · 채널/번호 등 속성 통합 관리 · TTS 모델 선택 · 워크플로우 연계 (제안서 기준)</div></div>
       </section>
       <section id="view-builder" class="hidden">
-        <div class="card"><h3>🧩 시나리오 빌더 <span class="r" id="scnTabs"><span class="seg"><button class="on" onclick="pickScn('welfare',this)">이음 복지 상담</button><button onclick="pickScn('trio',this)">3세대 매칭</button><button onclick="pickScn('refund',this)">반품·교환·환불</button><button onclick="pickScn('integrity',this)">여신 청렴도 조사</button><button onclick="pickScn('overdue',this)">연체 안내(생성형AI)</button></span> <button onclick="bValidate()">✓ 검증</button> <button onclick="fullCheck()" title="구조 검증과 배치 테스트를 한번에 실행하고 결과를 검증 패널에 요약합니다">⚡ 전체 점검</button> <button onclick="bExport()">⬇ JSON</button> <button onclick="document.getElementById('bImpFile').click()">⬆ 가져오기</button><input type="file" id="bImpFile" accept=".json,application/json" style="display:none" aria-label="시나리오 JSON 가져오기" onchange="bImport(event)"/> <button onclick="scnSaveVer()">💾 버전 저장</button> <button onclick="scnVersions()">🕘 버전</button> <button onclick="scnDiffOpen()">⇄ 비교</button> <button class="primary" onclick="bAddNode()">+ 노드</button></span></h3>
+        <div class="card"><h3>🧩 시나리오 빌더 <span class="r" id="scnTabs"><span class="seg"><button class="on" onclick="pickScn('welfare',this)">고객 문의 상담</button><button onclick="pickScn('trio',this)">예약·접수</button><button onclick="pickScn('refund',this)">반품·교환·환불</button><button onclick="pickScn('integrity',this)">여신 청렴도 조사</button><button onclick="pickScn('overdue',this)">연체 안내(생성형AI)</button></span> <button onclick="bValidate()">✓ 검증</button> <button onclick="fullCheck()" title="구조 검증과 배치 테스트를 한번에 실행하고 결과를 검증 패널에 요약합니다">⚡ 전체 점검</button> <button onclick="bExport()">⬇ JSON</button> <button onclick="document.getElementById('bImpFile').click()">⬆ 가져오기</button><input type="file" id="bImpFile" accept=".json,application/json" style="display:none" aria-label="시나리오 JSON 가져오기" onchange="bImport(event)"/> <button onclick="scnSaveVer()">💾 버전 저장</button> <button onclick="scnVersions()">🕘 버전</button> <button onclick="scnDiffOpen()">⇄ 비교</button> <button class="primary" onclick="bAddNode()">+ 노드</button></span></h3>
           <div class="palette"><span>📞 콜처리</span><span>🔢 DTMF</span><span>🧠 LLM(의도/생성)</span><span>🔀 조건부 엣지</span><span>📚 RAG</span><span>🤝 호전환</span><span>🏁 종료</span></div>
           <div class="flow" id="bflow"></div>
           <div style="padding:2px 18px 12px;display:flex;gap:8px;flex-wrap:wrap" id="bedge"></div>
@@ -929,7 +929,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
           <div id="basisC" class="hidden"><table><thead><tr><th>순서</th><th>내선번호</th><th>유형</th><th>등록일시</th><th>수정자</th></tr></thead><tbody>
             <tr><td>1</td><td>7001</td><td>인바운드</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>2</td><td>7002</td><td>인바운드</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>3</td><td>8001</td><td>아웃바운드</td><td>2026-05-10</td><td>박서연</td></tr></tbody></table></div>
           <div id="basisG" class="hidden"><table><thead><tr><th>순서</th><th>상담그룹</th><th>그룹연결번호</th><th>등록일시</th><th>수정자</th></tr></thead><tbody>
-            <tr><td>1</td><td>복지상담팀</td><td>9001</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>2</td><td>매칭지원팀</td><td>9002</td><td>2026-05-02</td><td>박서연</td></tr><tr><td>3</td><td>VIP팀</td><td>9003</td><td>2026-05-10</td><td>정민원</td></tr></tbody></table></div>
+            <tr><td>1</td><td>고객상담팀</td><td>9001</td><td>2026-05-02</td><td>김운영</td></tr><tr><td>2</td><td>접수지원팀</td><td>9002</td><td>2026-05-02</td><td>박서연</td></tr><tr><td>3</td><td>VIP팀</td><td>9003</td><td>2026-05-10</td><td>정민원</td></tr></tbody></table></div>
           <div class="hint" style="padding:12px 18px">휴일그룹·내선채널·상담그룹은 시나리오 운영설정·상담사 전환에서 사용됩니다.</div></div>
       </section>
 
@@ -938,7 +938,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
           <div id="logA"><div class="toolbar"><span class="chips2"><button class="on" onclick="segPick(this);renderLogs()">전체</button><button onclick="segPick(this);renderLogs()">수정</button><button onclick="segPick(this);renderLogs()">조회</button><button onclick="segPick(this);renderLogs()">삭제</button></span><span class="sp"></span><input id="logQ" aria-label="접속·녹취 로그 검색" oninput="renderLogs()" placeholder="이름·소속·IP 검색" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12px"/> <button onclick="exportXlsx()">⬇ 엑셀</button></div><table><thead><tr><th>순번</th><th>일자</th><th>시각</th><th>구분</th><th>소속</th><th>행번</th><th>이름</th><th>IP</th><th>작업 내용</th></tr></thead><tbody id="logABody"></tbody></table></div>
           <div id="logR" class="hidden"><table><thead><tr><th>순번</th><th>접속일자</th><th>접속시간</th><th>소속</th><th>행번</th><th>이름</th><th>녹취세션ID</th><th>녹취일시</th></tr></thead><tbody>
             <tr><td>1</td><td>2026-06-30</td><td>11:41</td><td>CS 1팀</td><td>E1023</td><td>김운영</td><td><a onclick="openWave(this)" style="color:var(--warm);cursor:pointer">S-260630-0421</a></td><td>11:42:18</td></tr>
-            <tr><td>2</td><td>2026-06-30</td><td>11:33</td><td>매칭지원팀</td><td>E1099</td><td>박서연</td><td><a onclick="openWave(this)" style="color:var(--warm);cursor:pointer">S-260630-0419</a></td><td>11:31:55</td></tr>
+            <tr><td>2</td><td>2026-06-30</td><td>11:33</td><td>접수지원팀</td><td>E1099</td><td>박서연</td><td><a onclick="openWave(this)" style="color:var(--warm);cursor:pointer">S-260630-0419</a></td><td>11:31:55</td></tr>
           </tbody></table></div>
           <div class="hint" style="padding:12px 18px">감사 로그 · 녹취 접근은 전수 기록(누가·언제·어떤 세션)됩니다.</div></div>
       </section>
@@ -1290,7 +1290,7 @@ async function sllmGen(){var q=(document.getElementById('sllmIn').value||'').tri
  catch(e){el.innerHTML='<div class="summary">생성 실패 · API 키/네트워크 확인</div>';}}
 
 
-var DEMO={welfare:{name:'이음 복지 상담',open:'이음 고객센터입니다. 광산구 3세대 상생 품앗이예요. 무엇을 도와드릴까요?'},trio:{name:'3세대 매칭',open:'이음 고객센터입니다. 청년·어르신·아동 3세대 매칭을 도와드릴게요. 어떤 참여를 원하세요?'},refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담원입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담원입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
+var DEMO={welfare:{name:'고객 문의 상담',open:'고객센터입니다. 무엇을 도와드릴까요?'},trio:{name:'예약·접수',open:'고객센터입니다. 청년·어르신·아동 예약·접수을 도와드릴게요. 어떤 참여를 원하세요?'},refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담원입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담원입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
 function pickDemo(k){curDemo=k;document.querySelectorAll('.demoSel button').forEach(function(b){b.classList.toggle('on',b.dataset.k===k);});messages=[];if($('#chat'))$('#chat').innerHTML='';if($('#tr'))$('#tr').innerHTML='';if($('#chat'))addC('bot',DEMO[k].open);toast(DEMO[k].name+' 시나리오');}
 function toggleSide(){var _s=document.querySelector('.side');var _op=_s.classList.toggle('open');document.getElementById('scrim').classList.toggle('on');var _hb=document.querySelector('.hamb');if(_hb)_hb.setAttribute('aria-expanded',_op?'true':'false');}
 
@@ -1311,7 +1311,7 @@ function initPopA11y(){var up=document.getElementById('userPop');
  [up,np].forEach(function(p){if(p)p.addEventListener('click',function(e){e.stopPropagation();});});}
 function closePops(){document.querySelectorAll('.popup').forEach(function(p){p.classList.remove('show');});document.querySelectorAll('[aria-haspopup]').forEach(function(b){b.setAttribute('aria-expanded','false');});var _g=document.getElementById('gsearch');if(_g){_g.setAttribute('aria-expanded','false');_g.removeAttribute('aria-activedescendant');}_gsN=0;_gsIdx=-1;}
 document.addEventListener('click',function(e){if(!e.target.closest('.search')&&!e.target.closest('.iconbtn')&&!e.target.closest('.avatar'))closePops();});
-const ORDERS=[{id:'EUM-20260630-10042',name:'기초연금 신청',st:'접수완료',cust:'홍금례'},{id:'EUM-20260629-09981',name:'3세대 매칭(청년→어르신 돌봄)',st:'매칭중',cust:'김도윤'},{id:'EUM-20260628-09877',name:'돌봄 바우처 신청',st:'서류대기',cust:'이순자'},{id:'EUM-20260627-09712',name:'상생카드 봉사시간 조회',st:'완료',cust:'박민수'}];
+const ORDERS=[{id:'CS-20260630-10042',name:'기초연금 신청',st:'접수완료',cust:'홍금례'},{id:'CS-20260629-09981',name:'예약·접수(청년→어르신 돌봄)',st:'매칭중',cust:'김도윤'},{id:'CS-20260628-09877',name:'돌봄 바우처 신청',st:'서류대기',cust:'이순자'},{id:'CS-20260627-09712',name:'포인트 적립 조회',st:'완료',cust:'박민수'}];
 var _srchT=null;function doSearch(){clearTimeout(_srchT);_srchT=setTimeout(_doSearch,110);}
 /* B131: 통합 검색 combobox/listbox ARIA + 키보드 탐색(↑↓ 이동·Enter 열기·ESC 닫기) */
 var _gsN=0,_gsIdx=-1;
@@ -1341,7 +1341,7 @@ function _doSearch(){var q=(document.getElementById('gsearch').value||'').trim()
 const titles={voice:['음성 상담','실시간 음성 상담 콘솔'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
 var curView='home';
 function show(v){if(!titles[v]||!document.getElementById('view-'+v))return;curView=v;try{if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);}catch(e){}document.querySelectorAll('section[id^=view-]').forEach(s=>s.classList.add('hidden'));var _el=$('#view-'+v);_el.classList.remove('hidden');_el.classList.remove('anim');void _el.offsetWidth;_el.classList.add('anim');
-  $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='이음 콜봇 · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
+  $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='AICC Portal · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
   try{if(typeof srSay==='function')srSay((typeof tr==='function'?tr(titles[v][0]):titles[v][0])+' 화면으로 이동했습니다.');}catch(e){}
   document.querySelectorAll('.nav a').forEach(a=>{a.classList.remove('on');a.removeAttribute('aria-current');if(a.dataset.v===v){a.classList.add('on');a.setAttribute('aria-current','page');}});if(typeof renderFavs==='function')renderFavs();if(typeof navA11y==='function')navA11y();if(typeof tblSortInit==='function')tblSortInit();if(typeof tblFilterInit==='function')tblFilterInit();
   if(v==='home')renderDash();if(v==='hist'){renderHist();renderHistLog();}if(v==='agents'){renderAgents();renderAgQueue();renderSched();agAssignTimer=setInterval(agAssignTick,2200);}if(monTimer){clearInterval(monTimer);monTimer=null;}if(homeTimer){clearInterval(homeTimer);homeTimer=null;}if(agAssignTimer){clearInterval(agAssignTimer);agAssignTimer=null;}if(v==='monitor'){if(typeof monFetchStats==='function')monFetchStats();renderMon();renderSLA();monTimer=setInterval(monTick,2500);}if(v==='home'&&!window._arOff)homeTimer=setInterval(homeRefresh,3500);if(v==='calls')renderCalls();if(v==='board'){renderBoard();renderJourney();renderSankey();}if(v==='kms')renderKms();if(v==='qamgmt'){renderQamgmt();renderCoachCal();}if(window._cpaasTimer&&v!=='cpaas'){clearInterval(window._cpaasTimer);window._cpaasTimer=null;}if(v==='cpaas')renderCpaas();if(v==='mmhist')renderMmhist();if(v==='docs')renderDocs();if(v==='svccfg')svcCount();if(v==='syslog')renderLogs();if(v==='report')renderSchedInfo();if(v==='report')renderReport();if(v==='builder')renderBuilder(curScn);if(v==='qa')renderQa();if(v==='assistdesk'){renderAssistDesk();renderAdeskHist();renderMsgs();renderScripts();}if(v==='nlu'){renderNluData();renderLblQueue();}if(v==='sllm')sllmLoadPrompt();if(v==='ta')renderTaViz();if(v==='agentmgmt')renderAgentMgmt();if(v==='rag')renderRag();if(v==='abtest'){renderAbtest();abLoadPrompts();}if(v==='alerts'){renderAlerts();renderRules();}if(v==='reason')renderReason();if(v==='exportc')renderExportC();if(v==='agents'){renderLeader();renderSched();}if(v==='home'){renderSparks();renderHealth();renderCKpi();}if(v==='monitor'){renderMonGauge();renderSLA();}if(v==='kb'&&typeof filterKb==='function')filterKb();if(v!=='assistdesk'&&typeof adeskStop==='function')adeskStop(true);if(typeof STAT!=='undefined'&&STAT[v])STAT[v]();if(typeof CHR!=='undefined'&&CHR[v])CHR[v]();if(typeof updateActive==='function'){updateActive();renderNoti();}if(typeof syncBotNav==='function')syncBotNav();if(window.innerWidth<=820){document.querySelector('.side').classList.remove('open');var _sc=document.getElementById('scrim');if(_sc)_sc.classList.remove('on');var _hb2=document.querySelector('.hamb');if(_hb2)_hb2.setAttribute('aria-expanded','false');}}
@@ -1601,13 +1601,13 @@ function renderHist(){const b=$('#histBody');if(!history.length){b.innerHTML='<t
   b.innerHTML=history.map((h,i)=>{const tag=h.result==='완결'?'<span class="tag pos">완결</span>':h.result==='전환'?'<span class="tag neg">전환</span>':'<span class="tag neu">진행</span>';
   return `<tr><td>${i+1}</td><td>${esc(h.u)}</td><td>${esc(h.b)}</td><td><span class="tag intent">${h.intent}</span></td><td><span class="tag ${h.emo.c}">${h.emo.l}</span></td><td>${tag}</td><td class="k">${h.tok}</td></tr>`;}).join('');}
 function esc(s){return(s||'').replace(/</g,'&lt;');}
-const AGENTS=[{n:'김상담',r:'CS 1팀',s:'on',t:14},{n:'이지원',r:'CS 1팀',s:'busy',t:9},{n:'박서연',r:'매칭지원팀',s:'on',t:21},{n:'최민지',r:'배송팀',s:'off',t:0},{n:'정민원',r:'VIP',s:'busy',t:6},{n:'한해결',r:'에스컬',s:'on',t:3}];
+const AGENTS=[{n:'김상담',r:'CS 1팀',s:'on',t:14},{n:'이지원',r:'CS 1팀',s:'busy',t:9},{n:'박서연',r:'접수지원팀',s:'on',t:21},{n:'최민지',r:'배송팀',s:'off',t:0},{n:'정민원',r:'VIP',s:'busy',t:6},{n:'한해결',r:'에스컬',s:'on',t:3}];
 function renderAgents(){var g=document.getElementById('agrid');if(!g)return;
  g.innerHTML=AGENTS.map(function(a){var sp=a.s==='on'?'<span class="pill on">대기</span>':a.s==='busy'?'<span class="pill busy">통화중</span>':'<span class="pill off">오프</span>';var avg=(2.3+(a.t%5)*0.32).toFixed(1);
   return '<div class="agent"><div class="top"><div class="ava">'+a.n[0]+'</div><div><div class="nm">'+a.n+'</div><div class="rl">'+a.r+'</div></div><span style="margin-left:auto">'+sp+'</span></div><div class="mini"><span>오늘 처리</span><b>'+a.t+'건</b></div><div class="mini"><span>평균 응대</span><b>'+avg+'분</b></div></div>';}).join('');
  var sm=document.getElementById('agSummary');if(sm){var on=AGENTS.filter(function(a){return a.s==='on';}).length,busy=AGENTS.filter(function(a){return a.s==='busy';}).length,off=AGENTS.filter(function(a){return a.s==='off';}).length,tot=AGENTS.reduce(function(x,a){return x+a.t;},0);
   sm.innerHTML='<div class="kpi"><div class="l">상담사</div><div class="v">'+AGENTS.length+'명</div><div class="s">대기 '+on+' · 통화 '+busy+' · 오프 '+off+'</div></div><div class="kpi"><div class="l">오늘 처리콜</div><div class="v">'+tot+'건</div><div class="s">인계 Fallback 포함</div></div><div class="kpi"><div class="l">평균 응대</div><div class="v">3.1분</div><div class="s">SLA 5분 이내</div></div><div class="kpi"><div class="l">가동률</div><div class="v">'+Math.round((on+busy)/AGENTS.length*100)+'%</div><div class="s">실시간</div></div>';}}
-const KB=[['기초연금 신청 안내','만 65세 이상·소득인정액 기준 충족 시 신청. 전화·방문 접수 가능, 신분증과 통장 사본 필요. 결과는 문자 안내.'],['3세대 매칭(품앗이)','청년·어르신·양육가정을 잇는 상생 품앗이. 활동 요일·동네 기준 매칭. 활동 시 봉사시간·상생카드 적립.'],['4단계 안전검증','참여 전 대면 면접·범죄경력 조회·아동학대 전력 확인·추천인 확인. 아동 관련 활동은 필수.'],['상생카드·봉사시간','활동 시간만큼 봉사시간 적립, 상생카드 포인트로 전환·사용. 적립은 활동 승인 후 반영.'],['필요 서류 안내','복지 신청별 서류 상이(신분증·소득 증빙·가족관계 등). 화면으로 목록 안내, 미비 시 코디네이터가 보완 안내.'],['코디네이터 전환 기준','복잡한 상담·서류 보완·직접 상담 요청 시 광산구 이음 코디네이터로 연결.']];
+const KB=[['기초연금 신청 안내','만 65세 이상·소득인정액 기준 충족 시 신청. 전화·방문 접수 가능, 신분증과 통장 사본 필요. 결과는 문자 안내.'],['예약·접수','고객 요청을 담당 부서·일정 기준으로 접수·배정합니다.'],['4단계 접수확인','참여 전 대면 면접·본인확인·서류 검증 절차를 안내합니다.'],['포인트·적립','활동 시간만큼 적립 적립, 포인트 포인트로 전환·사용. 적립은 활동 승인 후 반영.'],['필요 서류 안내','업무 접수별 서류 상이(신분증·소득 증빙·가족관계 등). 화면으로 목록 안내, 미비 시 상담원가 보완 안내.'],['상담원 전환 기준','복잡한 상담·서류 보완·직접 상담 요청 시  AICC Portal 상담원로 연결.']];
 function filterKb(){const q=($('#kbq').value||'').trim();const list=KB.filter(k=>!q||k[0].includes(q)||k[1].includes(q));
   $('#kbList').innerHTML=list.length?list.map(k=>`<div class="it"><b>${k[0]}</b><span class="summary">${k[1]}</span></div>`).join(''):'<div class="it" style="color:var(--dim)">검색 결과 없음</div>';}
 $('#msg').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
@@ -1675,7 +1675,7 @@ function rStatsvcTbl(f){var tb=document.getElementById('tbStatsvc');if(!tb)retur
  h+=rows.map(function(o){return '<tr><td>'+o.nm[0]+'</td><td>'+o.nm[1]+'</td><td>'+o.nm[2]+'</td>'+o.r.map(function(x){return '<td class="k">'+_fmt(x)+'</td>';}).join('')+'</tr>';}).join('');tb.innerHTML=h;}
 /* ===== 세션 통화로그(대화이력·통화이력 공용) ===== */
 function _set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-var CALLLOG=(function(){var rng=_rng(20260701),out=[],chans=['전화(IVR)','앱','웹챗'],svcs=[['복지','복지신청'],['매칭','3세대매칭'],['안전','안전검증'],['카드','상생카드'],['서류','서류안내']],emos=[['긍정','pos'],['중립','neu'],['불만','neg']],results=[['완결','완결','pos'],['멀티모달 완결','완결','pos'],['상담사 전환','전환','neu'],['연계 처리','전환','neu'],['콜봇 거부','이탈','neu'],['고객 이탈','이탈','neg']];
+var CALLLOG=(function(){var rng=_rng(20260701),out=[],chans=['전화(IVR)','앱','웹챗'],svcs=[['업무','예약변경'],['매칭','예약접수'],['안전','접수확인'],['카드','포인트'],['서류','서류안내']],emos=[['긍정','pos'],['중립','neu'],['불만','neg']],results=[['완결','완결','pos'],['멀티모달 완결','완결','pos'],['상담사 전환','전환','neu'],['연계 처리','전환','neu'],['콜봇 거부','이탈','neu'],['고객 이탈','이탈','neg']];
  for(var i=0;i<120;i++){var day=Math.floor(rng()*30),hh=9+Math.floor(rng()*10),mm=Math.floor(rng()*60),sv=svcs[Math.floor(rng()*5)],em=emos[Math.floor(rng()*3)],rs=results[Math.floor(rng()*6)];
   out.push({day:day,t:('0'+hh).slice(-2)+':'+('0'+mm).slice(-2),ph:'010-'+(1000+Math.floor(rng()*9000))+'-****',sid:'S-'+_dstr(day).replace(/-/g,'').slice(2)+'-'+('000'+Math.floor(rng()*9999)).slice(-4),ch:chans[Math.floor(rng()*3)],cat:sv[0],scn:sv[1],emo:em,rl:rs[0],rf:rs[1],rc:rs[2],dur:Math.floor(rng()*8)+':'+('0'+Math.floor(rng()*60)).slice(-2),tok:200+Math.floor(rng()*1400)});}
  return out.sort(function(a,b){return a.day-b.day;});})();
@@ -1743,7 +1743,7 @@ function qaEdit(i,t){var v=parseInt(t);if(isNaN(v)||v<0)v=0;if(v>QAITEMS[i][1])v
 function qaGap(name){toast('이의제기(GAP) 등록: '+name);}
 function qaCoachAdd(){var inp=document.getElementById('qaCoachIn'),v=(inp.value||'').trim();if(!v){toast(({ko:'코칭 내용을 입력하세요',en:'Please enter coaching content',ja:'コーチング内容を入力してください'})[LANG]||'코칭 내용을 입력하세요');return;}var log=document.getElementById('qaCoachLog'),t=new Date().toTimeString().slice(0,5);if(log.querySelector('.dim,[style*="dim"]')||/등록된 코칭이 없습니다/.test(log.innerHTML))log.innerHTML='';log.innerHTML='<div class="row" style="padding:6px 0"><span>'+t+' · '+esc(v)+'</span><span class="tag pos">등록</span></div>'+log.innerHTML;inp.value='';toast(({ko:'코칭 등록됨',en:'Coaching saved',ja:'コーチングを登録'})[LANG]||'코칭 등록됨');}
 /* ===== NLU 학습데이터·재학습 ===== */
-var INTENTS=[{name:'복지 신청(기초연금·바우처)',cnt:6310,acc:97.1},{name:'3세대 매칭 신청',cnt:4820,acc:96.2},{name:'안전검증 문의',cnt:2140,acc:93.4},{name:'상생카드·봉사시간',cnt:1980,acc:92.0},{name:'필요서류 안내',cnt:1240,acc:94.5},{name:'코디네이터 연결',cnt:880,acc:90.8}];
+var INTENTS=[{name:'업무 접수(기초연금·바우처)',cnt:6310,acc:97.1},{name:'예약·접수 신청',cnt:4820,acc:96.2},{name:'접수 확인 문의',cnt:2140,acc:93.4},{name:'포인트·적립',cnt:1980,acc:92.0},{name:'필요서류 안내',cnt:1240,acc:94.5},{name:'상담원 연결',cnt:880,acc:90.8}];
 var NLUPERF=[93,91,92,92];
 function renderNluData(){var el=document.getElementById('nluIntents');if(el){el.innerHTML=INTENTS.map(function(it,i){var tg=it.acc>=95?'pos':it.acc>=90?'neu':'neg',lb=it.acc>=95?'우수':it.acc>=90?'양호':'개선';return '<tr><td>'+it.name+'</td><td class="k">'+it.cnt.toLocaleString()+'</td><td class="k">'+it.acc.toFixed(1)+'%</td><td><span class="tag '+tg+'">'+lb+'</span></td><td><button onclick="nluAddUtter('+i+')">발화+</button></td></tr>';}).join('');}
  var cm=document.getElementById('nluCM');if(cm){var labs=['반품','주문','결제','상품','멤버십','불만'],h='<table style="font-size:13px;border-collapse:collapse;min-width:520px"><thead><tr><th style="padding:8px 14px"></th>'+labs.map(function(l){return '<th style="padding:8px 14px;font-weight:800">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
@@ -2181,7 +2181,7 @@ function kpiDel(i){CKPI.splice(i,1);saveCKpi();renderCKpi();}
 function saveCKpi(){try{localStorage.setItem('cb_ckpi',JSON.stringify(CKPI));}catch(e){}}
 function loadCKpi(){try{var v=JSON.parse(localStorage.getItem('cb_ckpi')||'[]');if(Array.isArray(v))CKPI=v;}catch(e){}renderCKpi();}
 /* NLU 라벨링 */
-var LBL_QUEUE=['기초연금 언제 나오나요','봉사시간 어떻게 쌓나요','매칭 언제 되나요','서류 뭐가 필요한가요','안전검증 꼭 받아야 하나요'],LBL_LOG=[];
+var LBL_QUEUE=['기초연금 언제 나오나요','적립 어떻게 쌓나요','매칭 언제 되나요','서류 뭐가 필요한가요','접수확인 꼭 받아야 하나요'],LBL_LOG=[];
 function renderLblQueue(){var q=document.getElementById('lblQueue');if(q)q.innerHTML='<span style="font-size:11px;color:var(--dim);align-self:center">미분류 큐:</span>'+LBL_QUEUE.map(function(u){return '<span class="chip" style="cursor:pointer" onclick="document.getElementById(\'lblUtter\').value=this.textContent">'+u+'</span>';}).join('');
  var sel=document.getElementById('lblIntent');if(sel&&typeof INTENTS!=='undefined')sel.innerHTML=INTENTS.map(function(it){return '<option>'+it.name+'</option>';}).join('');
  var log=document.getElementById('lblLog');if(log)log.innerHTML=LBL_LOG.map(function(l){return '<div class="row" style="padding:4px 0;font-size:12px"><span>'+esc(l.u)+' → <b>'+l.i+'</b></span><span class="tag pos">라벨됨</span></div>';}).join('');}
@@ -2190,7 +2190,7 @@ function lblAdd(){var u=(document.getElementById('lblUtter').value||'').trim(),i
  if(typeof INTENTS!=='undefined'){var it=INTENTS.filter(function(x){return x.name===i;})[0];if(it)it.cnt++;if(typeof renderNluData==='function')renderNluData();}
  document.getElementById('lblUtter').value='';renderLblQueue();toast('라벨 저장: '+i+' (재학습 대기)');}
 /* ===== 감사로그·리포트예약·공지 ===== */
-var AUDITLOG=(function(){var rng=_rng(9911),out=[],acts=['수정','조회','삭제','등록','승인'],deps=['CS 1팀','매칭지원팀','통계팀','VIP','운영팀'],names=['김운영','이통계','박서연','정민원','한해결','최민지'],menus=['서비스 설정','지식 등록','QA 평가','통계 조회','계정 권한','시나리오 배포'];
+var AUDITLOG=(function(){var rng=_rng(9911),out=[],acts=['수정','조회','삭제','등록','승인'],deps=['CS 1팀','접수지원팀','통계팀','VIP','운영팀'],names=['김운영','이통계','박서연','정민원','한해결','최민지'],menus=['서비스 설정','지식 등록','QA 평가','통계 조회','계정 권한','시나리오 배포'];
  for(var i=0;i<40;i++){var day=Math.floor(rng()*7),hh=9+Math.floor(rng()*10),mm=Math.floor(rng()*60),ss=Math.floor(rng()*60);
   out.push({date:_dstr(day),t:('0'+hh).slice(-2)+':'+('0'+mm).slice(-2)+':'+('0'+ss).slice(-2),act:acts[Math.floor(rng()*acts.length)],dep:deps[Math.floor(rng()*deps.length)],emp:'E'+(1000+Math.floor(rng()*9000)),name:names[Math.floor(rng()*names.length)],ip:'10.20.'+Math.floor(rng()*255)+'.x',menu:menus[Math.floor(rng()*menus.length)]});}
  return out.sort(function(a,b){return (b.date+b.t).localeCompare(a.date+a.t);});})();
@@ -2313,7 +2313,7 @@ function scnDiffRender(){var el=document.getElementById('scnDiffBody');if(!el)re
  el.innerHTML=rows.map(function(r){return '<div style="display:flex;gap:8px;align-items:baseline"><span aria-hidden="true" style="color:'+co[r[0]]+';font-weight:800;flex-shrink:0">'+ic[r[0]]+'</span><span class="tag" style="flex-shrink:0">'+r[1]+'</span><span'+(r[3]&&r[3]!==r[2]?' title="'+esc(r[3])+'"':'')+'>'+esc(r[2])+'</span></div>';}).join('')+'<div style="color:var(--dim);margin-top:8px">기준 → 비교 방향의 변경입니다 (＋ 추가 · － 삭제 · ✎ 수정)</div>';}
 
 /* 콜 리즌 코드 */
-var REASONS=[{code:'R-WLF',cat:'복지',name:'복지 신청(기초연금·바우처)',type:'인바운드',cnt:1260,on:true},{code:'R-TRI',cat:'매칭',name:'3세대 매칭 신청',type:'인바운드',cnt:980,on:true},{code:'R-SFT',cat:'안전',name:'안전검증 문의',type:'인바운드',cnt:562,on:true},{code:'R-CRD',cat:'카드',name:'상생카드·봉사시간',type:'인바운드',cnt:620,on:true},{code:'R-OB1',cat:'캠페인',name:'안부·복지 재안내',type:'아웃바운드',cnt:410,on:true},{code:'R-OB2',cat:'안내',name:'서류 보완 안내',type:'아웃바운드',cnt:300,on:false}];
+var REASONS=[{code:'R-WLF',cat:'업무',name:'업무 접수(기초연금·바우처)',type:'인바운드',cnt:1260,on:true},{code:'R-TRI',cat:'매칭',name:'예약·접수 신청',type:'인바운드',cnt:980,on:true},{code:'R-SFT',cat:'안전',name:'접수 확인 문의',type:'인바운드',cnt:562,on:true},{code:'R-CRD',cat:'카드',name:'포인트·적립',type:'인바운드',cnt:620,on:true},{code:'R-OB1',cat:'캠페인',name:'안부·업무 재안내',type:'아웃바운드',cnt:410,on:true},{code:'R-OB2',cat:'안내',name:'서류 보완 안내',type:'아웃바운드',cnt:300,on:false}];
 function renderReason(){var el=document.getElementById('reasonBody');if(!el)return;var tf='전체';document.querySelectorAll('#view-reason .seg button.on').forEach(function(b){tf=b.textContent.trim();});var q=((document.getElementById('reasonQ')||{}).value||'').trim();
  var rows=REASONS.filter(function(r){return (tf==='전체'||r.type===tf)&&(!q||(r.code+r.name+r.cat).indexOf(q)>=0);});
  el.innerHTML=rows.length?rows.map(function(r){var i=REASONS.indexOf(r);return '<tr><td><b>'+r.code+'</b></td><td>'+r.cat+'</td><td>'+r.name+'</td><td>'+r.type+'</td><td class="k">'+r.cnt.toLocaleString()+'</td><td><span class="tag '+(r.on?'pos':'neu')+'" onclick="reasonToggle('+i+')" style="cursor:pointer">'+(r.on?'사용':'미사용')+'</span></td><td><a onclick="toast(\'코드 '+r.code+' 상세\')" style="color:var(--accent);cursor:pointer">상세</a></td></tr>';}).join(''):'<tr><td colspan="7" style="color:var(--dim)">조건에 맞는 사유코드가 없습니다.</td></tr>';}
@@ -2379,20 +2379,20 @@ const STAT={statin:rStatin,statout:rStatout,statsvc:rStatsvc,chan:rChan,sysresp:
 
 var curScn='welfare';
 var SCN={
- welfare:{flow:[['콜처리','인입·본인확인','call'],['LLM','의도분석','llm'],['보이는ARS','신청화면(SHOW_WELFARE_FORM)','call'],['조건부','복지 항목 분기','cond'],['LLM+RAG','자격·서류 안내','llm'],['보이는ARS','서류/안전(SHOW_DOCS)','call'],['종료','접수·SMS','end']],
-  script:[['인입·본인확인','이음 고객센터입니다. 무엇을 도와드릴까요?','기초연금 신청하고 싶어요','발신번호로 본인 확인'],
-   ['의도/항목','기초연금·돌봄·바우처 중 어떤 복지를 도와드릴까요?','기초연금이요','복지 항목 분기'],
+ welfare:{flow:[['콜처리','인입·본인확인','call'],['LLM','의도분석','llm'],['보이는ARS','신청화면(SHOW_WELFARE_FORM)','call'],['조건부','업무 항목 분기','cond'],['LLM+RAG','자격·서류 안내','llm'],['보이는ARS','서류/안전(SHOW_DOCS)','call'],['종료','접수·SMS','end']],
+  script:[['인입·본인확인','고객센터입니다. 무엇을 도와드릴까요?','예약 변경하고 싶어요','발신번호로 본인 확인'],
+   ['의도/항목','기초연금·돌봄·바우처 중 어떤 업무를 도와드릴까요?','기초연금이요','업무 항목 분기'],
    ['신청 화면','신청 화면을 보내드렸어요. 성함과 생년월일을 말씀해 주세요.','','보이는 ARS: SHOW_WELFARE_FORM'],
-   ['자격·서류','자격 요건과 필요 서류를 안내드릴게요.','','RAG 복지정책 인용'],
+   ['자격·서류','자격 요건과 필요 서류를 안내드릴게요.','','RAG 업무정책 인용'],
    ['접수·종료','신청 접수했습니다. 진행 상황은 문자로 안내드려요.','','SMS 발송']],
-  edge:['어르신 배려(천천히·쉬운 말)','코디네이터 전환(TRANSFER_COORDINATOR)','보이는 ARS 화면 동기화']},
- trio:{flow:[['콜처리','인입·본인확인','call'],['LLM','참여유형 분석','llm'],['보이는ARS','매칭화면(SHOW_TRIO_MATCH)','call'],['조건부','청년/어르신/양육가정','cond'],['LLM','일정·동네 매칭','llm'],['보이는ARS','안전검증(SHOW_SAFETY_CHECK)','call'],['종료','매칭신청 접수','end']],
-  script:[['인입·본인확인','이음 고객센터입니다. 3세대 매칭을 도와드릴게요.','봉사 참여하고 싶어요','발신번호로 본인 확인'],
+  edge:['어르신 배려(천천히·쉬운 말)','상담원 전환(TRANSFER_COORDINATOR)','보이는 ARS 화면 동기화']},
+ trio:{flow:[['콜처리','인입·본인확인','call'],['LLM','참여유형 분석','llm'],['보이는ARS','매칭화면(SHOW_TRIO_MATCH)','call'],['조건부','청년/어르신/양육가정','cond'],['LLM','일정·동네 매칭','llm'],['보이는ARS','접수확인(SHOW_SAFETY_CHECK)','call'],['종료','매칭신청 접수','end']],
+  script:[['인입·본인확인','고객센터입니다. 예약·접수을 도와드릴게요.','봉사 참여하고 싶어요','발신번호로 본인 확인'],
    ['참여 유형','청년·어르신·양육가정 중 어떤 참여를 원하세요?','청년 봉사요','참여유형 분기'],
    ['매칭 화면','매칭 화면을 보내드렸어요. 활동 요일과 동네를 골라 주세요.','','보이는 ARS: SHOW_TRIO_MATCH'],
-   ['안전검증','참여 전 4단계 안전검증을 안내드릴게요.','','보이는 ARS: SHOW_SAFETY_CHECK'],
+   ['접수확인','참여 전 4단계 접수확인을 안내드릴게요.','','보이는 ARS: SHOW_SAFETY_CHECK'],
    ['접수·종료','매칭 신청 접수했습니다. 결과는 문자로 안내드려요.','','SMS 발송']],
-  edge:['4단계 안전검증 필수','아동학대 전력 확인','보이는 ARS 화면 동기화']},
+  edge:['4단계 접수확인 필수','아동학대 전력 확인','보이는 ARS 화면 동기화']},
  refund:{flow:[['콜처리','인입·본인확인','call'],['LLM','의도분석','llm'],['조회','주문 API','call'],['조건부','사유 분기','cond'],['LLM+RAG','정책·견적','llm'],['DTMF','동의 게이트','dtmf'],['종료','접수·SMS','end']],
   script:[['인입·본인확인','고객센터입니다. 무엇을 도와드릴까요?','','발신번호로 주문 조회'],
    ['의도/사유','','반품하고 싶어요 / 불량이에요','반품·교환·환불 분기'],
