@@ -150,6 +150,55 @@ def get_tts():
     return p
 
 
+# ── health 리포트 (읽기전용 · 실호출/네트워크 없음) ──────────
+_LEGACY = {"stt": "gemini", "tts": "edge"}
+
+
+def _kind_health(registry, env_key, legacy):
+    """단일 종류(stt/tts)의 프로바이더 상태. 인스턴스화·실호출 없음."""
+    raw = (os.environ.get(env_key) or "").strip().lower()
+    want = raw or legacy
+    delegated = bool(raw) and raw != legacy
+    if not delegated:
+        known, forced_sim, effective = True, False, legacy
+    else:
+        known = want in registry
+        forced_sim = (not known) or (want != "sim" and not SPEECH_LIVE)
+        effective = "sim" if forced_sim else want
+    provs = []
+    for n in sorted(registry):
+        pending = n != "sim"
+        provs.append({
+            "provider": n,
+            "status": "pending_approval" if pending else "ready",
+            "ok": not pending,
+            "note": "[승인 필요] SPEECH_LIVE=1 + 키 설정" if pending else "sim · 키·과금 없음",
+        })
+    return {
+        "requested": want,
+        "legacy": legacy,
+        "delegated": delegated,
+        "known": known,
+        "effective": effective,
+        "forced_sim": forced_sim,
+        "providers": provs,
+    }
+
+
+def health_report(kind="all"):
+    """운영 점검용 프로바이더 health 요약.
+
+    kind: "stt" | "tts" | "all". 반환값은 JSON 직렬화 가능한 dict.
+    실호출·키 노출 없음. 게이트(SPEECH_LIVE) 상태만 노출한다.
+    """
+    rep = {"gate": "SPEECH_LIVE", "speech_live": SPEECH_LIVE, "sim": not SPEECH_LIVE}
+    if kind in ("all", "stt"):
+        rep["stt"] = _kind_health(_STT, "CALLBOT_STT_PROVIDER", _LEGACY["stt"])
+    if kind in ("all", "tts"):
+        rep["tts"] = _kind_health(_TTS, "CALLBOT_TTS_PROVIDER", _LEGACY["tts"])
+    return rep
+
+
 if __name__ == "__main__":
     stt, tts = get_stt(), get_tts()
     print("STT:", stt.name, stt.transcribe("QUJD", "audio/webm"))
@@ -160,3 +209,5 @@ if __name__ == "__main__":
         print("FAIL: deny 미작동")
     except PermissionError as e:
         print("DENY OK:", e)
+    import json as _j
+    print("HEALTH:", _j.dumps(health_report(), ensure_ascii=False))

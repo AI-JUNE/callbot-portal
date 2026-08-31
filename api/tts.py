@@ -24,6 +24,19 @@ def _alt_provider():
     return speech_providers.get_tts()
 
 
+def _provider_health():
+    """speech_providers 의 TTS 프로바이더 health(읽기전용). 실패해도 200 유지."""
+    try:
+        import sys as _s
+        _s.path.insert(0, os.path.dirname(__file__))
+        import speech_providers
+        h = speech_providers.health_report("tts")
+        h["voice"] = VOICE
+        return h
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def _synth(text):
     import edge_tts
     async def run():
@@ -46,6 +59,17 @@ class handler(BaseHTTPRequestHandler):
             return _guard.deny(self, _c, _m)
         try:
             qs = parse_qs(urlparse(self.path).query)
+            if (qs.get("health", [""])[0] or "").strip() in ("1", "true", "yes"):
+                # 운영 점검용: 오디오 합성 없음 · 과금 0 · 키 미노출
+                b = json.dumps(_provider_health(), ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+                self.send_header("Content-Length", str(len(b)))
+                self.end_headers()
+                self.wfile.write(b)
+                return
             text = (qs.get("text", [""])[0]).strip()[:1000]
             if not text:
                 self.send_response(400)

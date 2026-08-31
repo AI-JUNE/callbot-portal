@@ -27,6 +27,17 @@ def _alt_provider():
     return speech_providers.get_stt()
 
 
+def _provider_health():
+    """speech_providers 의 STT 프로바이더 health(읽기전용). 실패해도 GET 은 유지."""
+    try:
+        import sys as _s
+        _s.path.insert(0, os.path.dirname(__file__))
+        import speech_providers
+        return speech_providers.health_report("stt")
+    except Exception as e:  # 모듈 부재·임포트 실패 시에도 엔드포인트 정상 응답
+        return {"ok": False, "error": str(e)}
+
+
 def transcribe(audio_b64, mime):
     key = _key()
     if not key:
@@ -82,8 +93,10 @@ class handler(BaseHTTPRequestHandler):
         if not _ok:
             return _guard.deny(self, _c, _m)
         prov = (os.environ.get("CALLBOT_STT_PROVIDER") or "gemini").strip().lower()
-        self._send({"ok": True, "engine": "Gemini STT", "model": MODEL,
-                    "key_present": bool(_key()), "provider": prov})
+        out = {"ok": True, "engine": "Gemini STT", "model": MODEL,
+               "key_present": bool(_key()), "provider": prov}
+        out["health"] = _provider_health()
+        self._send(out)
 
     def do_POST(self):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
