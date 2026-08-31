@@ -1,4 +1,50 @@
-# 야간 자율 개발 상태 (2026-08-31 · 7회차)
+# 야간 자율 개발 상태 (2026-08-31 · 8회차)
+
+## 이번 회차 처리 — 2건 (B147) · 전부 `public/admin.html` (라이브 /admin)
+직전 회차 "다음 실행 후보" 2건을 그대로 처리했습니다. 백로그 P0 1~7 은 전부 ✅ 상태이므로 저위험 UX 개선으로 진행.
+
+### 1) view-monitor 카드 자동 갱신(30초) — 기존 자동갱신 토글 존중
+- `monCardsAuto(start)` / `monCardsTick()` / `_htmlSet()` 신설(`window._monCardTimer`).
+- 갱신 대상은 **fetch 기반 카드 2종**(🎙️ 음성엔진 프로바이더 · 🧑‍💼 상담원 연결 큐/녹취)만. **SLA 카드는 제외** — `renderSLA()` 는 `DAYS[0]` 고정값 렌더라 재호출해도 값이 바뀌지 않아 DOM 만 흔들립니다(자율 결정, 후보 3종 중 2종만 채택).
+- 4중 가드: `curView==='monitor'` · `!window._arOff`(cb_autoref) · `document.visibilityState!=='hidden'` · 진입 시 이전 타이머 clear(중복 방지). `show()` 이탈 경로에서 `monTimer` 와 함께 정리.
+- `speechHealthLoad(force,quiet)` · `opsSimLoad(force,quiet)` 에 **선택 인자 `quiet` 추가**(하위호환 — 기존 호출부 동작 불변). quiet 이면 "불러오는 중…" 플레이스홀더를 건너뛰어 30초마다 화면이 깜빡이지 않습니다.
+- `_htmlSet(el,html)`: 내용이 **바뀐 경우에만** innerHTML 대입 → `aria-live="polite"` 영역의 30초 주기 중복 낭독 방지 + DOM churn 제거.
+- 기간 툴바에 상태 라벨 `#monAutoLbl`(`aria-live="off"`): `자동 갱신 30초` / `… · HH:MM:SS`(마지막 갱신) / `자동 갱신 OFF`. `toggleAutoRefresh()` 에서 즉시 시작·정지 연동.
+- **읽기전용 GET 재조회만** 추가했습니다. 발신·과금·설정 변경 코드 없음.
+
+### 2) 시나리오 빌더 실행취소(Undo)
+- 툴바에 `↶ 실행취소` 버튼(`#bUndoBtn`, 기본 `disabled`) 추가 — `✓ 검증` 왼쪽.
+- `_bUndoS`(시나리오별 스택, 상한 20) · `_bSnap()`(JSON 직렬화 = 깊은 복사) · `_bPush()` · `_bUndoSync()` · `bUndo()` 신설. **브라우저 메모리 전용** — localStorage·서버 저장 없음(기존 `💾 버전 저장` 과 역할 분리).
+- 적립 지점 8곳: 노드 이름 편집(`bEditNode`) · 노드 삭제/추가(`bDelNode`/`bAddNode`) · 대본 셀 편집(`bEdit`) · 단계 삭제/추가(`bDelRow`/`bAddRow`) · JSON 가져오기(`bImport`) · 버전 복원 2경로(`scnVersions` · `scnDiff`).
+- 텍스트 편집은 `onblur` 기준이며 **값이 실제로 바뀐 경우에만** 적립(빈 blur 로 스택이 차지 않음). 마지막 남은 노드 삭제는 기존대로 거부되고 스냅샷도 쌓지 않습니다.
+- 버튼에 남은 단계 수 표시, 스택이 비면 자동 비활성. `renderBuilder()` 종료 시 동기화하므로 탭 전환 시 해당 시나리오 스택이 정확히 반영됩니다(시나리오 간 스택 분리).
+- 손상 스냅샷은 파싱 실패 시 상태를 되돌리지 않고 안내 토스트만 출력.
+
+### 빌드 스탬프
+- B146 → **B147 · 2026-08-31** (헤더 `#buildStamp` + `console.log`, 2곳 각각 `count==1` 확인 후 치환).
+
+## 검증
+- 편집은 전부 bash + python(utf-8) 정확 매칭 치환, **앵커 26곳 전부 `count==1` assert 통과**(A 12 + B 12 + 스탬프 2). 편집 전 `/tmp/admin.b146.bak` 백업.
+- `node --check` OK(인라인 스크립트 1개). 중복 id **0** · 금지어 **0**(농협·라피치·IBK·날리지큐브·보이스봇·신세계·하나은행) · view↔titles 정합 **39=39, 대칭차집합 공집합**.
+- 기능 스모크(node, DOM/fetch/타이머 스텁) **56건 전부 통과**:
+  - 자동 갱신 19건 — 타이머 생성·30초 주기·재진입 시 중복 없음·OFF 시 미생성·타 뷰 미생성·정지·라벨 3종·tick 시 STT/TTS/ops_stats 3회 요청·tick quiet(로딩 문구 미표시)·OFF/타 뷰/탭 숨김에서 tick 무동작·복귀 재개·마지막 시각 표기·`_htmlSet` 동일/변경/`null` 노드.
+  - quiet 로더 8건 — quiet 시 플레이스홀더 생략·비 quiet 시 기존 동작·현재 기간(`?period=week`) 전달·두 섹션 렌더·게이트 OFF 문구·동일 응답 시 DOM 불변·fetch 예외 무전파.
+  - 실행취소 29건 — 초기 비활성·빈 스택 안내·편집 적립/복원·동일 값 미적립·버튼 카운트·노드 삭제/추가 복원·마지막 노드 보호·단계 추가/삭제 복원·셀 편집 복원·시나리오별 스택 분리·탭 복귀 시 유지·상한 20·깊은 복사(참조 공유 없음)·손상 스냅샷 안전 실패·버튼 노드 부재 시 무예외·미등록 시나리오 미적립.
+- 파일 완전성: admin.html 394,663 → **398,034자**(+3,371), 2,666행 `</html>` 종료를 host Read 로 확인, 잘림 없음.
+- 배포는 CallbotAutoDeploy 자동 처리. git 명령 미실행.
+
+## 사람이 할 일
+- 리뷰만. 미승인 대기(변동 없음): `proposals/api_auth.py`, `proposals/confirm_refund_guard.py`, `proposals/pii_crypto.py`, `ORDER_BACKEND=http`, `SPEECH_LIVE`/`CPAAS_LIVE`, `RECORDING_LIVE`, 실배정·CTI 연동. **[승인 필요]**
+- **문서 경로 불일치(4회차부터 5회 연속 반복)**: 백로그·스케줄 작업 정의의 정본 경로가 `OneDrive\Desktop\Callbot\v2\callbot-portal` 이나 실제는 `OneDrive\Desktop\Dev\2. Callbot\v2\callbot-portal` 입니다. 매 회차 탐색 비용이 발생하므로 **작업 정의 갱신 권장**.
+- 자율 결정 2건: ① 후보의 "카드 3종" 중 SLA 카드는 정적 렌더라 자동 갱신에서 제외 ② Undo 는 1단계가 아닌 **시나리오별 20단계 스택**(코드 복잡도 동일, 오조작 복구 폭이 넓음). 1단계로 제한을 원하시면 `_BUNDO_MAX` 값만 1 로 바꾸면 됩니다.
+
+## 다음 실행 후보
+- 실행취소의 다시실행(Redo) — `bUndo()` 시 현재 상태를 redo 스택에 적립, `↷ 다시실행` 버튼(소).
+- 시나리오 빌더 노드 순서 변경(↑/↓ 이동) — 현재는 추가·삭제만 가능하며 순서를 바꾸려면 지우고 다시 넣어야 함. Undo 적립 지점 재사용(중).
+
+---
+
+# 이전 회차 (2026-08-31 · 7회차)
 
 ## 착수 전 확인 — 직전 "다음 실행 후보" 2건은 **이미 구현되어 있었음(B145 · 2026-08-25, 미기록 회차)**
 - `speechHealthLoad()` + view-monitor 음성엔진 health 카드, `_bImpDiff()` + `bImport` 확인 다이얼로그 모두 코드에 존재. 빌드 스탬프 B145·2026-08-25.
