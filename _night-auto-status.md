@@ -1,4 +1,47 @@
-# 야간 자율 개발 상태 (2026-08-19 · 5회차)
+# 야간 자율 개발 상태 (2026-08-31 · 7회차)
+
+## 착수 전 확인 — 직전 "다음 실행 후보" 2건은 **이미 구현되어 있었음(B145 · 2026-08-25, 미기록 회차)**
+- `speechHealthLoad()` + view-monitor 음성엔진 health 카드, `_bImpDiff()` + `bImport` 확인 다이얼로그 모두 코드에 존재. 빌드 스탬프 B145·2026-08-25.
+- 6회차 보고서가 이 문서에 기록되지 않은 상태였습니다(코드만 반영). 이번 회차에서 사실만 병기하고 새 항목으로 진행했습니다.
+- 백로그 P0 1~7 전부 ✅ 상태 → 규칙에 따라 **저위험 운영 대시보드 개선**을 선택.
+
+## 이번 회차 처리 — 2건 (B146)
+### 1) 운영 집계 응답 정규화 + 활성화 게이트 현황 노출 (api/ops_stats.py)
+- `_norm_stats(raw, keys)` 신설: `escalation`/`recording` 을 **고정 스키마·정수**로 정규화. 소스 모듈을 못 읽으면 전 항목 0 + `source:"unavailable"`, 읽으면 `source:"sim"`. 값이 문자열·None·누락이어도 0 으로 방어(예외 없음).
+  - 이전에는 `esc or {"total":0}` 라 콘솔 쪽에서 키 존재를 가정할 수 없었음 → 이제 스키마 불변.
+  - `escalation`: queued/assigned/resolved/abandoned/total, `recording`: active/purged/total.
+- `gate_flags()` 신설 + 응답에 `gates` 추가: `recording_live` · `cpaas_live` · `speech_live`. **환경변수를 읽기만** 합니다(설정·활성화 코드 없음). 기본 미설정 시 전부 false.
+- 기존 필드·경로·`_guard` 검사·`?period=` 동작 전부 불변(키 추가만) — 하위호환.
+
+### 2) 상담원 연결 큐 · 녹취/감사 sim 현황 카드 (public/admin.html, view-monitor)
+- `/api/ops_stats?period=<현재기간>` 1회 GET 으로 큐(대기·배정·완료·이탈·누적)와 녹취 메타(보관 중·파기·누적)를 타일로 표시. **집계 숫자만 · 통화 원문·개인정보 미포함.**
+- 섹션별 뱃지: 소스 정상 `sim`, 미가용 `소스 없음`. 헤더에 게이트 표기 — 전부 OFF 면 `게이트 전부 OFF · sim`, 켜진 게 있으면 `게이트 ON: RECORDING_LIVE · …`(표시만, 켜지 않음).
+- 신규: `_osEsc/_osNum/_osTiles/opsSimLoad`, `#osBody`·`#osGate`. B145 `speechHealthLoad` 와 동일한 캐시 가드(`_osLoaded`) + `🔄 새로고침` 버튼.
+- 훅: `show('monitor')` 진입 시 1회 조회, `monSetPeriod()` 로 기간 변경 시 강제 재조회. 엔드포인트 실패·fetch 예외 시 안내문구로 폴백(통화 흐름·기존 KPI 영향 없음).
+
+### 빌드 스탬프
+- B145 → **B146 · 2026-08-31** (헤더 span + console.log, 2곳 정확 매칭 치환).
+
+## 검증
+- `api/ops_stats.py` 셀프테스트 OK(기존 12건 + B146 신규: 키·정수 타입, source 값, None→전부 0·unavailable, 문자열/None/누락 값 방어, gates 키셋·bool, SPEECH_LIVE=1→true·off→false 후 환경 원복, JSON 직렬화). `py_compile` OK.
+- admin.html 인라인 스크립트 `node --check` OK(스크립트 1개). 중복 id 0 · 금지어 0 · view↔titles 정합(39=39, 대칭차집합 공집합).
+- 기능 스모크(node, DOM/fetch 스텁) **20건 전부 통과**: period 전달·두 섹션 렌더·수치 표시·sim 뱃지 2개·게이트 OFF 문구·게이트 ON 목록·`unavailable` 뱃지 2개·실패 안내·게이트 문구 초기화·fetch 예외 무전파·force 없을 때 재조회 스킵·null 섹션 안내·비수치→0·XSS 이스케이프·대상 노드 없을 때 무예외.
+- 파일 완전성: admin.html 391,683 → 394,663자(+2,980), 2,631행 `</html>` 종료 host Read 확인, 잘림 없음. 편집은 bash+python utf-8 정확 매칭 치환(앵커 5곳 전부 `count==1` assert). `.py` 는 heredoc 전체 작성 전 백업(/tmp) 후 셀프테스트 통과 확인.
+- 배포는 CallbotAutoDeploy 자동 처리. git 명령 미실행.
+
+## 사람이 할 일
+- 리뷰만. 미승인 대기(변동 없음): proposals/api_auth.py, proposals/confirm_refund_guard.py, proposals/pii_crypto.py, ORDER_BACKEND=http, SPEECH_LIVE/CPAAS_LIVE, RECORDING_LIVE, 실배정·CTI 연동. **[승인 필요]**
+- **문서 경로 불일치(4회차부터 반복)**: 백로그 정본 경로가 `OneDrive\Desktop\Callbot\v2\callbot-portal` 로 적혀 있으나 실제는 `OneDrive\Desktop\Dev\2. Callbot\v2\callbot-portal` 입니다. 스케줄 작업 정의에도 같은 경로가 있어 매회 탐색이 필요합니다 — 문서·작업 정의 갱신 권장.
+- 6회차(B145) 보고서가 이 문서에 없습니다. 별도 보관본이 있으면 병합해 주세요.
+- 자율 결정 사항: `gates` 는 **읽기 전용 표시**로만 추가(활성화 코드 없음). 카드는 기존 `monFetchStats` 에 끼워 넣지 않고 B145 패턴대로 독립 로더로 분리(기간 필터·새로고침과 수명주기가 달라서).
+
+## 다음 실행 후보
+- 시나리오 빌더 실행 취소(Undo) — 노드/대본 편집 직전 상태 1단계 복원(현재는 🕘 버전 저장만 있음, 중).
+- view-monitor 카드 3종(SLA·음성엔진·큐/녹취) 자동 갱신 옵션 — 기존 `자동갱신 OFF` 토글(`cb_autoref`) 존중하며 30초 주기(소).
+
+---
+
+# 이전 회차 (2026-08-19 · 5회차)
 
 ## 이번 회차 처리 — 직전 "다음 실행 후보" 2건 (B144)
 ### 1) 프로바이더 health 를 /api/stt·/api/tts GET 에 노출 (api/speech_providers.py, api/stt.py, api/tts.py)
