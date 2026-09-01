@@ -2254,7 +2254,7 @@ async function recordUtterance(){try{
 function renderSLA(){var el=document.getElementById('slaBody');if(!el||typeof DAYS==='undefined')return;var d=DAYS[0],rate=Math.round((d.inRes[0]+d.inRes[1])/d.inTot*100);
  var rows=[['LLM 평균 응답','1.4s','≤ 2.0s',true],['STT 인식 정확도','97%','≥ 95%',true],['봇 처리율',rate+'%','≥ 70%',rate>=70],['대기시간','12s','≤ 20s',true],['첫 응답','0.9s','≤ 3.0s',true],['시스템 가용성','데모','측정 전',true]];
  el.innerHTML=rows.map(function(r){var ok=r[3];return '<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line2)"><span>'+r[0]+' <span style="color:var(--dim);font-size:11px">('+r[2]+')</span></span><span style="display:inline-flex;gap:8px;align-items:center"><b>'+r[1]+'</b><span class="tag '+(ok?'pos':'neg')+'">'+(ok?'준수':'위반')+'</span></span></div>';}).join('');
- var pass=rows.filter(function(r){return r[3];}).length;el.innerHTML+='<div class="hint" style="padding:10px 0 0">SLA 준수 '+pass+'/'+rows.length+' 항목 · 종합 '+Math.round(pass/rows.length*100)+'%</div>';}
+ var pass=rows.filter(function(r){return r[3];}).length;el.innerHTML+='<div class="hint" style="padding:10px 0 0">SLA 준수 '+pass+'/'+rows.length+' 항목 · 종합 '+Math.round(pass/rows.length*100)+'% <span style="color:var(--dim)">(데모 데이터 · 실제 운영 실적 아님)</span></div>';}
 /* ===== 사용자 정의 KPI · NLU 라벨링 ===== */
 var CKPI=[];
 var CKPI_LIB=[['오늘 인입','inflow'],['봇 처리율','procrate'],['상담사 전환','transfer'],['멀티모달','mm'],['평균 통화시간','aht'],['재통화율','recall']];
