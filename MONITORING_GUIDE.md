@@ -24,3 +24,7 @@
 ## 환경변수 (사람이 Vercel에 등록)
 - Next.js/Python: `SENTRY_DSN`
 - 이음(Vite): `VITE_SENTRY_DSN`
+
+## 이식 현황
+- [x] **Callbot(AICC Portal)** — `api/monitoring.py`. 배선: `api/chat.py`·`api/assist.py`·`api/ops_stats.py` except 블록, 상태는 `/api/health` 의 `monitoring` 필드(값 미노출, 설정 여부만). 테스트 `tests/test_monitoring.py` (`python3 tests/test_monitoring.py`, 16건).
+  - 남은 작업: Vercel에 `SENTRY_DSN` 등록(사람). 등록 전까지 no-op 이므로 배포 리스크 없음.

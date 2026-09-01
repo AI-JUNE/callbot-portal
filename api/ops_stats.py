@@ -130,6 +130,7 @@ def get_ops_summary(baseline=None, period="today"):
 
 from http.server import BaseHTTPRequestHandler
 import _guard
+import monitoring
 
 
 class handler(BaseHTTPRequestHandler):
@@ -158,7 +159,12 @@ class handler(BaseHTTPRequestHandler):
             period = (q.get("period", ["today"])[0] or "today").strip().lower()
             self._send(200, get_ops_summary(period=period))
         except Exception as e:
-            self._send(500, {"ok": False, "error": str(e)})
+            # 오류 모니터링: DSN 미설정이면 no-op, 전송 실패해도 응답에 영향 없음
+            _eid = monitoring.capture_error(e, route="/api/ops_stats", method="GET")
+            _out = {"ok": False, "error": str(e)}
+            if _eid:
+                _out["event_id"] = _eid
+            self._send(500, _out)
 
 
 if __name__ == "__main__":

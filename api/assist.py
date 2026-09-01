@@ -38,6 +38,7 @@ def run_assist(task, text, kb=""):
 import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
+import monitoring
 
 class handler(BaseHTTPRequestHandler):
     def _send(self, code, obj):
@@ -71,4 +72,9 @@ class handler(BaseHTTPRequestHandler):
             out = run_assist(task, b.get("text", ""), b.get("kb", ""))
             self._send(200, {"task": task, "result": out})
         except Exception as e:
-            self._send(500, {"error": str(e)})
+            # 오류 모니터링: DSN 미설정이면 no-op, 전송 실패해도 응답에 영향 없음
+            _eid = monitoring.capture_error(e, route="/api/assist", method="POST")
+            _out = {"error": str(e)}
+            if _eid:
+                _out["event_id"] = _eid
+            self._send(500, _out)

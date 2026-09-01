@@ -56,6 +56,18 @@ def _speech():
     return info
 
 
+def _monitoring():
+    """오류 모니터링 상태 — DSN 값은 노출하지 않고 설정 여부만."""
+    try:
+        d = os.path.dirname(__file__)
+        if d not in sys.path:
+            sys.path.insert(0, d)
+        import monitoring
+        return monitoring.status()
+    except Exception as e:  # 헬스는 절대 실패하지 않는다
+        return {"enabled": False, "note": "monitoring unavailable: %s" % e}
+
+
 def _payload():
     return {
         "ok": True,
@@ -75,6 +87,7 @@ def _payload():
             "order_backend": (os.environ.get("ORDER_BACKEND") or "demo").strip(),  # order_backend.get_backend() 기본값(demo)과 일치
         },
         "speech": _speech(),
+        "monitoring": _monitoring(),
     }
 
 

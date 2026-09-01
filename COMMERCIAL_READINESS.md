@@ -9,7 +9,7 @@
 - 모든 변경은 테스트·빌드 검증 통과 후 커밋한다.
 
 ## 공통 상용 필수 (전 제품)
-- [ ] **에러 모니터링** — 전역 에러 캡처 + 알림 훅. DSN은 환경변수, 미설정 시 무해하게 no-op
+- [x] **에러 모니터링** — `api/monitoring.py`(의존성 0, Sentry envelope). chat·assist·ops_stats 핸들러 except 배선, `/api/health.monitoring` 상태 노출. `tests/test_monitoring.py` 16건 통과(no-op·PII 마스킹·DSN 미하드코딩·전송실패 격리). DSN은 Vercel 환경변수 `SENTRY_DSN` **[승인 필요: 사람이 등록]**
 - [ ] **구조화 로깅** — 요청 ID·소요시간·에러코드. PII 미기록
 - [ ] **/health 확장** — 의존성(DB·외부API) 상태와 버전·커밋 해시 노출(민감정보 제외)
 - [ ] **표준 에러 응답** 전 API 통일 + 입력검증
