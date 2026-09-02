@@ -28,3 +28,13 @@
 ## 이식 현황
 - [x] **Callbot(AICC Portal)** — `api/monitoring.py`. 배선: `api/chat.py`·`api/assist.py`·`api/ops_stats.py` except 블록, 상태는 `/api/health` 의 `monitoring` 필드(값 미노출, 설정 여부만). 테스트 `tests/test_monitoring.py` (`python3 tests/test_monitoring.py`, 16건).
   - 남은 작업: Vercel에 `SENTRY_DSN` 등록(사람). 등록 전까지 no-op 이므로 배포 리스크 없음.
+
+## 구조화 로깅 (`api/_log.py`)
+오류 모니터링과 **같은 request_id** 를 사용하므로 로그 ↔ Sentry 이벤트를 상호 추적할 수 있다.
+
+- 출력: 요청당 JSON 1줄(stdout) — `request_id·route·method·path·status·duration_ms·error_code`.
+- 요청 ID: 인바운드 `x-request-id`/`x-vercel-id` 승계, 없으면 생성. 응답 헤더 `X-Request-Id` 로 반환(CORS `Access-Control-Expose-Headers` 포함).
+- **PII 미기록**: 경로에서 쿼리스트링 제거, 예외 *메시지*는 남기지 않고 에러코드만(`ValueError`→`VALUE_ERROR`), 보조 필드는 `monitoring.scrub()` 통과.
+- **기본 접근로그 침묵**: `BaseHTTPRequestHandler` 기본 로그는 쿼리스트링을 그대로 stderr 에 찍어 `?phone=010-…` 이 유출된다. 핸들러에 `log_message = _log.suppress_access_log` 배선으로 차단. **신규 핸들러 추가 시 반드시 동일 배선할 것.**
+- 끄기: `CALLBOT_LOG=off` (로컬·테스트용, 기본은 켜짐).
+- 오류 응답에는 `request_id`(+DSN 설정 시 `event_id`)를 함께 반환해 사용자 문의를 로그와 대조할 수 있다.

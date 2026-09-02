@@ -130,14 +130,20 @@ def get_ops_summary(baseline=None, period="today"):
 
 from http.server import BaseHTTPRequestHandler
 import _guard
+import _log
 import monitoring
 
 
 class handler(BaseHTTPRequestHandler):
-    def _send(self, code, obj):
+    # 기본 접근로그는 쿼리스트링(PII 가능)을 그대로 찍으므로 침묵 — 구조화 로그가 대체
+    log_message = _log.suppress_access_log
+
+    def _send(self, code, obj, rq=None):
         d = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if rq is not None:
+            _log.attach(self, rq)
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
         self.send_header("Content-Length", str(len(d)))
@@ -148,23 +154,29 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
+        self.send_header("Access-Control-Expose-Headers", "X-Request-Id")
         self.end_headers()
 
     def do_GET(self):
+        rq = _log.begin(self.headers, "/api/ops_stats", "GET", self.path)
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
+            rq.finish(_c, denied=True)
             return _guard.deny(self, _c, _m)
         try:
             q = parse_qs(urlparse(self.path).query)
             period = (q.get("period", ["today"])[0] or "today").strip().lower()
-            self._send(200, get_ops_summary(period=period))
+            rq.set(period=period)
+            self._send(200, get_ops_summary(period=period), rq)
+            rq.finish(200)
         except Exception as e:
             # 오류 모니터링: DSN 미설정이면 no-op, 전송 실패해도 응답에 영향 없음
-            _eid = monitoring.capture_error(e, route="/api/ops_stats", method="GET")
-            _out = {"ok": False, "error": str(e)}
+            _eid = monitoring.capture_error(e, route="/api/ops_stats", method="GET", request_id=rq.request_id)
+            rq.fail(e, 500, event_id=_eid)
+            _out = {"ok": False, "error": str(e), "request_id": rq.request_id}
             if _eid:
                 _out["event_id"] = _eid
-            self._send(500, _out)
+            self._send(500, _out, rq)
 
 
 if __name__ == "__main__":
