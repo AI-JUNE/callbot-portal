@@ -145,8 +145,14 @@ def payload(status=500, code=None, message=None, request_id=None,
 
 
 def send(h, status=500, code=None, message=None, rq=None,
-         details=None, event_id=None, debug=None, request_id=None):
-    """표준 에러 응답을 직접 기록한다. 응답 실패는 서비스에 전파하지 않는다."""
+         details=None, event_id=None, debug=None, request_id=None,
+         extra_headers=None):
+    """표준 에러 응답을 직접 기록한다. 응답 실패는 서비스에 전파하지 않는다.
+
+    extra_headers: [(name, value), ...] 추가 응답 헤더. 요청 제한의
+    Retry-After·X-RateLimit-* 처럼 본문이 아니라 헤더로 알려야 하는 값에 쓴다.
+    이름/값은 개행을 제거해 헤더 인젝션을 막는다.
+    """
     rid = request_id or getattr(rq, "request_id", None)
     obj = payload(status=status, code=code, message=message, request_id=rid,
                   details=details, event_id=event_id, debug=debug)
@@ -155,6 +161,14 @@ def send(h, status=500, code=None, message=None, rq=None,
         h.send_response(obj["status"])
         h.send_header("Content-Type", "application/json; charset=utf-8")
         h.send_header("Cache-Control", "no-store")
+        for _n, _v in (extra_headers or []):
+            try:
+                _n = str(_n).replace("\r", "").replace("\n", "")[:64]
+                _v = str(_v).replace("\r", "").replace("\n", "")[:200]
+                if _n:
+                    h.send_header(_n, _v)
+            except Exception:
+                pass
         if rid:
             try:
                 h.send_header("X-Request-Id", str(rid)[:64])

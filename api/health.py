@@ -192,11 +192,22 @@ def _dep_storage():
                 "in-process(휘발성) — 영속 스토리지 미배선 [승인 필요]")
 
 
-def _dependencies(speech, mon, deep):
+def _dep_ratelimit(rl):
+    """요청 제한 — 인스턴스 로컬 카운터라 정확한 클러스터 쿼터가 아님을 드러낸다."""
+    if not rl.get("enabled"):
+        return _dep("ratelimit", "protection", False, NOT_CONFIGURED,
+                    "CALLBOT_RATE_LIMIT_OFF=1 — 요청 제한 비활성")
+    return _dep("ratelimit", "protection", False, OK,
+                "등급별 제한 활성(인스턴스 로컬, 추적키 %s)" % rl.get("tracked_keys"))
+
+
+def _dependencies(speech, mon, deep, rl=None):
     out = []
+    rl = rl or {}
     for fn in (lambda: _dep_llm(deep), lambda: _dep_order(deep),
                lambda: _dep_speech(speech), _dep_cpaas,
-               lambda: _dep_monitoring(mon), _dep_storage):
+               lambda: _dep_monitoring(mon), _dep_storage,
+               lambda: _dep_ratelimit(rl)):
         try:
             out.append(fn())
         except Exception as e:  # 개별 점검 실패가 헬스 전체를 죽이지 않도록 격리
@@ -261,11 +272,24 @@ def _monitoring():
         return {"enabled": False, "note": "monitoring unavailable: %s" % e}
 
 
+def _ratelimit_status():
+    """요청 제한 상태 — 호출자 IP 는 담지 않는다(개수만)."""
+    try:
+        d = os.path.dirname(__file__)
+        if d not in sys.path:
+            sys.path.insert(0, d)
+        import _ratelimit
+        return _ratelimit.snapshot()
+    except Exception as e:  # 헬스는 절대 실패하지 않는다
+        return {"enabled": False, "note": "ratelimit unavailable: %s" % type(e).__name__}
+
+
 def _payload(query=""):
     deep = _deep_allowed(query)
     speech = _speech()
     mon = _monitoring()
-    deps = _dependencies(speech, mon, deep)
+    rl = _ratelimit_status()
+    deps = _dependencies(speech, mon, deep, rl)
     status = _overall(deps)
     return {
         # ok 는 "프로세스 생존" 신호 — LB/업타임 모니터 호환을 위해 항상 True.
@@ -291,6 +315,7 @@ def _payload(query=""):
         },
         "speech": speech,
         "monitoring": mon,
+        "ratelimit": rl,
     }
 
 

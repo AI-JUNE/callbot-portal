@@ -13,7 +13,7 @@
 #   CALLBOT_STRICT=1     오리진만으로는 불가, API 키 필수(완전 잠금)
 #   CPAAS_WEBHOOK_TOKEN  실전화 웹훅용. voice 웹훅은 ?t=<토큰> 또는 X-Webhook-Token
 #   CALLBOT_ALLOWED_ORIGINS  콤마구분 허용 오리진(기본: 운영 도메인 + localhost)
-#   CALLBOT_RATE_LIMIT   IP당 분당 허용 횟수(기본 40)
+#   CALLBOT_RATE_LIMIT   IP당 분당 허용 횟수(기본 40) — 등급별 한도는 _ratelimit.py
 # ==========================================================================
 import os, sys, time, json
 from urllib.parse import urlparse, parse_qs
@@ -36,34 +36,55 @@ ALLOWED = _env_list("CALLBOT_ALLOWED_ORIGINS", [
     "http://127.0.0.1:3000",
 ])
 
+# --------------------------------------------------------------------------
+# 요청 제한 — 구현은 api/_ratelimit.py (경로 등급별 IP 한도 + 전역 과금 상한).
+# 아래는 하위호환 껍데기다. 기존 호출부(rate_ok)가 그대로 동작한다.
+# --------------------------------------------------------------------------
 WINDOW = 60.0
-_HITS = {}
+
+try:
+    import _ratelimit
+except Exception:  # 부재해도 서비스는 뜬다(가용성 우선)
+    _ratelimit = None
 
 
-def _limit():
-    try:
-        return int((os.environ.get("CALLBOT_RATE_LIMIT") or "40").strip())
-    except Exception:
-        return 40
+def _limit(path=""):
+    if _ratelimit is None:
+        try:
+            return int((os.environ.get("CALLBOT_RATE_LIMIT") or "40").strip())
+        except Exception:
+            return 40
+    return _ratelimit.limits(_ratelimit.route_class(path))[0]
 
 
 def _client_ip(headers):
+    if _ratelimit is not None:
+        return _ratelimit.client_ip(headers)
     xf = (headers.get("x-forwarded-for") or "")
     if xf:
         return xf.split(",")[0].strip()
     return (headers.get("x-real-ip") or "unknown")
 
 
-def rate_ok(headers):
-    ip = _client_ip(headers)
-    now = time.time()
-    q = [t for t in _HITS.get(ip, []) if now - t < WINDOW]
-    if len(q) >= _limit():
-        _HITS[ip] = q
-        return False
-    q.append(now)
-    _HITS[ip] = q
-    return True
+def rate_ok(headers, path=""):
+    """하위호환 진입점. 판정 상세는 _ratelimit.current() 로 꺼낸다."""
+    if _ratelimit is None:
+        return True
+    try:
+        return _ratelimit.check(headers, path).allowed
+    except Exception:
+        return True  # 제한 로직 장애가 서비스 중단이 되지 않게 한다
+
+
+def rate_headers():
+    """직전 판정의 RateLimit 응답 헤더 [(name, value), ...]."""
+    if _ratelimit is None:
+        return []
+    try:
+        d = _ratelimit.current()
+        return d.headers() if d is not None else []
+    except Exception:
+        return []
 
 
 def _origin_ok(headers):
@@ -93,8 +114,15 @@ def allow_origin_header(headers):
 
 def check(headers, path="", allow_webhook=False):
     """(ok, code, msg)"""
-    if not rate_ok(headers):
-        return (False, 429, "rate limit exceeded")
+    if not rate_ok(headers, path):
+        scope = ""
+        try:
+            d = _ratelimit.current()
+            scope = getattr(d, "scope", "") or ""
+        except Exception:
+            pass
+        # scope="global" 은 개별 호출자 잘못이 아니라 서비스 전체 상한이다.
+        return (False, 429, "rate limit exceeded (%s)" % (scope or "ip"))
 
     key = (os.environ.get("CALLBOT_API_KEY") or "").strip()
     if key and (headers.get("x-api-key") or "").strip() == key:
@@ -131,7 +159,8 @@ def deny(h, code, msg, rq=None):
     """
     try:
         import _errors
-        return _errors.send(h, status=code, rq=rq, debug=msg)
+        return _errors.send(h, status=code, rq=rq, debug=msg,
+                            extra_headers=(rate_headers() if code == 429 else None))
     except Exception:
         pass
     body = json.dumps({"ok": False, "error": msg, "code": code}, ensure_ascii=False).encode("utf-8")
