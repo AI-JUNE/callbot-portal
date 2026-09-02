@@ -11,7 +11,7 @@
 ## 공통 상용 필수 (전 제품)
 - [x] **에러 모니터링** — `api/monitoring.py`(의존성 0, Sentry envelope). chat·assist·ops_stats 핸들러 except 배선, `/api/health.monitoring` 상태 노출. `tests/test_monitoring.py` 16건 통과(no-op·PII 마스킹·DSN 미하드코딩·전송실패 격리). DSN은 Vercel 환경변수 `SENTRY_DSN` **[승인 필요: 사람이 등록]**
 - [x] **구조화 로깅** — `api/_log.py`(의존성 0, JSON 1줄/요청). request_id(인바운드 x-request-id·x-vercel-id 승계)·duration_ms·error_code, 응답 헤더 `X-Request-Id`. PII 미기록: 쿼리스트링 제거·예외 메시지 미기록·필드 마스킹, 기본 접근로그(쿼리 PII 유출) 침묵. chat·assist·ops_stats 배선. `tests/test_logging.py` 21건 + E2E 스모크 통과
-- [ ] **/health 확장** — 의존성(DB·외부API) 상태와 버전·커밋 해시 노출(민감정보 제외)
+- [x] **/health 확장** — `api/health.py`에 `version`(build·commit·branch·env·region)과 `dependencies[]`(llm·order_backend·speech·cpaas·monitoring·storage: status/required/detail/latency_ms) 추가. required 기준 `status`=healthy|degraded|unhealthy 산출, 하위호환 키 유지. 기본 shallow(네트워크 무접속)·deep 도달성 점검은 `HEALTH_DEEP=1`+`?deep=1` 동시 충족시 자격증명 없이 TCP만. `tests/test_health.py` 26건 통과(비밀값 미노출·부작용 없음·예외 격리·상태 산출) + E2E GET/HEAD 200
 - [ ] **표준 에러 응답** 전 API 통일 + 입력검증
 - [ ] **rate limit** 공개 API 적용
 - [ ] **접근·감사 로그** — 관리 기능 접근 이력

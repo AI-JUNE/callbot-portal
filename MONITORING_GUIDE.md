@@ -38,3 +38,17 @@
 - **기본 접근로그 침묵**: `BaseHTTPRequestHandler` 기본 로그는 쿼리스트링을 그대로 stderr 에 찍어 `?phone=010-…` 이 유출된다. 핸들러에 `log_message = _log.suppress_access_log` 배선으로 차단. **신규 핸들러 추가 시 반드시 동일 배선할 것.**
 - 끄기: `CALLBOT_LOG=off` (로컬·테스트용, 기본은 켜짐).
 - 오류 응답에는 `request_id`(+DSN 설정 시 `event_id`)를 함께 반환해 사용자 문의를 로그와 대조할 수 있다.
+
+## /health 계약 (업타임 모니터 설정 기준)
+
+`GET /api/health` 는 무인증·no-store JSON. 모니터 알림 규칙은 아래 값에 의존한다.
+
+- `ok`: 프로세스 생존 신호. 응답이 오면 항상 true (LB/업타임 호환).
+- `status`: `healthy` | `degraded` | `unhealthy` — **required 의존성**만 반영.
+  실패 시 알림은 `status != "healthy"` 로 거는 것을 권장(HTTP 코드는 200 고정).
+- `dependencies[]`: `{name, kind, required, status, detail, checked, latency_ms}`.
+  status 값은 `ok`·`not_configured`·`misconfigured`·`simulated`·`error`.
+  `simulated`(CPaaS/음성/데모 주문)은 **장애가 아니라 승인 전 의도된 상태**이므로 알림 대상이 아니다.
+- `version`: `commit`·`commit_short`·`branch`·`env`·`region` (Vercel 시스템 환경변수). 배포 추적용.
+- 심층 점검: `HEALTH_DEEP=1` 환경변수 + `?deep=1` 쿼리가 **모두** 있을 때만 수행하며,
+  자격증명 없이 TCP 연결만 시도한다(LLM·CPaaS 실호출 없음 = 과금 없음). 기본은 OFF.
