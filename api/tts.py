@@ -33,8 +33,9 @@ def _provider_health():
         h = speech_providers.health_report("tts")
         h["voice"] = VOICE
         return h
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except Exception:
+        # 내부 예외 문구는 노출하지 않는다 — 상세는 구조화 로그·모니터링으로 본다
+        return {"ok": False, "error": "provider health unavailable"}
 
 
 def _synth(text):
@@ -51,6 +52,7 @@ def _synth(text):
 import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
+import _errors
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -70,11 +72,8 @@ class handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b)
                 return
-            text = (qs.get("text", [""])[0]).strip()[:1000]
-            if not text:
-                self.send_response(400)
-                self.end_headers()
-                return
+            # 입력검증: text 필수·1000자 상한. 빈 값은 본문 없는 400 대신 표준 봉투로.
+            text = _errors.query_str(qs, "text", max_len=1000, required=True)
             alt = _alt_provider()
             if alt is not None:
                 audio, meta = alt.synthesize(text, voice=VOICE)
@@ -98,7 +97,5 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(audio)
         except Exception as e:
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}, ensure_ascii=False).encode("utf-8"))
+            # 표준 에러 봉투 — 내부 예외 문구 대신 안정 코드로 응답
+            _errors.handle(self, e, route="/api/tts", method="GET")

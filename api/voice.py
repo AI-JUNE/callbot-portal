@@ -257,6 +257,10 @@ def trigger_campaign(numbers, scenario="care", meta=None):
 import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
+import _errors
+
+MAX_WEBHOOK_BODY = 256 * 1024
+
 
 class handler(BaseHTTPRequestHandler):
     def _send(self, obj, code=200):
@@ -299,14 +303,29 @@ class handler(BaseHTTPRequestHandler):
         if not _ok:
             return _guard.deny(self, _c, _m)
         try:
-            n = int(self.headers.get("Content-Length", "0"))
+            # 입력검증: 본문 상한(256KiB). CPaaS 이벤트·폼은 작다 — 과대 본문은 413.
+            try:
+                n = int((self.headers.get("Content-Length") or "0").strip() or "0")
+            except Exception:
+                raise _errors.ValidationError.field("content-length", "정수가 아닙니다")
+            if n < 0:
+                raise _errors.ValidationError.field("content-length", "음수입니다")
+            if n > MAX_WEBHOOK_BODY:
+                raise _errors.ValidationError(
+                    details=[{"field": "body", "reason": "최대 %d바이트" % MAX_WEBHOOK_BODY}],
+                    code="PAYLOAD_TOO_LARGE", status=413)
             raw = self.rfile.read(n) if n else b""
             ctype = (self.headers.get("Content-Type", "") or "").lower()
             if "x-www-form-urlencoded" in ctype or CPAAS == "twilio":
                 form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "ignore")).items()}
                 self._send_xml(handle_twilio(form))
                 return
-            body = json.loads(raw or b"{}")
+            try:
+                body = json.loads(raw or b"{}")
+            except Exception:
+                raise _errors.ValidationError.field("body", "JSON 형식이 아닙니다")
+            if not isinstance(body, dict):
+                raise _errors.ValidationError.field("body", "JSON 객체여야 합니다")
             if body.get("op") == "campaign":
                 self._send(trigger_campaign(body.get("numbers", []), body.get("scenario", "care"), body.get("meta")))
                 return
@@ -317,4 +336,5 @@ class handler(BaseHTTPRequestHandler):
                 _log_call({"from": ev.get("from", ""), "ev": "고객발화", "text": ev.get("text")})
             self._send(handle_event(ev))
         except Exception as e:
-            self._send({"error": str(e)}, 500)
+            # 표준 에러 봉투 — 웹훅 응답도 같은 규약을 따른다(내부 문구 미노출)
+            _errors.handle(self, e, route="/api/voice", method="POST")

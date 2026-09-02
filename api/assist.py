@@ -7,6 +7,9 @@ from engine import _call
 
 MODEL = os.environ.get("CALLBOT_GEMINI_MODEL", "gemini-2.5-flash")
 
+# 지원 태스크 화이트리스트 — 입력검증과 GET 응답이 같은 출처를 쓴다
+TASKS = ("summary", "ta", "qa", "kms")
+
 PROMPTS = {
  "summary": '다음 상담 대화를 요약하라. JSON만 출력: {"summary":"3줄 이내 요약","points":["핵심1","핵심2"],"action":"다음 조치"}',
  "ta": '다음 상담을 텍스트 분석하라. JSON만: {"emotion":"긍정|중립|불만","keywords":["키워드"],"intent":"고객 의도","compliance":"준수|미흡"}',
@@ -39,6 +42,7 @@ import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
 import _log
+import _errors
 import monitoring
 
 class handler(BaseHTTPRequestHandler):
@@ -67,8 +71,8 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             rq.finish(_c, denied=True)
-            return _guard.deny(self, _c, _m)
-        self._send(200, {"ok": True, "tasks": ["summary", "ta", "qa", "kms"]}, rq)
+            return _guard.deny(self, _c, _m, rq)
+        self._send(200, {"ok": True, "tasks": list(TASKS)}, rq)
         rq.finish(200)
 
     def do_POST(self):
@@ -76,21 +80,20 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             rq.finish(_c, denied=True)
-            return _guard.deny(self, _c, _m)
+            return _guard.deny(self, _c, _m, rq)
         try:
-            n = int(self.headers.get("content-length", 0))
-            b = json.loads(self.rfile.read(n) or "{}")
-            task = b.get("task", "summary")
+            # 입력검증: task 는 화이트리스트, 원문·지식은 길이 상한. 위반시 400.
+            b = _errors.read_json(self)
+            task = _errors.as_choice(b, "task", TASKS, default="summary")
+            text = _errors.as_str(b, "text", default="", max_len=20000)
+            kb = _errors.as_str(b, "kb", default="", max_len=20000)
+            if task == "kms" and not text:
+                raise _errors.ValidationError.field("text", "kms 는 질문이 필요합니다")
             # task 종류와 입력 길이만 기록 — 상담 원문은 로그에 남기지 않는다
-            rq.set(task=str(task)[:20], text_len=len(b.get("text", "") or ""))
-            out = run_assist(task, b.get("text", ""), b.get("kb", ""))
+            rq.set(task=task, text_len=len(text))
+            out = run_assist(task, text, kb)
             self._send(200, {"task": task, "result": out}, rq)
             rq.finish(200)
         except Exception as e:
-            # 오류 모니터링: DSN 미설정이면 no-op, 전송 실패해도 응답에 영향 없음
-            _eid = monitoring.capture_error(e, route="/api/assist", method="POST", request_id=rq.request_id)
-            rq.fail(e, 500, event_id=_eid)
-            _out = {"error": str(e), "request_id": rq.request_id}
-            if _eid:
-                _out["event_id"] = _eid
-            self._send(500, _out, rq)
+            # 표준 에러 봉투 + 모니터링(5xx만) + 구조화 로그를 한 번에 처리
+            _errors.handle(self, e, route="/api/assist", method="POST", rq=rq)

@@ -90,6 +90,10 @@ def gate_flags():
     return {n.lower(): _flag(n) for n in GATE_FLAGS}
 
 
+# HTTP 계층 입력검증용 화이트리스트 — 데모 기간 정의와 같은 출처를 쓴다
+PERIODS = tuple(DEMO_PERIODS.keys())
+
+
 def get_ops_summary(baseline=None, period="today"):
     period = period if period in DEMO_PERIODS else "today"
     b = dict(DEMO_BASELINE)
@@ -131,6 +135,7 @@ def get_ops_summary(baseline=None, period="today"):
 from http.server import BaseHTTPRequestHandler
 import _guard
 import _log
+import _errors
 import monitoring
 
 
@@ -162,21 +167,17 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             rq.finish(_c, denied=True)
-            return _guard.deny(self, _c, _m)
+            return _guard.deny(self, _c, _m, rq)
         try:
+            # 입력검증: period 는 화이트리스트. 미지정은 today, 그 외 값은 400.
             q = parse_qs(urlparse(self.path).query)
-            period = (q.get("period", ["today"])[0] or "today").strip().lower()
+            period = _errors.query_choice(q, "period", PERIODS, default="today")
             rq.set(period=period)
             self._send(200, get_ops_summary(period=period), rq)
             rq.finish(200)
         except Exception as e:
-            # 오류 모니터링: DSN 미설정이면 no-op, 전송 실패해도 응답에 영향 없음
-            _eid = monitoring.capture_error(e, route="/api/ops_stats", method="GET", request_id=rq.request_id)
-            rq.fail(e, 500, event_id=_eid)
-            _out = {"ok": False, "error": str(e), "request_id": rq.request_id}
-            if _eid:
-                _out["event_id"] = _eid
-            self._send(500, _out, rq)
+            # 표준 에러 봉투 + 모니터링(5xx만) + 구조화 로그를 한 번에 처리
+            _errors.handle(self, e, route="/api/ops_stats", method="GET", rq=rq)
 
 
 if __name__ == "__main__":

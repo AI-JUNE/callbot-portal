@@ -116,12 +116,21 @@ class TestFailureIsolation(EnvGuard):
 
 
 class TestHandlersWired(unittest.TestCase):
-    def test_handlers_call_capture_error(self):
+    def test_handlers_report_errors(self):
+        """핸들러가 예외를 모니터링으로 흘려보내는지 — 직접 호출 또는 _errors.handle 경유."""
         for name in ("chat.py", "assist.py", "ops_stats.py"):
             with open(os.path.join(ROOT, "api", name), encoding="utf-8") as f:
                 src = f.read()
-            self.assertIn("import monitoring", src, name)
-            self.assertIn("monitoring.capture_error", src, name)
+            self.assertTrue(
+                "monitoring.capture_error" in src or "_errors.handle(" in src,
+                name)
+
+    def test_errors_handle_captures(self):
+        """표준 에러 처리기(_errors.handle)가 5xx 를 monitoring 으로 보낸다."""
+        with open(os.path.join(ROOT, "api", "_errors.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("import monitoring", src)
+        self.assertIn("monitoring.capture_error", src)
 
 
 if __name__ == "__main__":

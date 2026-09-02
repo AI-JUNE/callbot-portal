@@ -23,6 +23,15 @@
 import os, sys, json, time, socket, platform
 from http.server import BaseHTTPRequestHandler
 
+_d = os.path.dirname(__file__)
+if _d not in sys.path:
+    sys.path.insert(0, _d)
+try:
+    import _errors  # 표준 에러 문구 공유 (부재해도 /health 는 동작해야 한다)
+except Exception:   # pragma: no cover
+    class _errors:  # type: ignore
+        MESSAGE_BY_CODE = {"INTERNAL_ERROR": "일시적인 오류가 발생했습니다."}
+
 BUILD = os.environ.get("CALLBOT_BUILD", "dev")
 
 # 의존성 status 값 (문자열 상수로 고정 — 모니터 알림 규칙이 이 값에 의존)
@@ -310,8 +319,12 @@ class handler(BaseHTTPRequestHandler):
             except Exception:
                 q = ""
             self._send(200, _payload(q))
-        except Exception as e:
-            self._send(500, {"ok": False, "status": "error", "error": str(e)})
+        except Exception:
+            # /health 는 status 키가 헬스 등급이므로 표준 봉투의 status(HTTP 코드)와
+            # 충돌한다. 등급 의미를 지키되 code 를 붙이고 내부 문구는 노출하지 않는다.
+            self._send(500, {"ok": False, "status": "error",
+                             "code": "INTERNAL_ERROR",
+                             "error": _errors.MESSAGE_BY_CODE["INTERNAL_ERROR"]})
 
     # HEAD 요청(일부 모니터)도 200으로 응답
     def do_HEAD(self):

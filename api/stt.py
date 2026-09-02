@@ -5,6 +5,21 @@ from http.server import BaseHTTPRequestHandler
 
 MODEL = os.environ.get("CALLBOT_GEMINI_MODEL", "gemini-2.5-flash")
 
+# 브라우저 녹음이 실제로 보내는 컨테이너만 허용 — 임의 mime 로 업스트림을 찌르지 않는다.
+# MediaRecorder 는 브라우저마다 codecs 파라미터를 붙이므로(예: audio/webm;codecs=opus)
+# 파라미터를 떼고 기본 타입만 대조한다. 값 자체는 원문 그대로 넘긴다.
+MIME_BASES = ("audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg",
+              "audio/wav", "audio/x-wav", "audio/aac", "audio/l16", "audio/3gpp")
+
+
+def _check_mime(v):
+    """허용 컨테이너면 원문 반환, 아니면 ValidationError(400)."""
+    raw = (v or "").strip() or "audio/webm"
+    if raw.split(";", 1)[0].strip().lower() in MIME_BASES:
+        return raw
+    raise _errors.ValidationError.field(
+        "mime", "허용 컨테이너: %s" % ", ".join(MIME_BASES))
+
 
 def _key():
     return (os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
@@ -34,8 +49,9 @@ def _provider_health():
         _s.path.insert(0, os.path.dirname(__file__))
         import speech_providers
         return speech_providers.health_report("stt")
-    except Exception as e:  # 모듈 부재·임포트 실패 시에도 엔드포인트 정상 응답
-        return {"ok": False, "error": str(e)}
+    except Exception:  # 모듈 부재·임포트 실패 시에도 엔드포인트 정상 응답
+        # 내부 예외 문구는 노출하지 않는다 — 상세는 구조화 로그·모니터링으로 본다
+        return {"ok": False, "error": "provider health unavailable"}
 
 
 def transcribe(audio_b64, mime):
@@ -78,6 +94,7 @@ def transcribe(audio_b64, mime):
 import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
+import _errors
 
 class handler(BaseHTTPRequestHandler):
     def _send(self, obj, code=200):
@@ -103,14 +120,17 @@ class handler(BaseHTTPRequestHandler):
         if not _ok:
             return _guard.deny(self, _c, _m)
         try:
-            n = int(self.headers.get("Content-Length", "0"))
-            body = json.loads(self.rfile.read(n) or "{}")
+            # 입력검증: base64 오디오 상한(8MiB)·mime 화이트리스트. 위반시 400/413.
+            body = _errors.read_json(self, max_bytes=_errors.MAX_BODY_AUDIO)
+            audio = _errors.as_str(body, "audio", required=True, max_len=_errors.MAX_BODY_AUDIO,
+                                   allow_empty=False)
+            mime = _check_mime(_errors.as_str(body, "mime", default="audio/webm", max_len=120))
             alt = _alt_provider()
             if alt is not None:
-                r = alt.transcribe(body.get("audio", ""), body.get("mime", "audio/webm"))
+                r = alt.transcribe(audio, mime)
                 self._send(r)
                 return
-            text = transcribe(body.get("audio", ""), body.get("mime", "audio/webm"))
-            self._send({"text": text, "model": MODEL})
+            self._send({"text": transcribe(audio, mime), "model": MODEL})
         except Exception as e:
-            self._send({"error": str(e)})
+            # 표준 에러 봉투 — 내부 예외 문구 대신 안정 코드로 응답
+            _errors.handle(self, e, route="/api/stt", method="POST")

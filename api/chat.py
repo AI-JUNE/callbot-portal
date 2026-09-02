@@ -10,6 +10,7 @@ import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
 import _log
+import _errors
 import monitoring
 
 class handler(BaseHTTPRequestHandler):
@@ -30,7 +31,7 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             rq.finish(_c, denied=True)
-            return _guard.deny(self, _c, _m)
+            return _guard.deny(self, _c, _m, rq)
         self._send(200,{"ok":True,"google_key_present":_key(),"model":os.environ.get("CALLBOT_GEMINI_MODEL","gemini-2.5-flash")},rq)
         rq.finish(200)
     def do_POST(self):
@@ -38,19 +39,18 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             rq.finish(_c, denied=True)
-            return _guard.deny(self, _c, _m)
+            return _guard.deny(self, _c, _m, rq)
         try:
-            n=int(self.headers.get("content-length",0)); body=json.loads(self.rfile.read(n) or "{}")
-            msgs = body.get("messages",[])
+            # 입력검증: 본문 상한·타입·길이. 위반은 400(details 포함)으로 즉시 거부.
+            body = _errors.read_json(self)
+            msgs = _errors.as_list(body, "messages", required=True, max_items=100, item_type=dict)
+            if not msgs:
+                raise _errors.ValidationError.field("messages", "최소 1개 필요합니다")
+            phone = _errors.as_str(body, "phone", default="01012345678", max_len=32)
             # 건수만 기록 — 대화 내용·전화번호는 로그에 남기지 않는다
-            rq.set(msg_count=len(msgs) if isinstance(msgs,list) else 0)
-            self._send(200, run_turn(msgs, body.get("phone","01012345678")), rq)
+            rq.set(msg_count=len(msgs))
+            self._send(200, run_turn(msgs, phone), rq)
             rq.finish(200)
         except Exception as e:
-            # 오류 모니터링: DSN 미설정이면 no-op, 전송 실패해도 응답에 영향 없음
-            _eid = monitoring.capture_error(e, route="/api/chat", method="POST", request_id=rq.request_id)
-            rq.fail(e, 500, event_id=_eid)
-            _out = {"error": str(e), "request_id": rq.request_id}
-            if _eid:
-                _out["event_id"] = _eid
-            self._send(500, _out, rq)
+            # 표준 에러 봉투 + 모니터링(5xx만) + 구조화 로그를 한 번에 처리
+            _errors.handle(self, e, route="/api/chat", method="POST", rq=rq)
