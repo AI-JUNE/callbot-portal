@@ -5,3 +5,8 @@ all_extract.js
 
 __pycache__/
 *.pyc
+
+# 커버리지 측정 산출물(로컬·CI 임시)
+.coverage
+.coverage.*
+htmlcov/

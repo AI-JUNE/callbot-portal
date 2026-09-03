@@ -1,0 +1,44 @@
+# CI — main 으로 가는 모든 변경에 같은 게이트를 건다.
+# 로컬에서 사람이 잊어도 여기서 걸리도록, 로컬 게이트와 **같은 스크립트**를 실행한다.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 시크릿을 요구하지 않는다. 테스트는 외부 호출 없이 도는 것만 둔다.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 복구 리허설이 전체 이력을 번들로 묶는다
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 런타임 의존성은 0. 테스트 도구만 설치한다.
+      - name: 테스트 도구 설치
+        run: pip install pytest coverage
+
+      - name: 단위 테스트
+        run: python -m coverage run --source=api -m pytest tests/ -q
+
+      - name: 커버리지 보고
+        run: python -m coverage report --sort=cover
+
+      # 문법·HTML·중복 id·금지어(§13-1)·복지 잔재(§13-5)
+      - name: 릴리스 게이트
+        run: python scripts/verify.py
+
+      # 백업본에서 실제로 되살아나는지 — 문서만 있는 절차는 검증된 절차가 아니다
+      - name: 복구 리허설
+        run: python scripts/restore_drill.py
