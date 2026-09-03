@@ -211,6 +211,9 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
             else:
                 out=_dispatch(c["name"],c["args"]); log.append({"turn":"tool","tool":c["name"],"out":out})
                 if c["name"]=="escalate_to_agent":
+                    # 전환은 이 턴에서 즉시 확정한다. (과거엔 mem 이 갱신되지 않아
+                    # transferred 가 다음 턴에야 True 가 되어 봇이 한 턴 더 응대했다)
+                    mem["transferred"]=True
                     tk=_esc_enqueue(c["args"].get("reason","request"),c["args"].get("summary",""),scenario)
                     if tk: log.append({"turn":"escalation","ticket":tk["id"],"reason":tk["reason"]})
                 if c["name"]=="lookup_recent_order" and out.get("found"): mem["order_id"]=out.get("order_id")

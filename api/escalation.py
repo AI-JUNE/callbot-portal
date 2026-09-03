@@ -102,7 +102,8 @@ class EscalationQueue:
         return s
 
     def audit_log(self):
-        return list(self._audit)
+        # 항목까지 복사한다 — 호출자가 반환값을 고쳐도 감사 기록 원본은 불변.
+        return [dict(e) for e in self._audit]
 
     def _log(self, tid, old, new, note):
         self._audit.append({"ts": time.time(), "ticket": tid, "from": old, "to": new, "note": note})
