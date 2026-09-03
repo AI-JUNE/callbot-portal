@@ -258,8 +258,22 @@ import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
 import _errors
+try:
+    import _audit          # 관리 기능 접근 감사 (부재해도 웹훅은 동작한다)
+except Exception:          # pragma: no cover
+    _audit = None
 
 MAX_WEBHOOK_BODY = 256 * 1024
+
+
+def _audit_ev(headers, path, method, result, status, **extra):
+    """웹훅 접근 감사 — 실패해도 통화 처리를 막지 않는다(가용성 우선)."""
+    if _audit is None:
+        return None
+    try:
+        return _audit.record_request(headers, path, method, result, status, **extra)
+    except Exception:
+        return None
 
 
 class handler(BaseHTTPRequestHandler):
@@ -289,7 +303,9 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=True)
         if not _ok:
+            _audit_ev(self.headers, self.path, "GET", "deny", _c)
             return _guard.deny(self, _c, _m)
+        _audit_ev(self.headers, self.path, "GET", "allow", 200)
         q = parse_qs(urlparse(self.path).query)
         if q.get("op", [""])[0] == "log":
             self._send({"ok": True, "live": LIVE, "recent": RECENT, "webhook": "/api/voice", "provider": CPAAS})
@@ -301,7 +317,9 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=True)
         if not _ok:
+            _audit_ev(self.headers, self.path, "POST", "deny", _c)
             return _guard.deny(self, _c, _m)
+        _audit_ev(self.headers, self.path, "POST", "allow", 200, live=LIVE)
         try:
             # 입력검증: 본문 상한(256KiB). CPaaS 이벤트·폼은 작다 — 과대 본문은 413.
             try:

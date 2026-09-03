@@ -201,13 +201,24 @@ def _dep_ratelimit(rl):
                 "등급별 제한 활성(인스턴스 로컬, 추적키 %s)" % rl.get("tracked_keys"))
 
 
-def _dependencies(speech, mon, deep, rl=None):
+def _dep_audit(au):
+    """접근·감사 로그 — 기록 여부와 '휘발성'이라는 한계를 함께 드러낸다."""
+    if not au.get("enabled"):
+        return _dep("audit", "compliance", False, NOT_CONFIGURED,
+                    "CALLBOT_AUDIT=off — 관리 기능 접근 이력 미기록")
+    return _dep("audit", "compliance", False, OK,
+                "관리 기능 접근 기록 중(stdout+메모리 %d/%d) — 영속 감사 저장소 미배선 [승인 필요]"
+                % (au.get("buffered") or 0, au.get("capacity") or 0))
+
+
+def _dependencies(speech, mon, deep, rl=None, au=None):
     out = []
     rl = rl or {}
+    au = au or {}
     for fn in (lambda: _dep_llm(deep), lambda: _dep_order(deep),
                lambda: _dep_speech(speech), _dep_cpaas,
                lambda: _dep_monitoring(mon), _dep_storage,
-               lambda: _dep_ratelimit(rl)):
+               lambda: _dep_ratelimit(rl), lambda: _dep_audit(au)):
         try:
             out.append(fn())
         except Exception as e:  # 개별 점검 실패가 헬스 전체를 죽이지 않도록 격리
@@ -284,12 +295,25 @@ def _ratelimit_status():
         return {"enabled": False, "note": "ratelimit unavailable: %s" % type(e).__name__}
 
 
+def _audit_status():
+    """감사 로그 상태 — 개별 이벤트·식별자는 담지 않는다(개수만)."""
+    try:
+        d = os.path.dirname(__file__)
+        if d not in sys.path:
+            sys.path.insert(0, d)
+        import _audit
+        return _audit.snapshot()
+    except Exception as e:  # 헬스는 절대 실패하지 않는다
+        return {"enabled": False, "note": "audit unavailable: %s" % type(e).__name__}
+
+
 def _payload(query=""):
     deep = _deep_allowed(query)
     speech = _speech()
     mon = _monitoring()
     rl = _ratelimit_status()
-    deps = _dependencies(speech, mon, deep, rl)
+    au = _audit_status()
+    deps = _dependencies(speech, mon, deep, rl, au)
     status = _overall(deps)
     return {
         # ok 는 "프로세스 생존" 신호 — LB/업타임 모니터 호환을 위해 항상 True.
@@ -316,6 +340,7 @@ def _payload(query=""):
         "speech": speech,
         "monitoring": mon,
         "ratelimit": rl,
+        "audit": au,
     }
 
 
@@ -343,7 +368,17 @@ class handler(BaseHTTPRequestHandler):
                 q = (self.path or "").split("?", 1)[1]
             except Exception:
                 q = ""
-            self._send(200, _payload(q))
+            payload = _payload(q)
+            # 감사: deep 점검은 외부 도달성 시도를 유발하는 '관리 기능'이므로 기록한다.
+            # shallow 헬스체크(업타임 모니터의 대량 호출)는 기록하지 않는다.
+            if payload.get("checks", {}).get("mode") == "deep":
+                try:
+                    import _audit
+                    _audit.record(self.headers, "ops.health.deep", "allow", status=200,
+                                  method="GET", path=self.path)
+                except Exception:
+                    pass
+            self._send(200, payload)
         except Exception:
             # /health 는 status 키가 헬스 등급이므로 표준 봉투의 status(HTTP 코드)와
             # 충돌한다. 등급 의미를 지키되 code 를 붙이고 내부 문구는 노출하지 않는다.

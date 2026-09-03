@@ -137,6 +137,10 @@ import _guard
 import _log
 import _errors
 import monitoring
+try:
+    import _audit          # 관리 기능 접근 감사 (부재해도 서비스는 뜬다)
+except Exception:          # pragma: no cover
+    _audit = None
 
 
 class handler(BaseHTTPRequestHandler):
@@ -166,6 +170,10 @@ class handler(BaseHTTPRequestHandler):
         rq = _log.begin(self.headers, "/api/ops_stats", "GET", self.path)
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
+            # 감사: 실패한 관리 기능 접근 시도가 오히려 추적 가치가 높다
+            if _audit:
+                _audit.record_request(self.headers, self.path, "GET", "deny", _c,
+                                      request_id=rq.request_id)
             rq.finish(_c, denied=True)
             return _guard.deny(self, _c, _m, rq)
         try:
@@ -173,6 +181,9 @@ class handler(BaseHTTPRequestHandler):
             q = parse_qs(urlparse(self.path).query)
             period = _errors.query_choice(q, "period", PERIODS, default="today")
             rq.set(period=period)
+            if _audit:
+                _audit.record_request(self.headers, self.path, "GET", "allow", 200,
+                                      request_id=rq.request_id, period=period)
             self._send(200, get_ops_summary(period=period), rq)
             rq.finish(200)
         except Exception as e:
