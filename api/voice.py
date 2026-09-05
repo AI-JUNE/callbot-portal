@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 import os, sys, json, time
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, quote
 from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -54,14 +54,40 @@ def _now():
     return time.strftime("%H:%M:%S")
 
 
+def _mask_phone(v):
+    """통화 로그에 원문 번호를 남기지 않는다(앞 3자리 + 뒤 4자리만).
+
+    /api/voice?op=log 는 콘솔이 4초마다 폴링하는 공개 경로다. 화면은 번호를
+    쓰지 않으므로(admin.html cpaasRenderLog) 마스킹해도 기능 손실이 없다.
+    """
+    s = "".join(ch for ch in str(v or "") if ch.isdigit())
+    if not s:
+        return ""
+    if len(s) < 8:
+        return "*" * len(s)
+    return s[:3] + "*" * (len(s) - 7) + s[-4:]
+
+
 def _log_call(entry):
     entry["t"] = _now()
+    if "from" in entry:
+        entry["from"] = _mask_phone(entry.get("from"))
     RECENT.insert(0, entry)
     del RECENT[60:]
 
 
 def _xesc(s):
+    """XML 텍스트 노드 이스케이프."""
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _xattr(s):
+    """XML 속성값 이스케이프 — 따옴표까지 막아야 속성 주입이 불가능하다.
+
+    CallId·발신번호는 외부(CPaaS)에서 들어오는 값이라 텍스트 이스케이프만으로는
+    `" onX="` 형태로 속성을 덧붙일 수 있었다.
+    """
+    return _xesc(s).replace('"', "&quot;").replace("'", "&apos;")
 
 
 def _vml(inner):
@@ -73,9 +99,10 @@ def _action_url(cid):
     tok = (os.environ.get("CPAAS_WEBHOOK_TOKEN", "") or "").strip()
     qs = []
     if tok:
-        qs.append("t=" + tok)
+        qs.append("t=" + quote(tok, safe=""))
     if cid:
-        qs.append("cid=" + _xesc(cid))
+        # 퍼센트 인코딩 후에는 XML 특수문자가 남지 않는다(속성 주입 차단).
+        qs.append("cid=" + quote(str(cid), safe=""))
     return base + "/api/voice" + ("?" + "&amp;".join(qs) if qs else "")
 
 
@@ -97,7 +124,7 @@ def _say_then_dial(text, number, caller_id, cid):
         '<Say language="ko-KR">%s</Say>'
         '<Dial timeout="30" callerId="%s" action="%s"><Number>%s</Number></Dial>'
         '<Say language="ko-KR">상담원 연결이 어렵습니다. 잠시 후 다시 이용해 주세요.</Say><Hangup/>'
-        % (_xesc(text), _xesc(caller_id), _action_url(cid), _xesc(number)))
+        % (_xesc(text), _xattr(caller_id), _action_url(cid), _xesc(number)))
 
 
 def handle_twilio(p):
@@ -137,6 +164,11 @@ def handle_twilio(p):
     if not rec_url:
         return _say_then_record(GREETING, cid)
 
+    # 같은 녹음이 두 번 배달되면(웹훅 재시도) 직전 응답을 그대로 돌려준다.
+    # 재처리하면 STT·LLM 이 두 번 과금되고, 환불 같은 도구가 두 번 실행된다.
+    if rec_url and sess.get("last_rec") == rec_url and sess.get("last_vml"):
+        return sess["last_vml"]
+
     # 녹음 있음 -> STT
     if rec_dur in ("", "0", "0.0"):
         return _say_then_record("죄송합니다, 잘 못 들었어요. 다시 말씀해 주시겠어요?", cid)
@@ -149,14 +181,19 @@ def handle_twilio(p):
         sess["messages"].append({"role": "user", "content": user_text})
         r = run_turn(sess["messages"], phone=frm, scenario=sess["scenario"])
         sess["messages"] = r["messages"]
-        _Session.put(cid, sess)
         _log_call({"from": frm, "ev": "봇응답", "text": r.get("reply", "")})
         if r.get("transferred"):
             agent = (os.environ.get("CALLBOT_AGENT_PHONE", "") or "").strip()
             if agent:
-                return _say_then_dial("상담사에게 연결해 드리겠습니다. 잠시만 기다려 주세요.", agent, to, cid)
-            return _say_then_hangup("죄송합니다, 지금은 상담사 연결이 어렵습니다. 잠시 후 다시 이용해 주세요.")
-        return _say_then_record(r["reply"], cid)
+                out = _say_then_dial("상담사에게 연결해 드리겠습니다. 잠시만 기다려 주세요.", agent, to, cid)
+            else:
+                out = _say_then_hangup("죄송합니다, 지금은 상담사 연결이 어렵습니다. 잠시 후 다시 이용해 주세요.")
+        else:
+            out = _say_then_record(r["reply"], cid)
+        sess["last_rec"] = rec_url
+        sess["last_vml"] = out
+        _Session.put(cid, sess)
+        return out
     return _say_then_hangup("현재 점검 중입니다. 잠시 후 다시 시도해 주세요.")
 
 
@@ -165,9 +202,12 @@ def _parse_event(body):
         et = body.get("event")
         typ = {"call.answered": "answered", "call.recording": "speech",
                "call.completed": "completed"}.get(et, et)
+        meta = body.get("metadata")
+        if not isinstance(meta, dict):   # 문자열·배열이 와도 500 이 되지 않게
+            meta = {}
         return {"type": typ, "call_id": body.get("callId") or body.get("call_id"),
                 "from": body.get("from"), "to": body.get("to"),
-                "scenario": (body.get("metadata") or {}).get("scenario", "refund"),
+                "scenario": meta.get("scenario", "refund"),
                 "audio_b64": body.get("audio"), "mime": body.get("mime", "audio/wav"),
                 "recording_url": body.get("recordingUrl")}
     return {"type": body.get("type", "answered"), "call_id": body.get("call_id", "demo-call"),
@@ -188,9 +228,13 @@ def _act_transfer():
 
 
 def handle_event(ev):
-    cid = ev["call_id"]
+    cid = ev.get("call_id") or "call"
     if ev["type"] == "answered":
-        _Session.put(cid, {"messages": [], "scenario": ev["scenario"], "phone": ev["from"], "started": time.time()})
+        sess = _Session.get(cid)
+        if sess is None:
+            _Session.put(cid, {"messages": [], "scenario": ev["scenario"],
+                               "phone": ev["from"], "started": time.time()})
+        # 이미 세션이 있으면 answered 재배달이다 — 대화 이력을 지우지 않는다.
         return _act_say_then_listen(GREETING)
     if ev["type"] == "speech":
         sess = _Session.get(cid) or {"messages": [], "scenario": ev["scenario"], "phone": ev["from"]}
