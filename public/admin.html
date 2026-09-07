@@ -460,6 +460,10 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
 </style>
 </head>
 <body>
+<div id="sample-banner" role="status" style="position:sticky;top:0;z-index:9999;background:#7c2d12;color:#fff;font-size:12.5px;font-weight:700;text-align:center;padding:7px 12px;letter-spacing:.2px">
+  본 콘솔에 표시되는 통계·회선·상담사·인식률 등 모든 수치는 <u>샘플 데이터</u>이며 실제 운영 실적이 아닙니다.
+</div>
+
 <div id="srlive" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 <div class="app show" id="app">
   <a href="#mainwrap" class="skip">본문 바로가기</a>
@@ -683,7 +687,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
             <button class="primary" onclick="agtAdd()">추가</button><button onclick="agtShowForm()">취소</button></div>
           <table><thead><tr><th>콜봇명</th><th>유형</th><th>채널/번호</th><th>TTS 모델</th><th>워크플로우</th><th>상태</th></tr></thead>
           <tbody id="agtBody"></tbody></table>
-          <div class="hint" style="padding:12px 18px">에이전트 생성·수정·유형 설정 · 채널/번호 등 속성 통합 관리 · TTS 모델 선택 · 워크플로우 연계 (제안서 기준)</div></div>
+          <div class="hint" style="padding:12px 18px">에이전트 생성·수정·유형 설정 · 채널/번호 등 속성 통합 관리 · TTS 모델 선택 · 워크플로우 연계</div></div>
       </section>
       <section id="view-builder" class="hidden">
         <div class="card"><h3>🧩 시나리오 빌더 <span class="r" id="scnTabs"><span class="seg"><button class="on" onclick="pickScn('welfare',this)">고객 문의 상담</button><button onclick="pickScn('trio',this)">예약·접수</button><button onclick="pickScn('refund',this)">반품·교환·환불</button><button onclick="pickScn('integrity',this)">여신 청렴도 조사</button><button onclick="pickScn('overdue',this)">연체 안내(생성형AI)</button></span> <button id="bUndoBtn" onclick="bUndo()" disabled title="되돌릴 편집이 없습니다">↶ 실행취소</button> <button id="bRedoBtn" onclick="bRedo()" disabled title="다시 실행할 편집이 없습니다">↷ 다시실행</button> <button onclick="bValidate()">✓ 검증</button> <button onclick="fullCheck()" title="구조 검증과 배치 테스트를 한번에 실행하고 결과를 검증 패널에 요약합니다">⚡ 전체 점검</button> <button onclick="bExport()">⬇ JSON</button> <button onclick="document.getElementById('bImpFile').click()">⬆ 가져오기</button><input type="file" id="bImpFile" accept=".json,application/json" style="display:none" aria-label="시나리오 JSON 가져오기" onchange="bImport(event)"/> <button onclick="scnSaveVer()">💾 버전 저장</button> <button onclick="scnVersions()">🕘 버전</button> <button onclick="scnDiffOpen()">⇄ 비교</button> <button class="primary" onclick="bAddNode()">+ 노드</button></span></h3>
@@ -791,7 +795,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
         <div class="card"><h3>📚 지식 관리 (KMS) <span class="r"><input type="file" id="kbFile" aria-label="지식 파일 업로드" accept=".csv,.xlsx,.xls" style="display:none" onchange="kbImport(event)"/><button onclick="document.getElementById('kbFile').click()">⬆ 엑셀/CSV 업로드</button> <button class="primary" onclick="kbAddFaq()">+ FAQ</button></span></h3>
           <div class="kbsearch">🔎 <input id="kbq" aria-label="지식 문서 검색" placeholder="정책·FAQ 검색" oninput="filterKb()"/></div>
           <div class="kb" id="kbList"></div>
-          <div class="hint" style="padding:0 18px 14px">카테고리 트리 분류 · LLM 자동 요약 · 버전 비교 이력 · PDF/DOC/HTML 동기화 (제안서 기준)</div></div>
+          <div class="hint" style="padding:0 18px 14px">카테고리 트리 분류 · LLM 자동 요약 · 버전 비교 이력 · PDF/DOC/HTML 동기화</div></div>
       </section>
       <section id="view-rag" class="hidden">
         <div class="card"><h3>🔎 AI · 검색 (RAG) <span class="r"><button onclick="ragReindex()">🔄 재색인</button> <span style="color:var(--dim);font-size:11px">Milvus + Elasticsearch</span></span></h3>
@@ -802,7 +806,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
           <div class="switch"><div><b>ReRanking(Cross-Encoder/LLM)</b><div class="hint" style="padding:2px 0 0">재순위화</div></div><div class="sw" onclick="this.classList.toggle('off')"></div></div>
           <div class="field"><label>임베딩 모델</label><select aria-label="임베딩 모델 선택"><option>ko-sbert-multitask</option><option>bge-m3</option><option>OpenAI text-embedding-3</option></select></div>
           <div class="field"><label>검색 Top-K</label><input id="ragTopK" aria-label="검색 Top-K 개수" value="5" /></div>
-          <div class="hint" style="padding:12px 18px">7단계 RAG: 수집→전처리→청킹→임베딩→검색→재순위화→생성 · 검증기 병렬 교차 검증 (제안서 기준)</div></div>
+          <div class="hint" style="padding:12px 18px">7단계 RAG: 수집→전처리→청킹→임베딩→검색→재순위화→생성 · 검증기 병렬 교차 검증</div></div>
       </section>
       <section id="view-agents" class="hidden">
         <div class="card" style="margin-bottom:16px"><h3>🔀 실시간 콜 배정 <span class="r"><span class="live">LIVE</span> <span style="color:var(--dim);font-size:11px">대기 콜을 대기 상담사에 자동 배정</span></span></h3>
@@ -818,7 +822,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
       <section id="view-accounts" class="hidden">
         <div class="card"><h3>🔐 계정 · 권한 (RBAC) <span class="r"><button class="primary" onclick="acctAdd()">+ 사용자</button></span></h3>
           <table><thead><tr><th>이름</th><th>이메일</th><th>역할</th><th>권한 범위</th><th>인증</th><th>상태</th></tr></thead><tbody id="acctBody">
-            <tr><td>관리자</td><td>admin@callbot</td><td>운영 관리자</td><td>전체</td><td>ID/PW+OTP</td><td><span class="tag pos" onclick="acctToggle(this)" style="cursor:pointer">활성</span></td></tr>
+            <tr><td colspan="7" style="color:#aab3c5;text-align:center">등록된 계정이 없습니다. 실인증 활성화 후 계정을 생성하세요.</td></tr>
             <tr><td>김운영</td><td>op1@callbot</td><td>시나리오 운영</td><td>빌더·지식</td><td>ID/PW</td><td><span class="tag pos" onclick="acctToggle(this)" style="cursor:pointer">활성</span></td></tr>
             <tr><td>이통계</td><td>op2@callbot</td><td>통계 조회</td><td>대시보드·리포트</td><td>ID/PW</td><td><span class="tag pos" onclick="acctToggle(this)" style="cursor:pointer">활성</span></td></tr>
             <tr><td>고원_SE</td><td>se@gowon</td><td>구축/유지보수</td><td>전체(임시)</td><td>ID/PW+OTP</td><td><span class="tag neu">제한</span></td></tr>
@@ -960,7 +964,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
             <tr><td>M10</td><td>통합통계</td><td>전광판</td><td>/board</td><td>1</td><td>Y</td></tr>
             <tr><td>M11</td><td>통합통계</td><td>콜봇 이용통계</td><td>/statin</td><td>2</td><td>Y</td></tr>
             <tr><td>M30</td><td>운영 관리</td><td>서비스 설정</td><td>/svccfg</td><td>1</td><td>Y</td></tr></tbody></table></div>
-          <div class="hint" style="padding:12px 18px">삭제 없이 '사용여부'로 관리 · 메뉴 순번 = 좌측 메뉴 정렬 (화면설계서 기준)</div></div>
+          <div class="hint" style="padding:12px 18px">삭제 없이 '사용여부'로 관리 · 메뉴 순번 = 좌측 메뉴 정렬</div></div>
       </section>
 
       <!-- ===== 멀티모달 ===== -->
@@ -986,7 +990,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
           <div class="toolbar"><span class="seg"><button class="on" onclick="segPick(this)">전체</button><button onclick="segPick(this)">멀티모달</button><button onclick="segPick(this)">스마트ARS</button></span>
             <span class="sp"></span><input id="mmQ" aria-label="멀티모달 이력 검색" oninput="renderMmhist()" style="background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;width:200px" placeholder="번호·서비스 검색"/><button onclick="renderMmhist()">조회</button></div>
           <table><thead><tr><th>구분</th><th>일자</th><th>휴대폰</th><th>시작</th><th>종료</th><th>연결시간</th><th>이용서비스</th><th>최종접속</th><th>여정</th><th>로그</th></tr></thead><tbody id="mmBody"></tbody></table>
-          <div class="hint" style="padding:12px 18px">휴대폰번호 마스킹 · 여정/로그 상세 팝업 (화면설계서 기준)</div></div>
+          <div class="hint" style="padding:12px 18px">휴대폰번호 마스킹 · 여정/로그 상세 팝업</div></div>
       </section>
 
       <section id="view-docs" class="hidden">
@@ -997,13 +1001,13 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
             <tr><td>3</td><td>배송</td><td>배송 확인서</td><td class="k">260</td><td class="k">248</td><td class="k">201</td></tr>
             <tr><td>4</td><td>멤버십</td><td>등급 안내문</td><td class="k">180</td><td class="k">170</td><td class="k">120</td></tr>
           </tbody></table>
-          <div class="hint" style="padding:12px 18px">통계기반 자동 TOP10 또는 수동 지정(드래그 순서·유지기간) (화면설계서 기준)</div></div>
+          <div class="hint" style="padding:12px 18px">통계기반 자동 TOP10 또는 수동 지정(드래그 순서·유지기간)</div></div>
       </section>
 
       <section id="view-qa" class="hidden">
         <div class="kpis">
-          <div class="kpi"><div class="l">🎯 STT 인식률</div><div class="v">96.2%</div><div class="s">목표 ≥90%</div></div>
-          <div class="kpi"><div class="l">🧠 의도분석 정확도</div><div class="v">94.8%</div><div class="s">목표 ≥90%</div></div>
+          <div class="kpi"><div class="l">🎯 STT 인식률</div><div class="v">96.2%</div><div class="s">샘플 수치</div></div>
+          <div class="kpi"><div class="l">🧠 의도분석 정확도</div><div class="v">94.8%</div><div class="s">샘플 수치</div></div>
           <div class="kpi"><div class="l">🔁 의도 재분류</div><div class="v">92.5%</div><div class="s">정확도</div></div>
           <div class="kpi"><div class="l">✍ 문장수 준수율</div><div class="v">98.1%</div><div class="s">2문장 이내</div></div>
           <div class="kpi"><div class="l">🛡 부적절 답변 거부</div><div class="v">100%</div><div class="s">거부율</div></div>
@@ -1190,7 +1194,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
 <tr><td>PATTERN</td><td class="k">38,510</td><td class="k">35,200</td><td class="k">3,310</td><td class="k">91.4%</td><td class="k">90.2</td></tr>
 <tr><td>DL(BERT)</td><td class="k">38,510</td><td class="k">36,400</td><td class="k">2,110</td><td class="k">94.5%</td><td class="k">93.8</td></tr>
 <tr class="subtot"><td>통합(앙상블)</td><td class="k">38,510</td><td class="k">36,900</td><td class="k">1,610</td><td class="k">95.8%</td><td class="k">95.1</td></tr></tbody></table>
-<div class="hint" style="padding:8px 0 0">Precision·Recall·F1·Accuracy + Confusion Matrix · 목표 ≥90% · 학습데이터(의도·질의·답변·시나리오) 정합성 자동검사 · 배포 승인→적용·스냅샷 복원</div></div></div>
+<div class="hint" style="padding:8px 0 0">Precision·Recall·F1·Accuracy + Confusion Matrix · 샘플 수치 · 학습데이터(의도·질의·답변·시나리오) 정합성 자동검사 · 배포 승인→적용·스냅샷 복원</div></div></div>
       </section>
 
       <section id="view-sllm" class="hidden">
