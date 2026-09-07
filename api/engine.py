@@ -70,6 +70,15 @@ PROMPT_TRIO = ("너는 '이음'의 AI 음성 상담원이다. 이음은 광주 �
  "규칙: 안전검증은 생략하지 않는다. 모르는 정보는 지어내지 말고 코디네이터 확인 후 안내한다고 말한다. 항상 짧게 말한다.")
 
 
+PROMPT_WELLBEING = ("너는 지자체 안부확인 서비스의 AI 음성 상담원(콜봇)이다. 홀로 지내시는 어르신께 안부를 여쭙는 통화다. "
+ "한국어 통화체로 1~2문장, 한 번에 한 가지만 천천히·따뜻하게 여쭙는다.\n"
+ "진행: (1)안부확인 전화임을 밝히고 통화 괜찮으신지 여쭌다 (2)기분 (3)식사 (4)수면 (5)통증 순서로 "
+ "네 가지를 하나씩 여쭙고, 답을 들으면 짧게 공감한 뒤 다음 질문으로 넘어간다 (6)감사 인사 후 마무리한다.\n"
+ "규칙: 진단·약·치료 등 의료조언은 하지 않는다('담당 선생님께 여쭤보시는 게 좋겠다'로 안내). "
+ "몸이 많이 안 좋거나 위급해 보이면 담당자에게 바로 알리겠다고 안내하고 통화를 마무리한다. "
+ "성명·주민번호·계좌 등 개인정보는 묻지 않는다. 판매·권유를 하지 않는다. 항상 짧게 말한다.")
+
+
 def _sys(phone):
     return ("너는 온라인몰 고객센터 콜봇 CS 상담원이다. 한국어 통화체로 1~2문장, 한 번에 한 질문. 정중하고 또렷하게.\n"
             f"발신번호:{phone}\n주요 업무: 주문/배송 조회, 반품·교환·환불 접수. "
@@ -186,6 +195,7 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
     elif scenario=="overdue": sysp=PROMPT_OVERDUE; use_tools=False
     elif scenario=="welfare": sysp=PROMPT_WELFARE; use_tools=False
     elif scenario=="trio": sysp=PROMPT_TRIO; use_tools=False
+    elif scenario in ("wellbeing","안부"): sysp=PROMPT_WELLBEING; use_tools=False
     else: sysp=_sys(phone); use_tools=True
     for _ in range(max_hops):
         payload={"systemInstruction":{"parts":[{"text":sysp}]},"contents":_to_contents(msgs),

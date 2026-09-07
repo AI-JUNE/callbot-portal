@@ -1,6 +1,16 @@
 {
   "cleanUrls": true,
   "redirects": [
-    { "source": "/lp", "destination": "/", "permanent": false }
+    {
+      "source": "/lp",
+      "destination": "/",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/wellbeing/:action",
+      "destination": "/api/wellbeing?op=:action"
+    }
   ]
 }
