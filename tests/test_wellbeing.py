@@ -10,6 +10,8 @@
   4) 콜백 URL 가드(SSRF) — 사설·루프백·비 https 차단, 화이트리스트
   5) 엔드포인트 — 정상 200, 입력오류 400, 전송실패 502(삼키지 않음), live 501
   6) 개인정보 — 페이로드·요약·최근목록에 성명·전화번호·주민번호가 남지 않는다
+  7) 웹훅 재시도 — 5xx·타임아웃만 지수 백오프 재시도, 4xx 즉시 포기, 실패 보관
+  8) 결과 이력 — raw_ref 로 판정 근거 조회(op=result), 없는 키는 404
 
 실행: python3 -m pytest tests/test_wellbeing.py -q
 """
@@ -88,7 +90,7 @@ def call(method, payload=None, headers=None, path="/api/wellbeing"):
 
 ENV = ("CALLBACK_SECRET", "CPAAS_LIVE", "WELLBEING_CALLBACK_HOSTS",
        "WELLBEING_ALLOW_INSECURE", "CALLBOT_API_KEY", "CALLBOT_STRICT",
-       "CALLBOT_DEBUG_ERRORS")
+       "CALLBOT_DEBUG_ERRORS", "WELLBEING_WEBHOOK_RETRIES")
 
 
 class Base(unittest.TestCase):
@@ -98,6 +100,9 @@ class Base(unittest.TestCase):
             os.environ.pop(k, None)
         _ratelimit.reset()
         del W.RECENT[:]
+        del W.FAILED[:]
+        W.RESULTS.clear()
+        del W._RESULT_ORDER[:]
         # 어떤 테스트도 실제 HTTP 를 내지 않는다 — 호출되면 즉시 실패.
         self._urlopen = W.urllib.request.urlopen
 
@@ -588,6 +593,194 @@ class TestEngineWiring(Base):
         import sim_call
         self.assertIn("wellbeing", sim_call.SCRIPTS)
         self.assertGreaterEqual(len(sim_call.SCRIPTS["wellbeing"]), 5)
+
+
+# ==========================================================================
+# 9) 웹훅 재시도 (지수 백오프 · 실패 보관)
+# ==========================================================================
+class TestRetry(Base):
+    def _fn(self, results):
+        seq, calls = list(results), []
+
+        def fn(u, pl):
+            calls.append(u)
+            return seq[len(calls) - 1] if len(calls) <= len(seq) else seq[-1]
+
+        return fn, calls
+
+    def test_5xx는_재시도하고_성공하면_멈춘다(self):
+        fn, calls = self._fn([{"delivered": False, "status": 503},
+                              {"delivered": True, "status": 200}])
+        out = W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_1"},
+                                   attempts=3, deliver_fn=fn, sleep_fn=lambda s: None)
+        self.assertTrue(out["delivered"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(out["attempts"], 2)
+        self.assertEqual(len(out["retries"]), 1)
+
+    def test_타임아웃도_재시도_대상(self):
+        fn, calls = self._fn([{"delivered": False, "status": None, "error": "콜백 전송 실패(timeout)"}])
+        W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_2"},
+                             attempts=3, deliver_fn=fn, sleep_fn=lambda s: None)
+        self.assertEqual(len(calls), 3)
+
+    def test_4xx는_재시도하지_않는다(self):
+        fn, calls = self._fn([{"delivered": False, "status": 400, "error": "bad"}])
+        out = W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_3"},
+                                   attempts=3, deliver_fn=fn, sleep_fn=lambda s: None)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(out["retryable"])
+
+    def test_백오프는_지수적으로_늘어난다(self):
+        waits = []
+        fn, _ = self._fn([{"delivered": False, "status": 500}])
+        W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_4"},
+                             attempts=3, deliver_fn=fn, sleep_fn=waits.append)
+        self.assertEqual(waits, [W.WEBHOOK_BACKOFF, W.WEBHOOK_BACKOFF * 2])
+        self.assertTrue(all(w <= W.WEBHOOK_BACKOFF_MAX for w in waits))
+
+    def test_시간예산을_넘기면_재시도를_접고_사유를_남긴다(self):
+        clock = [0.0]
+        fn, calls = self._fn([{"delivered": False, "status": 500}])
+
+        def now():
+            clock[0] += W.WEBHOOK_BUDGET  # 첫 시도부터 예산 소진
+            return clock[0]
+
+        out = W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_5"},
+                                   attempts=3, deliver_fn=fn,
+                                   sleep_fn=lambda s: None, now_fn=now)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("gave_up", out)
+        self.assertIn("예산", out["gave_up"])
+        self.assertEqual(W.FAILED[0]["gave_up"], out["gave_up"])
+
+    def test_최종실패는_보관되고_URL_경로는_남지_않는다(self):
+        fn, _ = self._fn([{"delivered": False, "status": 502, "error": "콜백이 502 로 응답했습니다"}])
+        W.deliver_with_retry("https://eum.example.org/hook?token=SECRET",
+                             {"raw_ref": "wb_6", "senior_id": "SR-6"},
+                             attempts=2, deliver_fn=fn, sleep_fn=lambda s: None)
+        self.assertEqual(len(W.FAILED), 1)
+        rec = W.FAILED[0]
+        self.assertEqual(rec["callback_host"], "eum.example.org")
+        self.assertEqual(rec["raw_ref"], "wb_6")
+        self.assertEqual(rec["attempts"], 2)
+        self.assertNotIn("SECRET", json.dumps(W.FAILED, ensure_ascii=False))
+        self.assertNotIn("/hook", json.dumps(W.FAILED, ensure_ascii=False))
+
+    def test_성공하면_실패보관에_남기지_않는다(self):
+        fn, _ = self._fn([{"delivered": True, "status": 200}])
+        W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_7"},
+                             attempts=3, deliver_fn=fn, sleep_fn=lambda s: None)
+        self.assertEqual(W.FAILED, [])
+
+    def test_실패보관은_상한을_지킨다(self):
+        fn, _ = self._fn([{"delivered": False, "status": 400}])
+        for i in range(W._MAX_FAILED + 5):
+            W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_%d" % i},
+                                 attempts=1, deliver_fn=fn, sleep_fn=lambda s: None)
+        self.assertEqual(len(W.FAILED), W._MAX_FAILED)
+
+    def test_환경변수로_시도횟수를_조절한다(self):
+        os.environ["WELLBEING_WEBHOOK_RETRIES"] = "2"
+        self.assertEqual(W._attempts_setting(), 2)
+        os.environ["WELLBEING_WEBHOOK_RETRIES"] = "99"
+        self.assertEqual(W._attempts_setting(), 5)      # 상한
+        os.environ["WELLBEING_WEBHOOK_RETRIES"] = "0"
+        self.assertEqual(W._attempts_setting(), 1)      # 하한
+        os.environ["WELLBEING_WEBHOOK_RETRIES"] = "abc"
+        self.assertEqual(W._attempts_setting(), W.WEBHOOK_ATTEMPTS)
+
+    def test_엔드포인트_실패응답에_시도횟수가_드러난다(self):
+        os.environ["WELLBEING_WEBHOOK_RETRIES"] = "2"
+        calls = []
+
+        def boom(req, timeout=None):
+            calls.append(1)
+            raise OSError("연결 거부")
+
+        W.urllib.request.urlopen = boom
+        res = call("POST", {"senior_id": "SR-1", "profile": "ok",
+                            "callback_url": "https://eum.example.org/hook"})
+        self.assertEqual(res.status, 502)
+        b = res.body()
+        self.assertFalse(b["ok"])
+        self.assertEqual(b["delivery"]["attempts"], 2)
+        self.assertEqual(len(calls), 2)
+
+
+# ==========================================================================
+# 10) 결과 이력 조회 (raw_ref)
+# ==========================================================================
+class TestResultHistory(Base):
+    def test_실행하면_raw_ref로_되짚을_수_있다(self):
+        r = W.run_wellbeing("SR-1", None, profile="watch")
+        ref = r["payload"]["raw_ref"]
+        rec = W.get_result(ref)
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["payload"]["risk_level"], r["payload"]["risk_level"])
+        self.assertEqual(len(rec["questions"]), 4)
+
+    def test_없는_ref는_None(self):
+        self.assertIsNone(W.get_result("wb_없음"))
+        self.assertIsNone(W.get_result(""))
+
+    def test_이력은_상한을_지킨다(self):
+        for i in range(W._MAX_RESULTS + 5):
+            W.run_wellbeing("SR-%d" % i, None, profile="ok")
+        self.assertEqual(len(W.RESULTS), W._MAX_RESULTS)
+        self.assertEqual(len(W._RESULT_ORDER), W._MAX_RESULTS)
+
+    def test_이력에_원문발화나_개인정보가_없다(self):
+        W.run_wellbeing("SR-9", None, answers={
+            "mood": "김철수인데 010-1234-5678 로 연락 주세요",
+            "meal": "며칠째 못 먹었어요", "sleep": "못 자요", "pain": "어지러워요"})
+        dumped = json.dumps(W.RESULTS, ensure_ascii=False)
+        self.assertNotIn("김철수", dumped)
+        self.assertNotIn("1234-5678", dumped)
+
+    def test_GET_op_result_는_판정근거를_준다(self):
+        r = W.run_wellbeing("SR-2", None, profile="risk")
+        ref = r["payload"]["raw_ref"]
+        res = call("GET", path="/api/wellbeing?op=result&ref=" + ref)
+        self.assertEqual(res.status, 200)
+        b = res.body()
+        self.assertTrue(b["ok"])
+        self.assertEqual(b["result"]["raw_ref"], ref)
+        self.assertEqual(b["result"]["payload"]["risk_level"], "high")
+        self.assertIn("dimensions", b["result"]["payload"])
+
+    def test_GET_op_result_ref_없으면_400(self):
+        res = call("GET", path="/api/wellbeing?op=result")
+        self.assertEqual(res.status, 400)
+        self.assertEqual(res.body()["code"], "VALIDATION_ERROR")
+
+    def test_GET_op_result_없는_ref는_404(self):
+        res = call("GET", path="/api/wellbeing?op=result&ref=wb_ffffffffffff")
+        self.assertEqual(res.status, 404)
+        self.assertEqual(res.body()["code"], "NOT_FOUND")
+
+    def test_GET_op_failures_는_실패보관을_준다(self):
+        fn, _ = self._failing()
+        W.deliver_with_retry("https://eum.example.org/h", {"raw_ref": "wb_x"},
+                             attempts=1, deliver_fn=fn, sleep_fn=lambda s: None)
+        res = call("GET", path="/api/wellbeing?op=failures")
+        self.assertEqual(res.status, 200)
+        self.assertEqual(len(res.body()["failures"]), 1)
+
+    def _failing(self):
+        return (lambda u, pl: {"delivered": False, "status": 500}), []
+
+    def test_GET_안내에_ops와_재시도정책이_있다(self):
+        b = call("GET").body()
+        self.assertIn("result", b["ops"])
+        self.assertIn("failures", b["ops"])
+        self.assertEqual(b["webhook_retry"]["attempts"], W.WEBHOOK_ATTEMPTS)
+
+    def test_하위경로_op도_해석한다(self):
+        res = call("GET", path="/api/wellbeing/recent")
+        self.assertEqual(res.status, 200)
+        self.assertIn("recent", res.body())
 
 
 if __name__ == "__main__":

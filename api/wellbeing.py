@@ -24,6 +24,7 @@
   CALLBACK_SECRET            웹훅 HMAC 서명 키. 미설정 시 서명 생략(로컬)
   WELLBEING_CALLBACK_HOSTS   콜백 허용 호스트(콤마). 미설정 시 공개 https 전부 허용
   WELLBEING_ALLOW_INSECURE   1이면 http·로컬호스트 콜백 허용(로컬 개발 전용)
+  WELLBEING_WEBHOOK_RETRIES  웹훅 총 시도 횟수(1~5, 기본 3). 재시도는 5xx·타임아웃만
   CPAAS_LIVE                 1이 아니면 항상 시뮬레이션(기본). 실발신은 [승인 필요]
 
 셀프테스트:  python3 api/wellbeing.py
@@ -60,6 +61,11 @@ SIGNATURE_HEADER = "X-Callbot-Signature"
 TIMESTAMP_HEADER = "X-Callbot-Timestamp"
 WEBHOOK_TIMEOUT = 8.0          # 초 — 전체 처리는 30초 예산 안에 든다
 SIGNATURE_TOLERANCE = 300      # 초 — 재전송(replay) 허용 시차
+WEBHOOK_ATTEMPTS = 3           # 첫 시도 포함 총 시도 횟수
+WEBHOOK_BACKOFF = 0.5          # 초 — 재시도 대기(0.5s -> 1.0s, 지수)
+WEBHOOK_BACKOFF_MAX = 4.0
+WEBHOOK_BUDGET = 24.0          # 초 — 재시도 전체 예산(서버리스 30초 한도 안)
+RETRYABLE_STATUS = (408, 425, 429, 500, 502, 503, 504)
 
 RISK_LOW, RISK_MID, RISK_HIGH, RISK_UNKNOWN = "low", "mid", "high", "unknown"
 
@@ -357,16 +363,156 @@ def deliver(url, payload, timeout=WEBHOOK_TIMEOUT, secret=None):
     return out
 
 
+FAILED = []            # 최종 전송 실패 보관(개인정보·URL 경로 없음)
+_MAX_FAILED = 50
+
+
+def _attempts_setting():
+    v = (os.environ.get("WELLBEING_WEBHOOK_RETRIES") or "").strip()
+    if not v:
+        return WEBHOOK_ATTEMPTS
+    try:
+        n = int(v)
+    except ValueError:
+        return WEBHOOK_ATTEMPTS
+    return 1 if n < 1 else (5 if n > 5 else n)
+
+
+def is_retryable(out):
+    """재시도 대상인가.
+
+    타임아웃·연결오류(status=None)와 5xx·429·408 만 다시 보낸다. 4xx 는 다시
+    보내도 같은 답이 오므로(잘못된 URL·인증 실패 등) 즉시 포기한다 — 상대
+    서버를 의미 없이 두드리지 않기 위함.
+    """
+    if not isinstance(out, dict) or out.get("delivered"):
+        return False
+    st = out.get("status")
+    if st is None:
+        return True
+    try:
+        st = int(st)
+    except (TypeError, ValueError):
+        return False
+    return st >= 500 or st in RETRYABLE_STATUS
+
+
+def _callback_host(url):
+    """실패 기록용 — 경로·쿼리(토큰이 실릴 수 있다)를 버리고 호스트만 남긴다."""
+    try:
+        return (urlparse(str(url or "")).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def _remember_failure(entry):
+    FAILED.insert(0, entry)
+    del FAILED[_MAX_FAILED:]
+
+
+def deliver_with_retry(url, payload, timeout=WEBHOOK_TIMEOUT, secret=None,
+                       attempts=None, deliver_fn=None, sleep_fn=None, now_fn=None):
+    """결과 웹훅 발송 + 지수 백오프 재시도.
+
+    - 재시도 대상은 `is_retryable` 이 참인 경우뿐(타임아웃·5xx·429).
+    - 남은 시간이 `WEBHOOK_BUDGET` 을 넘길 것 같으면 재시도를 접고 그대로
+      실패를 보고한다. 30초 한도 안에서 반드시 응답을 돌려주기 위함이며,
+      중단 사유는 `retries[-1].gave_up` 으로 드러낸다(조용히 삼키지 않는다).
+    - 최종 실패는 `FAILED` 에 보관한다(콜백 **호스트만** — 경로·토큰 제외).
+    """
+    if deliver_fn is None:
+        def fn(u, pl):
+            return deliver(u, pl, timeout=timeout, secret=secret)
+    else:
+        fn = deliver_fn
+    sleep = sleep_fn or time.sleep
+    clock = now_fn or time.time
+    n = int(attempts if attempts is not None else _attempts_setting())
+    n = 1 if n < 1 else n
+    started = clock()
+    history = []
+    out = {}
+    gave_up = None
+    for i in range(n):
+        out = dict(fn(url, payload) or {})
+        history.append({"attempt": i + 1, "status": out.get("status"),
+                        "error": out.get("error"),
+                        "duration_ms": out.get("duration_ms")})
+        if out.get("delivered") or not is_retryable(out):
+            break
+        if i == n - 1:
+            break
+        wait = min(WEBHOOK_BACKOFF * (2 ** i), WEBHOOK_BACKOFF_MAX)
+        if (clock() - started) + wait + timeout > WEBHOOK_BUDGET:
+            gave_up = "시간 예산 초과로 재시도 중단(남은 시도 %d회)" % (n - i - 1)
+            history[-1]["gave_up"] = gave_up
+            break
+        sleep(wait)
+    out["attempts"] = len(history)
+    out["retries"] = history[1:]
+    out["retryable"] = is_retryable(out)
+    if gave_up:
+        out["gave_up"] = gave_up          # 중단 사유를 조용히 삼키지 않는다
+    if not out.get("delivered"):
+        _remember_failure({
+            "ts": _now_iso(),
+            "raw_ref": (payload or {}).get("raw_ref"),
+            "senior_id": (payload or {}).get("senior_id"),
+            "callback_host": _callback_host(url),
+            "status": out.get("status"),
+            "error": out.get("error"),
+            "attempts": out["attempts"],
+            "retryable": out["retryable"],
+            "gave_up": gave_up,
+        })
+    return out
+
+
 # --------------------------------------------------------------------------
 # 5) 시뮬레이션 실행 (전화망 미경유)
 # --------------------------------------------------------------------------
 RECENT = []          # 최근 실행 메타(개인정보 없음) — 콘솔 확인용
 _MAX_RECENT = 50
 
+RESULTS = {}         # raw_ref -> 판정 근거(읽기 전용 이력). 개인정보 없음
+_RESULT_ORDER = []
+_MAX_RESULTS = 200
+
 
 def _remember(entry):
     RECENT.insert(0, entry)
     del RECENT[_MAX_RECENT:]
+
+
+def _remember_result(payload, delivery=None, callback_host=""):
+    """`raw_ref` 로 판정 근거를 되짚을 수 있게 보관.
+
+    보관 대상은 웹훅으로 이미 나간 페이로드(라벨·점수)뿐이며 원문 발화·성명·
+    연락처는 애초에 들어 있지 않다. 인스턴스 메모리라 배포·스케일아웃 시
+    사라진다 — 영속 보관은 이음 쪽 저장소 몫이다(우리는 대조용 사본).
+    """
+    ref = (payload or {}).get("raw_ref")
+    if not ref:
+        return
+    keep = ("delivered", "status", "error", "attempts", "signed", "attempted_at",
+            "skipped", "reason")
+    RESULTS[ref] = {
+        "raw_ref": ref,
+        "ts": payload.get("ts"),
+        "senior_id": payload.get("senior_id"),
+        "questions": QUESTIONS,
+        "payload": payload,
+        "delivery": {k: v for k, v in (delivery or {}).items() if k in keep},
+        "callback_host": callback_host,
+    }
+    _RESULT_ORDER.append(ref)
+    while len(_RESULT_ORDER) > _MAX_RESULTS:
+        RESULTS.pop(_RESULT_ORDER.pop(0), None)
+
+
+def get_result(ref):
+    """읽기 전용 이력 조회. 없으면 None."""
+    return RESULTS.get(str(ref or "").strip())
 
 
 def _clean_senior_id(v):
@@ -405,8 +551,8 @@ def run_wellbeing(senior_id, callback_url=None, profile="ok", answers=None,
         ok, reason = check_callback_url(callback_url)
         if not ok:
             raise ValueError(reason)
-        fn = deliver_fn or deliver
-        result["delivery"] = fn(callback_url, payload)
+        result["delivery"] = deliver_with_retry(callback_url, payload,
+                                                deliver_fn=deliver_fn)
         result["ok"] = bool(result["delivery"].get("delivered"))
     else:
         result["delivery"] = {"delivered": False, "skipped": True,
@@ -414,6 +560,8 @@ def run_wellbeing(senior_id, callback_url=None, profile="ok", answers=None,
     _remember({"ts": payload["ts"], "raw_ref": ref, "senior_id": sid,
                "answered": answered, "risk_level": payload["risk_level"],
                "delivered": bool((result["delivery"] or {}).get("delivered"))})
+    _remember_result(payload, result["delivery"],
+                     callback_host=_callback_host(callback_url))
     return result
 
 
@@ -485,8 +633,25 @@ class handler(BaseHTTPRequestHandler):
             return _guard.deny(self, code, msg)
         _audit_ev(self.headers, self.path, "GET", "allow", 200)
         q = parse_qs(urlparse(self.path).query)
-        if q.get("op", [""])[0] == "recent":
+        op = (_op_from_path(self.path) or q.get("op", [""])[0] or "").strip().lower()
+        if op == "recent":
             return self._send({"ok": True, "recent": RECENT})
+        if op == "failures":
+            return self._send({
+                "ok": True, "failures": FAILED,
+                "note": "웹훅 최종 실패 보관(최근 %d건, 인스턴스 메모리). "
+                        "콜백 호스트만 남기며 경로·토큰은 기록하지 않습니다." % _MAX_FAILED})
+        if op == "result":
+            ref = (q.get("ref", [""])[0] or "").strip()
+            if not ref:
+                return self._send({"ok": False, "code": "VALIDATION_ERROR",
+                                   "error": "ref 파라미터가 필요합니다(raw_ref)"}, code=400)
+            rec = get_result(ref)
+            if rec is None:
+                return self._send({"ok": False, "code": "NOT_FOUND",
+                                   "error": "해당 raw_ref 의 결과가 없습니다"
+                                            "(최근 %d건만 보관)" % _MAX_RESULTS}, code=404)
+            return self._send({"ok": True, "result": rec})
         self._send({
             "ok": True, "endpoint": "wellbeing", "scenario": "안부",
             "live": live_mode(),
@@ -494,6 +659,12 @@ class handler(BaseHTTPRequestHandler):
             "note": "실전화 미경유 시뮬레이션. 실회선 발신은 [승인 필요]",
             "questions": QUESTIONS,
             "profiles": sorted(PROFILES),
+            "ops": {"call": "POST /api/wellbeing/call — 안부 1건 실행",
+                    "recent": "GET ?op=recent — 최근 실행 메타",
+                    "result": "GET ?op=result&ref=<raw_ref> — 판정 근거 이력",
+                    "failures": "GET ?op=failures — 웹훅 최종 실패 보관"},
+            "webhook_retry": {"attempts": _attempts_setting(),
+                              "retry_on": "타임아웃·5xx·429", "backoff": "지수(0.5s→4s)"},
             "signature": {"header": SIGNATURE_HEADER, "timestamp_header": TIMESTAMP_HEADER,
                           "algorithm": "HMAC-SHA256(`<ts>.<body>`)",
                           "enabled": bool(_secret())},
@@ -574,4 +745,22 @@ if __name__ == "__main__":
                                                 {"delivered": True, "status": 200})[1])
     assert r["ok"] and calls and calls[0][1]["risk_level"] == RISK_HIGH
     assert "010" not in json.dumps(r, ensure_ascii=False)
+    assert get_result(r["payload"]["raw_ref"])["payload"]["risk_level"] == RISK_HIGH
+
+    assert is_retryable({"status": 503}) and is_retryable({"status": None})
+    assert not is_retryable({"status": 400}) and not is_retryable({"delivered": True})
+    tries = []
+    d = deliver_with_retry("https://eum.example.org/hook", {"raw_ref": "wb_r"},
+                           attempts=3, sleep_fn=lambda s: None,
+                           deliver_fn=lambda u, pl: (tries.append(1),
+                                                     {"delivered": False, "status": 503})[1])
+    assert len(tries) == 3 and d["attempts"] == 3 and len(d["retries"]) == 2, d
+    assert FAILED and FAILED[0]["callback_host"] == "eum.example.org"
+    tries2 = []
+    deliver_with_retry("https://eum.example.org/h?token=abc", {"raw_ref": "wb_p"},
+                       attempts=3, sleep_fn=lambda s: None,
+                       deliver_fn=lambda u, pl: (tries2.append(1),
+                                                 {"delivered": False, "status": 400})[1])
+    assert len(tries2) == 1, "4xx 는 재시도하지 않는다"
+    assert "token=abc" not in json.dumps(FAILED, ensure_ascii=False)
     print("SELF-TEST OK:", json.dumps(r["payload"], ensure_ascii=False)[:160])
