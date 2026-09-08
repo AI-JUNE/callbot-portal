@@ -476,6 +476,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
     <nav class="nav" id="nav" aria-label="콜봇 데모 메뉴">
       <a data-v="voice" class="on"><span class="ic">🎙️</span> 음성 상담</a>
       <a data-v="chat"><span class="ic">💬</span> 텍스트 상담</a>
+      <a data-v="wellbeing"><span class="ic">🧓</span> 안부 전화 연동</a>
     </nav>
     <div class="navsec">콜봇 플랫폼</div>
     <nav class="nav" aria-label="콜봇 플랫폼 메뉴">
@@ -604,6 +605,42 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
           <div class="toolbar"><span class="seg"><button class="on" onclick="segPick(this);renderReason()">전체</button><button onclick="segPick(this);renderReason()">인바운드</button><button onclick="segPick(this);renderReason()">아웃바운드</button></span><span class="sp"></span><input id="reasonQ" aria-label="상담 사유코드 검색" oninput="renderReason()" placeholder="코드·사유명 검색" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12px"/></div>
           <table><thead><tr><th>코드</th><th>대분류</th><th>사유명</th><th>유형</th><th>발생(월)</th><th>상태</th><th>조치</th></tr></thead><tbody id="reasonBody"></tbody></table>
           <div class="hint" style="padding:10px 18px">상담 종료 시 후처리 분류에 사용 · 통계·QA·TA 연계 · 삭제 없이 사용여부로 관리</div></div>
+      </section>
+      <section id="view-wellbeing" class="hidden">
+        <div class="card" style="margin-bottom:16px"><h3>🧓 안부 전화 연동 검증 <span class="r"><span class="tag pos">전화망 미경유 · 통신비 0원</span></span></h3>
+          <div style="padding:14px 18px">
+            <div class="hint" style="margin-bottom:14px">담당자 현황판의 「안부 전화」를 누른 것과 동일한 경로입니다. <b>실제 배포된 API</b>(<code>POST /api/wellbeing/call</code>)를 호출하고, 연동 상대에게 보내는 웹훅 페이로드를 그대로 보여줍니다. 응답 대본은 시연용 프로필이며 실제 통화 전사가 아닙니다. 실회선 발신은 <b>[승인 필요]</b> 항목입니다.</div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+              <div style="min-width:190px">
+                <label for="wbSenior" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">대상자 ID <span style="color:var(--mut);font-weight:400">(연계 키)</span></label>
+                <input id="wbSenior" onkeydown="if(event.key==='Enter'){event.preventDefault();wbRun();}" type="text" value="SR-0001" maxlength="64" autocomplete="off" aria-describedby="wbSeniorErr" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="wbSeniorErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+              <div style="min-width:200px">
+                <label for="wbProfile" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">응답 프로필 <span style="color:var(--mut);font-weight:400">(시연 대본)</span></label>
+                <select id="wbProfile" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                  <option value="ok">ok — 「잘 지낸다」 응답 대본</option>
+                  <option value="watch">watch — 「입맛 없고 자주 깬다」 응답 대본</option>
+                  <option value="risk">risk — 「못 먹고 어지럽다」 응답 대본</option>
+                  <option value="no_answer">no_answer — 전화를 받지 않음</option>
+                </select>
+              </div>
+              <div style="min-width:280px;flex:1">
+                <label for="wbCallback" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">콜백 URL <span style="color:var(--mut);font-weight:400">(선택 · 비우면 발송 없이 페이로드만 생성)</span></label>
+                <input id="wbCallback" onkeydown="if(event.key==='Enter'){event.preventDefault();wbRun();}" type="url" placeholder="https://… (https 만 허용)" maxlength="2048" autocomplete="off" aria-describedby="wbCallbackHint" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="wbCallbackHint" class="hint" style="margin-top:4px">입력하면 서버가 해당 주소로 HMAC 서명된 웹훅을 실제 전송합니다(사설·루프백 주소는 차단).</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="primary" id="wbRunBtn" onclick="wbRun()">▶ 안부 전화 실행 (시뮬레이션)</button>
+              <button id="wbSpecBtn" onclick="wbSpec()">📐 문항 · 서명 규약 확인</button>
+              <button id="wbRecentBtn" onclick="wbRecent()">🧾 최근 실행 이력</button>
+            </div>
+          </div></div>
+        <div class="card"><h3>📨 수신 페이로드 <span class="r"><span class="tag neu">연동 상대가 받는 것과 동일</span></span></h3>
+          <div id="wbOut" style="padding:14px 18px" aria-live="polite">
+            <div class="summary">아직 실행한 건이 없습니다. 위에서 대상자 ID와 응답 프로필을 고른 뒤 <b>▶ 안부 전화 실행</b>을 누르세요. 전화를 걸지 않고도 판정 결과와 웹훅 페이로드를 확인할 수 있습니다.</div>
+          </div></div>
       </section>
       <section id="view-cpaas" class="hidden">
         <div class="card" style="margin-bottom:16px"><h3>☎️ CPaaS 콜 연계 · 웹에서 바로 테스트 <span class="r"><span class="tag pos">테스트 0원</span></span></h3>
@@ -1349,7 +1386,7 @@ function _doSearch(){var q=(document.getElementById('gsearch').value||'').trim()
  pop.innerHTML=top.length?('<div class="hd">검색 결과 '+res.length+'건</div>'+top.map(function(r,i){return '<div class="it" id="gsopt-'+i+'" role="option" aria-selected="false" onmousemove="_gsIdx='+i+';_gsAD()" onclick="show(\''+r.v+'\');closePops();document.getElementById(\'gsearch\').value=\'\'">'+hl(r.t)+'<span class="c">'+r.c+'</span></div>';}).join('')):'<div class="it" style="color:var(--dim)">\''+esc(q)+'\' 검색 결과 없음</div>';
  pop.classList.add('show');var _gi=document.getElementById('gsearch');if(_gi)_gi.setAttribute('aria-expanded','true');_gsAD();}
 
-const titles={voice:['음성 상담','실시간 음성 상담 콘솔'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
+const titles={voice:['음성 상담','실시간 음성 상담 콘솔'],wellbeing:['안부 전화 연동','안부 콜봇 연동 검증 · 전화망 미경유 시연'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
 var curView='home';
 function show(v){if(!titles[v]||!document.getElementById('view-'+v))return;curView=v;try{if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);}catch(e){}document.querySelectorAll('section[id^=view-]').forEach(s=>s.classList.add('hidden'));var _el=$('#view-'+v);_el.classList.remove('hidden');_el.classList.remove('anim');void _el.offsetWidth;_el.classList.add('anim');
   $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='AICC Portal · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
@@ -2462,6 +2499,85 @@ function renderFavs(){var favs=favList(),sec=document.getElementById('favSec'),n
  var b=document.getElementById('favBtn');if(b&&typeof curView!=='undefined'){var _isf=favs.indexOf(curView)>=0;b.textContent=_isf?'★':'☆';b.setAttribute('aria-pressed',_isf?'true':'false');}}
 function favToggle(){if(typeof curView==='undefined')return;var favs=favList(),i=favs.indexOf(curView);if(i>=0){favs.splice(i,1);toast(({ko:'즐겨찾기 해제',en:'Removed from favorites',ja:'お気に入り解除'})[LANG]||'즐겨찾기 해제');}else{favs.push(curView);toast(({ko:'즐겨찾기 추가',en:'Added to favorites',ja:'お気に入り追加'})[LANG]||'즐겨찾기 추가');}try{localStorage.setItem('cb_favs',JSON.stringify(favs));}catch(e){}renderFavs();}
 function cpaasBusy(m){var o=document.getElementById('cpaasOut');if(o)o.innerHTML='<div class="summary" style="color:var(--dim)">'+m+'</div>';}
+function wbEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+function wbSet(h){var o=document.getElementById('wbOut');if(o)o.innerHTML=h;}
+function wbBusy(m){wbSet('<div class="summary" role="status">⏳ '+wbEsc(m)+'</div>');}
+function wbFail(m){wbSet('<div class="summary" style="color:var(--red)" role="alert"><b>⚠ 요청을 처리하지 못했습니다</b><br>'+wbEsc(m)+'</div>');}
+function wbBtns(dis){['wbRunBtn','wbSpecBtn','wbRecentBtn'].forEach(function(i){var b=document.getElementById(i);if(b)b.disabled=!!dis;});}
+function wbJson(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t);}catch(e){}return {s:r.status,d:d};});}
+function wbRiskTag(lv){var m={low:['pos','저위험'],mid:['neu','관찰 필요'],high:['neg','위험 — 담당자 확인 필요'],unknown:['neu','판정 불가(미응답)']};var v=m[lv]||['neu',String(lv||'')];return '<span class="tag '+v[0]+'">'+wbEsc(v[1])+'</span>';}
+function wbRun(){
+  var el=document.getElementById('wbSenior'),err=document.getElementById('wbSeniorErr');
+  var id=((el&&el.value)||'').trim(),prof=(document.getElementById('wbProfile')||{}).value||'ok';
+  var cb=((document.getElementById('wbCallback')||{}).value||'').trim();
+  if(err)err.textContent='';if(el)el.removeAttribute('aria-invalid');
+  if(!id){if(err)err.textContent='대상자 ID를 입력하세요(예: SR-0001).';if(el){el.setAttribute('aria-invalid','true');el.focus();}return;}
+  if(id.length>64){if(err)err.textContent='대상자 ID는 64자 이하여야 합니다(현재 '+id.length+'자).';if(el){el.setAttribute('aria-invalid','true');el.focus();}return;}
+  if(cb&&!/^https:\/\//i.test(cb)){var ch=document.getElementById('wbCallbackHint');if(ch){ch.style.color='var(--red)';ch.textContent='콜백 URL 은 https:// 로 시작해야 합니다.';}document.getElementById('wbCallback').focus();return;}
+  var ch2=document.getElementById('wbCallbackHint');if(ch2)ch2.style.color='';
+  wbBtns(true);wbBusy('안부 통화 시뮬레이션 실행 중… (전화망 미경유 · 통신비 0원)');
+  var body={senior_id:id,profile:prof};if(cb)body.callback_url=cb;
+  fetch('/api/wellbeing/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(wbJson).then(function(x){
+      if(!x.d){wbFail('서버 응답을 해석하지 못했습니다 (HTTP '+x.s+').');return;}
+      if(x.s>=400){
+        var det=(x.d.details||[]).map(function(f){return '<li><b>'+wbEsc(f.field)+'</b> — '+wbEsc(f.reason)+'</li>';}).join('');
+        wbFail((x.d.error||x.d.message||'요청이 거부되었습니다')+' (HTTP '+x.s+(x.d.code?' · '+x.d.code:'')+')'
+          +(det?'<ul style="margin:8px 0 0 18px">'+det+'</ul>':'')
+          +(x.s===401||x.s===403?'<br>콘솔 세션이 만료되었을 수 있습니다. 페이지를 새로고침한 뒤 다시 시도하세요.':'')
+          +(x.s===501?'<br><span class="tag neg">[승인 필요]</span> 실회선 발신은 승인 후에만 열립니다.':''));
+        var f0=(x.d.details||[])[0];
+        if(f0&&f0.field==='senior_id'){var se=document.getElementById('wbSeniorErr'),si=document.getElementById('wbSenior');if(se)se.textContent=f0.reason||'';if(si)si.setAttribute('aria-invalid','true');}
+        if(x.d.payload)wbRender(x.d,true);return;}
+      wbRender(x.d,false);})
+    .catch(function(e){wbFail('네트워크 오류로 요청이 실패했습니다: '+e+' — 연결을 확인한 뒤 다시 시도하세요.');})
+    .then(function(){wbBtns(false);},function(){wbBtns(false);});
+}
+function wbRender(d,append){
+  var p=d.payload||{},dl=d.delivery||{},dim=p.dimensions||{};
+  var rows=Object.keys(dim).map(function(k){var v=dim[k]||{};return '<tr><td>'+wbEsc(k)+'</td><td style="text-align:center">'+wbEsc(v.score)+'</td><td>'+wbEsc(v.label)+'</td></tr>';}).join('');
+  if(!rows)rows='<tr><td colspan="3" style="color:var(--mut)">미응답 — 항목별 점수 없음</td></tr>';
+  var dtag=dl.skipped?'<span class="tag neu">발송 안 함(콜백 URL 미지정 · 페이로드만 생성)</span>'
+    :(dl.delivered?'<span class="tag pos">웹훅 전송 성공 · 시도 '+wbEsc(dl.attempts||1)+'회</span>'
+    :'<span class="tag neg">웹훅 전송 실패 · '+wbEsc(dl.error||dl.reason||'사유 미상')+'</span>');
+  var h='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
+    +wbRiskTag(p.risk_level)
+    +'<span class="tag neu">mood_score '+wbEsc(p.mood_score==null?'null':p.mood_score)+'</span>'
+    +'<span class="tag '+(p.answered?'pos':'neg')+'">'+(p.answered?'응답':'미응답')+'</span>'
+    +'<span class="tag neu">'+wbEsc(d.billing||'0원(전화망 미경유)')+'</span>'+dtag
+    +'<span class="tag neu">raw_ref <code>'+wbEsc(p.raw_ref)+'</code></span></div>'
+    +'<div class="summary" style="margin-bottom:12px"><b>요약</b> · '+wbEsc(p.transcript_summary)+'</div>'
+    +'<table style="margin-bottom:12px"><thead><tr><th>항목</th><th style="width:60px">점수</th><th>판정 근거</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div class="hint" style="margin-bottom:8px">아래는 연동 상대가 수신하는 웹훅 본문 원본입니다. 성명·연락처·원문 발화는 포함되지 않습니다. 판정 근거는 <code>raw_ref</code>로 되짚을 수 있습니다.</div>'
+    +'<pre style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;overflow:auto">'+wbEsc(JSON.stringify(p,null,2))+'</pre>';
+  if(append){var o=document.getElementById('wbOut');if(o)o.innerHTML=o.innerHTML+h;}else wbSet(h);
+}
+function wbSpec(){
+  wbBtns(true);wbBusy('문항·서명 규약 불러오는 중…');
+  fetch('/api/wellbeing').then(wbJson).then(function(x){
+    if(!x.d||x.s>=400){wbFail('규약 정보를 불러오지 못했습니다 (HTTP '+x.s+').');return;}
+    var d=x.d,qs=(d.questions||[]).map(function(q,i){return '<li>'+wbEsc(q.text)+' <span style="color:var(--mut)">('+wbEsc(q.key)+')</span></li>';}).join('');
+    var sg=d.signature||{};
+    wbSet('<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="tag '+(d.live?'neg':'pos')+'">mode: '+wbEsc(d.mode||'')+'</span><span class="tag neu">서명 '+(sg.enabled?'활성':'비활성(로컬)')+'</span></div>'
+      +'<div class="summary" style="margin-bottom:12px">'+wbEsc(d.note||'')+'</div>'
+      +'<b>안부 문항</b><ol style="margin:8px 0 12px 20px;font-size:13px">'+(qs||'<li>문항 없음</li>')+'</ol>'
+      +'<b>서명 규약</b><div class="hint" style="margin:6px 0 12px">'+wbEsc(sg.algorithm||'')+' · 헤더 '+wbEsc(sg.header||'')+' / '+wbEsc(sg.timestamp_header||'')+'</div>'
+      +'<b>샘플 페이로드</b><pre style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;overflow:auto;margin-top:6px">'+wbEsc(JSON.stringify(d.sample||{},null,2))+'</pre>');
+  }).catch(function(e){wbFail('요청 실패: '+e);})
+   .then(function(){wbBtns(false);},function(){wbBtns(false);});
+}
+function wbRecent(){
+  wbBtns(true);wbBusy('최근 실행 이력 조회 중…');
+  fetch('/api/wellbeing?op=recent').then(wbJson).then(function(x){
+    if(!x.d||x.s>=400){wbFail('이력을 불러오지 못했습니다 (HTTP '+x.s+').');return;}
+    var rs=x.d.recent||[];
+    if(!rs.length){wbSet('<div class="summary">기록된 실행이 없습니다. 이력은 서버 인스턴스 메모리에만 남으므로 재배포 후에는 비어 있습니다. 위에서 <b>▶ 안부 전화 실행</b>을 먼저 눌러보세요.</div>');return;}
+    var rows=rs.map(function(r){return '<tr><td>'+wbEsc(r.ts)+'</td><td>'+wbEsc(r.senior_id)+'</td><td>'+wbRiskTag(r.risk_level)+'</td><td>'+(r.answered?'응답':'미응답')+'</td><td><code>'+wbEsc(r.raw_ref)+'</code></td></tr>';}).join('');
+    wbSet('<div class="hint" style="margin-bottom:8px">최근 실행 '+rs.length+'건 (인스턴스 메모리). 영속 보관은 연동 저장소 몫입니다.</div>'
+      +'<table><thead><tr><th>시각</th><th>대상자</th><th>위험도</th><th>응답</th><th>raw_ref</th></tr></thead><tbody>'+rows+'</tbody></table>');
+  }).catch(function(e){wbFail('요청 실패: '+e);})
+   .then(function(){wbBtns(false);},function(){wbBtns(false);});
+}
 function cpaasSim(sc){cpaasBusy('실제 API 호출 중… (텔레포니 과금 0)');fetch('/api/sim_call?scenario='+sc).then(function(r){return r.json();}).then(function(d){var o=document.getElementById('cpaasOut');if(!o)return;if(d.error){o.innerHTML='<div class="summary" style="color:var(--red)">오류: '+esc(d.error)+'</div>';return;}var chat=(d.turns||[]).map(function(t){return '<div style="margin-bottom:10px"><div style="text-align:right"><span style="display:inline-block;background:var(--warmbg);color:var(--warm2);padding:7px 11px;border-radius:12px;font-size:13px;max-width:80%">'+esc(t.user)+'</span></div><div style="margin-top:5px"><span style="display:inline-block;background:var(--panel2);border:1px solid var(--line);padding:7px 11px;border-radius:12px;font-size:13px;max-width:85%;white-space:pre-wrap">'+esc(t.bot)+'</span></div></div>';}).join('');o.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="tag pos">✅ '+esc(d.billing||'')+'</span><span class="tag neu">시나리오: '+esc(d.scenario||'')+'</span>'+(d.transferred?'<span class="tag neg">상담사 전환</span>':'')+'</div>'+chat;}).catch(function(e){cpaasBusy('요청 실패: '+e);});}
 function cpaasStatus(){cpaasBusy('어댑터 상태 확인 중…');fetch('/api/voice').then(function(r){return r.json();}).then(function(d){var o=document.getElementById('cpaasOut');o.innerHTML='<div style="margin-bottom:8px"><span class="tag pos">어댑터 연결됨</span></div><pre style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;overflow:auto">'+esc(JSON.stringify(d,null,2))+'</pre>';}).catch(function(e){cpaasBusy('요청 실패: '+e);});}
 function cpaasCampaign(){cpaasBusy('캠페인 dry-run 요청 중… (발신 안 함)');fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'campaign',numbers:['01011112222','01033334444'],scenario:'care'})}).then(function(r){return r.json();}).then(function(d){var o=document.getElementById('cpaasOut');var n=(d.would_call!=null?d.would_call:d.queued)||0;o.innerHTML='<div style="margin-bottom:10px"><span class="tag pos">✅ '+esc(d.mode||'')+'</span> <span class="tag neu">발신 예정 '+n+'건</span></div><pre style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;overflow:auto">'+esc(JSON.stringify(d,null,2))+'</pre>';}).catch(function(e){cpaasBusy('요청 실패: '+e);});}
