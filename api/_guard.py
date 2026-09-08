@@ -32,6 +32,8 @@ def _env_list(name, default):
 
 ALLOWED = _env_list("CALLBOT_ALLOWED_ORIGINS", [
     "https://callbot-portal.vercel.app",
+    "https://eum-mvp.vercel.app",      # 이음 MVP 시연 무대 — TTS(안부 음성) 재사용
+    "https://eum.gowon.kr",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ])
