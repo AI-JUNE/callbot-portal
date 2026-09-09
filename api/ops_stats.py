@@ -11,6 +11,13 @@
 - B146: escalation/recording 을 고정 스키마로 정규화(항상 같은 키 · 정수 · source 표기)
   + gates(RECORDING_LIVE/CPAAS_LIVE/SPEECH_LIVE) 환경 플래그를 읽기 전용으로 노출.
   플래그는 **읽기만** 한다 — 여기서 활성화하지 않는다. 실활성화는 [승인 필요].
+- B151: 회귀(tests/test_ops_stats.py)로 3건 수정.
+  (a) 감사 기록을 **결과가 확정된 뒤**에 남긴다 — 이전에는 응답 생성 전에 allow/200 을
+      먼저 적어, 500 으로 끝난 요청도 감사에는 성공으로 남고 400 은 아예 기록되지 않았다.
+  (b) 감사 호출 실패가 요청을 죽이지 않는다(가용성 우선). 이전에는 try 안이라 500 이 됐다.
+  (c) period 가 문자열이 아니면(list·dict 등) `in` 이 TypeError 를 내던 것을 today 로 폴백.
+- `data_source="demo"` 를 응답에 함께 실어 **수치가 실측이 아님을 소비자가 알 수 있게** 한다.
+  (새 수치를 추가하는 것이 아니라, 기존 데모 수치에 정직한 꼬리표를 붙이는 것)
 - 실 CTI·실통계 연동은 [승인 필요] — 여기서는 sim 집계만.
 
 사용:
@@ -95,7 +102,10 @@ PERIODS = tuple(DEMO_PERIODS.keys())
 
 
 def get_ops_summary(baseline=None, period="today"):
-    period = period if period in DEMO_PERIODS else "today"
+    # 화이트리스트 밖은 today. 문자열이 아닌 값(list/dict)은 `in` 이 TypeError 를
+    # 낼 수 있으므로 타입부터 확인한다 — 조회 하나가 500 으로 번지지 않게.
+    if not isinstance(period, str) or period not in DEMO_PERIODS:
+        period = "today"
     b = dict(DEMO_BASELINE)
     if baseline:
         b.update(baseline)
@@ -110,6 +120,8 @@ def get_ops_summary(baseline=None, period="today"):
         "ok": True,
         "ts": int(time.time()),
         "mode": "sim",  # 실통계 연동 전까지 항상 sim
+        # 소비자가 수치의 출처를 오해하지 않도록 명시한다. 실집계 배선 시 "live".
+        "data_source": "demo",
         "period": period,
         "calls": {
             "today": calls_today,   # 하위호환: 일 단위 값
@@ -172,23 +184,46 @@ class handler(BaseHTTPRequestHandler):
         if not _ok:
             # 감사: 실패한 관리 기능 접근 시도가 오히려 추적 가치가 높다
             if _audit:
-                _audit.record_request(self.headers, self.path, "GET", "deny", _c,
-                                      request_id=rq.request_id)
+                try:
+                    _audit.record_request(self.headers, self.path, "GET", "deny", _c,
+                                          request_id=rq.request_id)
+                except Exception:      # 감사 장애가 요청을 죽이지 않는다
+                    pass
             rq.finish(_c, denied=True)
             return _guard.deny(self, _c, _m, rq)
+        period = None
         try:
             # 입력검증: period 는 화이트리스트. 미지정은 today, 그 외 값은 400.
             q = parse_qs(urlparse(self.path).query)
             period = _errors.query_choice(q, "period", PERIODS, default="today")
             rq.set(period=period)
-            if _audit:
-                _audit.record_request(self.headers, self.path, "GET", "allow", 200,
-                                      request_id=rq.request_id, period=period)
-            self._send(200, get_ops_summary(period=period), rq)
-            rq.finish(200)
+            summary = get_ops_summary(period=period)
         except Exception as e:
             # 표준 에러 봉투 + 모니터링(5xx만) + 구조화 로그를 한 번에 처리
-            _errors.handle(self, e, route="/api/ops_stats", method="GET", rq=rq)
+            env = _errors.handle(self, e, route="/api/ops_stats", method="GET", rq=rq)
+            st = 500
+            try:
+                st = int((env or {}).get("status") or 500)
+            except Exception:
+                pass
+            # 실패도 사실대로 남긴다 — 감사가 실패를 성공으로 적으면 조사 근거가 무너진다.
+            self._audit("GET", "error" if st >= 500 else "deny", st, rq, period)
+            return
+        self._send(200, summary, rq)
+        rq.finish(200)
+        # 결과가 확정된 뒤에 기록한다(성공을 미리 적지 않는다).
+        self._audit("GET", "allow", 200, rq, period)
+
+    def _audit(self, method, result, status, rq, period=None):
+        """관리 경로 접근 감사. 실패해도 요청에 전파하지 않는다(가용성 우선)."""
+        if not _audit:
+            return
+        try:
+            extra = {} if period is None else {"period": period}
+            _audit.record_request(self.headers, self.path, method, result, status,
+                                  request_id=getattr(rq, "request_id", None), **extra)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
@@ -207,6 +242,9 @@ if __name__ == "__main__":
     assert m["period"] == "month" and m["calls"]["total"] == 6120
     bad = get_ops_summary(period="yyy")
     assert bad["period"] == "today"
+    for weird in (None, 3, ["week"], {"a": 1}):
+        assert get_ops_summary(period=weird)["period"] == "today", weird
+    assert s["data_source"] == "demo"
 
     # --- B146: 정규화·게이트 ---
     for k in ESCALATION_KEYS:
