@@ -150,7 +150,8 @@ def _to_contents(messages):
     out=[]
     for x in messages:
         r=x.get("role")
-        if r=="user": out.append({"role":"user","parts":[{"text":x["content"]}]})
+        # content 누락·비문자열은 여기서 죽지 않는다(입력검증은 각 라우트 책임).
+        if r=="user": out.append({"role":"user","parts":[{"text":x.get("content") or ""}]})
         elif r=="tool":
             try: resp=json.loads(x.get("content","{}"))
             except: resp={"result":x.get("content")}

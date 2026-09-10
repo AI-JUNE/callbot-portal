@@ -31,11 +31,38 @@ def run_assist(task, text, kb=""):
     resp = _call(MODEL, payload)
     parts = (resp.get("candidates") or [{}])[0].get("content", {}).get("parts", []) or []
     txt = "".join(p.get("text", "") for p in parts).strip()
-    try:
-        return json.loads(txt)
-    except Exception:
-        m = re.search(r"\{.*\}", txt, re.S)
-        return json.loads(m.group(0)) if m else {"raw": txt}
+    return parse_json(txt)
+
+
+def parse_json(txt):
+    """모델 출력에서 JSON 을 뽑는다. 실패해도 예외를 던지지 않는다.
+
+    과거엔 본문 속 `{...}` 를 다시 파싱하다 실패하면 JSONDecodeError 가 그대로
+    올라가 **업스트림 형식 문제가 500(내부 오류)** 로 보고됐다(모니터링 노이즈).
+    이제 마지막 수단으로 원문을 `raw` 로 돌려주고, 소비자가 판단하게 한다.
+    """
+    txt = (txt or "").strip()
+    if not txt:
+        return {"raw": ""}
+    # ```json ... ``` 코드펜스 제거
+    if txt.startswith("```"):
+        body = txt.split("\n", 1)[1] if "\n" in txt else ""
+        txt = body.rsplit("```", 1)[0].strip() if "```" in body else body.strip()
+    for cand in (txt, _braces(txt)):
+        if not cand:
+            continue
+        try:
+            v = json.loads(cand)
+        except Exception:
+            continue
+        # 최상위가 객체가 아니면(배열·숫자) 소비자 계약이 깨지므로 감싸서 돌려준다
+        return v if isinstance(v, dict) else {"raw": v}
+    return {"raw": txt}
+
+
+def _braces(txt):
+    m = re.search(r"\{.*\}", txt, re.S)
+    return m.group(0) if m else ""
 
 
 import os as _os_g, sys as _sys_g
