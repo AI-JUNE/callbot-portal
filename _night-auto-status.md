@@ -1,4 +1,29 @@
-# 야간 자율 개발 상태 (2026-09-14 · 테스트 7차)
+# 야간 자율 개발 상태 (2026-09-14 · 테스트 8차)
+
+## 이번 회차 처리 — 1건 (api 테스트 · 콘솔 변경 없음)
+EUM_INTEGRATION.md 는 `[승인 필요]`(실회선) 1건만 남아 코드로 열지 않았다. COMMERCIAL_READINESS '테스트 커버리지' 다음 순서 `sip_adapter`(마지막 0% 모듈) 처리.
+
+- `tests/test_sip_adapter.py` 42건 신규 → 전체 640건 통과, 커버리지 79% → 82%(`sip_adapter` 0→89%).
+- 회귀로 결함 3건 수정(`api/sip_adapter.py`): 리스너 예외로 통화 누수 → 리스너 격리·`listener_errors` health 노출 / 이벤트·dry-run 기록의 원문 번호 → 마스킹(voice 와 동일 규칙) / 무효 번호 묵인 기록 → ValueError.
+- 게이트 `CPAAS_LIVE` 호출 시점 판독(`is_live()`), `_event` assert → ValueError. 실발신 경로는 여전히 전부 501/PermissionError.
+
+## 검증
+- `py_compile` 23개·`scripts/verify.py` 5단계 통과(HTML 파싱·중복 id·금지어·복지 잔재). 네트워크 미사용(urlopen·socket 감시).
+
+## 커밋
+- 산출물은 AutoPush 가 `0864bb7` 로 먼저 자동 커밋·푸시. 그 위에 이 회차가 만든 `cb804d1` 은 **내용 없는 빈 커밋**(중복) — 되돌리려 했으나 `.git/HEAD.lock`·`index.lock` 삭제 권한이 자동 거부되어 남아 있다. 무해하지만 정리하려면 사람이 `.git/*.lock` 삭제 후 `git reset --soft 0864bb7`(로컬 미푸시일 때만).
+
+## 사람이 할 일
+- `.git/index.lock`·`.git/HEAD.lock` 잔존 → 다음 회차 커밋 실패 원인. 삭제 권한 승인 또는 수동 삭제 필요.
+- 리뷰만. 미승인 대기(변동 없음): proposals/api_auth.py, proposals/confirm_refund_guard.py, proposals/pii_crypto.py, ORDER_BACKEND=http, SPEECH_LIVE/CPAAS_LIVE, RECORDING_LIVE, 실배정·CTI 연동. **[승인 필요]**
+
+## 다음 실행 후보
+- 커버리지: `order_backend` 55% · `sim_call` 60% 보강(0% 모듈은 소진).
+- 「AI 고지 문구 테넌트별 설정 화면」 또는 「발신번호 등록 상태 관리 화면」 — sim·읽기 전용 설계로 착수 가능.
+
+---
+
+# 이전 회차 (2026-09-14 · 테스트 7차)
 
 ## 이번 회차 처리 — 1건 (api 테스트 · 콘솔 변경 없음)
 EUM_INTEGRATION.md 는 `[승인 필요]`(실회선) 1건만 남아 코드로 열지 않았다. COMMERCIAL_READINESS '테스트 커버리지' 다음 순서(`tts` → `recording_audit`)를 처리.
