@@ -29,6 +29,7 @@ def recording_live():
 # 보관 정책 기본값(설계 제안; 실제 일수는 도급 계약·법무 검토 후 확정 [승인 필요])
 DEFAULT_RETENTION_DAYS = 90        # 통화 메타·전사 보관 일수(제안)
 DEFAULT_PURGE_METHOD = "hard_delete"  # 파기 방식: hard_delete | anonymize
+PURGE_METHODS = ("hard_delete", "anonymize")
 
 ALLOWED_PURPOSES = ("qa", "dispute", "audit", "training_optout_check")  # 접근 목적 화이트리스트
 
@@ -98,7 +99,13 @@ class RecordingStore:
 
     # ── 보관/파기 ───────────────────────────────────────────────────────
     def purge_due(self, now=None, method=DEFAULT_PURGE_METHOD):
-        """보관 만료 레코드 파기(sim). 실스토리지 파기 연동은 [승인 필요]."""
+        """보관 만료 레코드 파기(sim). 실스토리지 파기 연동은 [승인 필요].
+
+        method 는 PURGE_METHODS 중 하나여야 한다. 오타(예: "anonymise")를 조용히
+        hard_delete 로 처리하면 정책과 다른 파기가 감사기록에 남는다 — 즉시 거부.
+        """
+        if method not in PURGE_METHODS:
+            raise ValueError("unknown purge method: %s" % method)
         now = time.time() if now is None else now
         purged = []
         for rec in self._records.values():
@@ -120,7 +127,8 @@ class RecordingStore:
         return s
 
     def audit_log(self):
-        return list(self._audit)
+        # 항목까지 복사 — 반환값을 고쳐도 감사 원본은 변하지 않는다(append-only 보장)
+        return [dict(a) for a in self._audit]
 
     def _log(self, actor, record_id, action, note=""):
         self._audit.append({"ts": time.time(), "actor": actor,

@@ -1,4 +1,25 @@
-# 야간 자율 개발 상태 (2026-09-01 · 10회차)
+# 야간 자율 개발 상태 (2026-09-14 · 테스트 7차)
+
+## 이번 회차 처리 — 1건 (api 테스트 · 콘솔 변경 없음)
+EUM_INTEGRATION.md 는 `[승인 필요]`(실회선) 1건만 남아 코드로 열지 않았다. COMMERCIAL_READINESS '테스트 커버리지' 다음 순서(`tts` → `recording_audit`)를 처리.
+
+### tests/test_tts_recording.py 57건 → 전체 598건 통과, 커버리지 76% → 79%
+- `tts` 0→90% · `recording_audit` 31→73%(셀프테스트 블록 제외 시 100%). `urlopen` 감시 + `_synth` 대역으로 edge_tts·네트워크 미호출 강제(과금 0).
+- 결함 2건 수정(`api/recording_audit.py`): 감사 로그 반환값 얕은 복사(변조 가능) → 항목 복사 / 미지 파기 방식 조용히 hard_delete → `PURGE_METHODS` 검증·ValueError.
+
+## 검증
+- pytest 598 passed · `scripts/verify.py` 전 항목 PASS(py_compile 23·HTML 7·중복 id·금지어·복지 잔재) · `python3 api/recording_audit.py` 셀프테스트 OK.
+
+## 사람이 할 일
+- 리뷰만. 미승인 대기(변동 없음): 실회선 발신(CPAAS_LIVE), SPEECH_LIVE, RECORDING_LIVE, proposals/*, 실배정·CTI. **[승인 필요]**
+
+## 다음 실행 후보
+- `sip_adapter`(0%) 회귀 테스트(소~중).
+- `order_backend` 55%·`sim_call` 60% 보강(중).
+
+---
+
+# 이전 회차 (2026-09-01 · 10회차)
 
 ## 이번 회차 처리 — 2건 (B149) · 전부 `public/admin.html` (라이브 /admin)
 9회차(B148) 직후 이어서 실행. 9회차가 남긴 "다음 실행 후보" 2건을 그대로 처리했습니다.
