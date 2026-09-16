@@ -2,7 +2,7 @@
 
 실제 전화망/CPaaS 없이, 텍스트로 전사된 발화를 기존 run_turn 에 순서대로 넣어
 전 구간(시나리오 -> 응답 -> 상담사전환 -> 후처리)을 검증한다. 텔레포니 과금 0.
-(LLM만 기존 Gemini 호출 - 콜 인프라 비용 아님)
+(LLM만 기존 Gemini 호출 - 콜 인프라 비용 아님 → 요율 등급은 llm 과 동일)
 
 사용:
   - 브라우저/GET:  https://<app>.vercel.app/api/sim_call?scenario=refund
@@ -18,6 +18,11 @@
   integrity   여신거래 청렴도 조사(본인확인 포함)
   overdue     대출 연체 안내(의도분류 응대)
   wellbeing   안부확인(기분·식사·수면·통증 4문항, 이음 2R 연동)
+
+계약:
+  - 모르는 시나리오는 **400** 으로 거부한다. 과거엔 조용히 refund 대본을 돌려
+    "요청한 시나리오가 검증된 것처럼" 보였고 LLM 토큰도 엉뚱한 대본에 썼다.
+  - engine/LLM 장애는 200 속 error 가 아니라 표준 봉투(5xx)로 드러낸다.
 """
 import os, sys, json
 from urllib.parse import urlparse, parse_qs
@@ -50,13 +55,30 @@ SCRIPTS = {
                  "알겠습니다 곧 갚을게요", "아니요 더 없습니다"],
 }
 
+# 공개 시나리오 목록(정렬 고정) — GET 응답·입력검증·콘솔 버튼 드리프트 감시용
+SCENARIOS = tuple(sorted(SCRIPTS))
+DEFAULT_SCENARIO = "refund"
+BILLING = "0원(텔레포니 미발생)"
+DEMO_PHONE = "01012345678"   # 데모 발신번호 — 실번호 아님
 
-def simulate(scenario="refund", phone="01012345678"):
+
+class SimError(RuntimeError):
+    """엔진(LLM 경로) 준비 실패. 500 으로 분류된다."""
+
+
+def simulate(scenario=DEFAULT_SCENARIO, phone=DEMO_PHONE):
+    """대본을 run_turn 에 순서대로 넣는다. 상담사 전환 시 조기 종료.
+
+    - 모르는 시나리오: ValueError (조용히 다른 대본으로 바꾸지 않는다)
+    - engine import 실패: SimError (200 속 error 로 감추지 않는다)
+    """
+    if scenario not in SCRIPTS:
+        raise ValueError("unknown scenario")
     try:
         from engine import run_turn
     except Exception as e:
-        return {"error": "engine import 실패: %s" % e}
-    script = SCRIPTS.get(scenario, SCRIPTS["refund"])
+        raise SimError("engine import 실패: %s" % type(e).__name__)
+    script = SCRIPTS[scenario]
     turns, msgs, transferred = [], [], False
     for utter in script:
         msgs.append({"role": "user", "content": utter})
@@ -66,31 +88,49 @@ def simulate(scenario="refund", phone="01012345678"):
         if r.get("transferred"):
             transferred = True
             break
-    return {"ok": True, "billing": "0원(텔레포니 미발생)", "scenario": scenario,
+    return {"ok": True, "billing": BILLING, "scenario": scenario,
             "turns": turns, "transferred": transferred}
 
 
-import os as _os_g, sys as _sys_g
-_sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
+import _log
+import _errors
+
 
 class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
-        if not _ok:
-            return _guard.deny(self, _c, _m)
-        q = parse_qs(urlparse(self.path).query)
-        scenario = q.get("scenario", ["refund"])[0]
-        out = simulate(scenario)
-        b = json.dumps(out, ensure_ascii=False, indent=1).encode("utf-8")
-        self.send_response(200)
+    # 기본 접근로그는 쿼리스트링을 그대로 찍으므로 침묵 — 구조화 로그가 대체
+    log_message = _log.suppress_access_log
+
+    def _send(self, code, obj, rq=None):
+        b = json.dumps(obj, ensure_ascii=False, indent=1).encode("utf-8")
+        self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        if rq is not None:
+            _log.attach(self, rq)
         self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
 
+    def do_GET(self):
+        rq = _log.begin(self.headers, "/api/sim_call", "GET", self.path)
+        _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
+        if not _ok:
+            rq.finish(_c, denied=True)
+            return _guard.deny(self, _c, _m, rq)
+        try:
+            q = parse_qs(urlparse(self.path).query)
+            body = {"scenario": (q.get("scenario") or [""])[0]}
+            scenario = _errors.as_choice(body, "scenario", SCENARIOS, default=DEFAULT_SCENARIO)
+            rq.set(scenario=scenario)
+            out = simulate(scenario)
+            self._send(200, out, rq)
+            rq.finish(200, turns=len(out["turns"]), transferred=out["transferred"])
+        except Exception as e:
+            _errors.handle(self, e, route="/api/sim_call", method="GET", rq=rq)
+
 
 if __name__ == "__main__":
-    sc = sys.argv[1] if len(sys.argv) > 1 else "refund"
+    sc = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SCENARIO
     print(json.dumps(simulate(sc), ensure_ascii=False, indent=2))

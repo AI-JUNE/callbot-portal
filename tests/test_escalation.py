@@ -432,11 +432,12 @@ class TestSimHandoff(EngineHarness):
         for utter in sim_call.SCRIPTS["handoff"]:
             self.assertEqual(pol.evaluate(utter)["reason"], "request", utter)
 
-    def test_unknown_scenario_falls_back_to_refund(self):
+    def test_unknown_scenario_rejected_without_llm_call(self):
+        # 과거엔 조용히 refund 대본으로 폴백해 엉뚱한 대본에 LLM 토큰을 썼다 → 거부
         self.responses = [say("네, 확인해 드릴게요.")] * len(sim_call.SCRIPTS["refund"])
-        out = sim_call.simulate("no-such-scenario")
-        self.assertEqual(len(out["turns"]), len(sim_call.SCRIPTS["refund"]))
-        self.assertFalse(out["transferred"])
+        with self.assertRaises(ValueError):
+            sim_call.simulate("no-such-scenario")
+        self.assertEqual(self.seen_payloads, [])   # LLM 미호출
 
 
 # ==========================================================================

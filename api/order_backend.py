@@ -16,7 +16,7 @@
 #   - 즉 운영 반영은 사람이 환경변수를 켜는 행위로만 가능하다(자동 활성화 없음).
 # ==========================================================================
 from __future__ import annotations
-import os, json, urllib.request
+import os, json, copy, urllib.request
 
 # --- 데모 주문(기존 engine._ORDER 와 동일) --------------------------------
 DEMO_ORDER = {
@@ -75,7 +75,9 @@ class DemoOrderBackend(OrderBackend):
         self.order = order or DEMO_ORDER
 
     def lookup_recent_order(self, inp):
-        return {"found": True, **self.order}
+        # 깊은 복사 — 얕은 복사면 items 리스트가 모듈 전역 DEMO_ORDER 와 공유돼
+        # 호출자가 결과를 고치는 순간 인스턴스 수명 동안 데모 주문이 변조된다(회귀로 발견).
+        return {"found": True, **copy.deepcopy(self.order)}
 
     def get_refund_policy(self, inp):
         mx = sum(i["price"] * i["qty"] for i in self.order["items"])

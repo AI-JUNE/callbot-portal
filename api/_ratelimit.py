@@ -15,7 +15,8 @@
 # 비용이 다른 경로에 같은 한도를 주지 않는다. 경로를 등급으로 나눠 각각 한도를 둔다.
 #
 #   등급        경로                       기본 IP/분   기본 전역/분   근거
-#   llm         /api/chat, /api/assist       20           240          LLM 토큰 과금
+#   llm         /api/chat, /api/assist,      20           240          LLM 토큰 과금
+#               /api/sim_call                                          (sim 1회 = LLM 3~8회)
 #   speech      /api/stt, /api/tts           12           120          음성 API 과금 + 대용량 본문
 #   webhook     /api/voice                   120          1200         CPaaS 콜백 버스트 허용
 #   default     그 외(/api/ops_stats 등)     40           600          조회성
@@ -65,6 +66,7 @@ DEFAULTS = {
 ROUTE_CLASS = {
     "chat": "llm",
     "assist": "llm",
+    "sim_call": "llm",   # 대본 1회 = LLM 호출 3~8회. default 등급이면 chat 의 16배까지 열린다
     "stt": "speech",
     "tts": "speech",
     "voice": "webhook",
