@@ -72,6 +72,7 @@ ADMIN_ACTIONS = {
     "/api/ops_stats": "ops.stats.read",       # 운영 대시보드 지표 조회
     "/api/health": "ops.health.deep",         # deep 점검(네트워크 도달성)만 기록
     "/api/voice": "call.webhook",             # 통화 웹훅(외부 시스템 연동 지점)
+    "/api/disclosure": "tenant.disclosure",   # AI 고지 문구 설정(법정 고지 변경 — 조회·변경 모두)
 }
 
 _LOCK = threading.Lock()

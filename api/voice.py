@@ -26,7 +26,38 @@ except Exception:
     run_assist = None
 
 CPAAS = os.environ.get("CPAAS_PROVIDER", "sim")
-GREETING = os.environ.get("CALLBOT_GREETING", "안녕하세요, 콜봇 상담센터입니다. 무엇을 도와드릴까요?")
+try:
+    import disclosure as _disclosure      # AI 고지 문구(테넌트별) — 없으면 아래 폴백
+except Exception:
+    _disclosure = None
+
+# 하위 호환: CALLBOT_GREETING 환경변수는 계속 존중한다(운영자 명시 설정).
+# 단 AI 고지 요건 검사 결과는 /api/disclosure 가 env_override 로 드러낸다(조용히 덮지 않는다).
+GREETING = os.environ.get("CALLBOT_GREETING", "")
+
+
+def greeting(tenant_id=None):
+    """통화 첫 발화 = AI 고지 문구.
+
+    우선순위: 테넌트 설정(/api/disclosure) > CALLBOT_GREETING 환경변수 > 기본 고지 문구.
+    어떤 경우에도 빈 문자열을 돌려주지 않는다(고지가 빠지는 쪽으로 실패하지 않는다).
+    """
+    if _disclosure is not None:
+        try:
+            eff = _disclosure.effective(tenant_id)
+            if eff.get("source") == "tenant":
+                return eff["text"]
+        except Exception:
+            pass
+    env = (os.environ.get("CALLBOT_GREETING") or "").strip()
+    if env:
+        return env
+    if _disclosure is not None:
+        try:
+            return _disclosure.greeting(None)
+        except Exception:
+            pass
+    return "안녕하세요, AI 상담원입니다. 이 통화는 인공지능이 응대합니다. 무엇을 도와드릴까요?"
 AGENT_SIP = os.environ.get("CALLBOT_AGENT_SIP", "sip:agent@pbx.local")
 LIVE = os.environ.get("CPAAS_LIVE", "0") == "1"
 
@@ -162,7 +193,7 @@ def handle_twilio(p):
 
     # 녹음 콜백이 아니면(=첫 진입) 인사 후 녹음 요청
     if not rec_url:
-        return _say_then_record(GREETING, cid)
+        return _say_then_record(greeting(None), cid)
 
     # 같은 녹음이 두 번 배달되면(웹훅 재시도) 직전 응답을 그대로 돌려준다.
     # 재처리하면 STT·LLM 이 두 번 과금되고, 환불 같은 도구가 두 번 실행된다.
@@ -208,11 +239,13 @@ def _parse_event(body):
         return {"type": typ, "call_id": body.get("callId") or body.get("call_id"),
                 "from": body.get("from"), "to": body.get("to"),
                 "scenario": meta.get("scenario", "refund"),
+                "tenant": meta.get("tenant_id") if isinstance(meta.get("tenant_id"), str) else None,
                 "audio_b64": body.get("audio"), "mime": body.get("mime", "audio/wav"),
                 "recording_url": body.get("recordingUrl")}
     return {"type": body.get("type", "answered"), "call_id": body.get("call_id", "demo-call"),
             "from": body.get("from", "01000000000"), "to": body.get("to", ""),
             "scenario": body.get("scenario", "refund"),
+            "tenant": body.get("tenant_id") if isinstance(body.get("tenant_id"), str) else None,
             "audio_b64": body.get("audio_b64"), "mime": body.get("mime", "audio/webm"),
             "recording_url": body.get("recording_url"), "text": body.get("text")}
 
@@ -235,7 +268,7 @@ def handle_event(ev):
             _Session.put(cid, {"messages": [], "scenario": ev["scenario"],
                                "phone": ev["from"], "started": time.time()})
         # 이미 세션이 있으면 answered 재배달이다 — 대화 이력을 지우지 않는다.
-        return _act_say_then_listen(GREETING)
+        return _act_say_then_listen(greeting(ev.get("tenant")))
     if ev["type"] == "speech":
         sess = _Session.get(cid) or {"messages": [], "scenario": ev["scenario"], "phone": ev["from"]}
         user_text = ev.get("text") or ""
