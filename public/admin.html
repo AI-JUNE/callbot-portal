@@ -1373,7 +1373,7 @@ async function sllmGen(){var q=(document.getElementById('sllmIn').value||'').tri
  catch(e){el.innerHTML='<div class="summary">생성 실패 · API 키/네트워크 확인</div>';}}
 
 
-var DEMO={welfare:{name:'고객 문의 상담',open:'고객센터입니다. 무엇을 도와드릴까요?'},trio:{name:'예약·접수',open:'고객센터입니다. 청년·어르신·아동 예약·접수을 도와드릴게요. 어떤 참여를 원하세요?'},refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담원입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담원입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
+var DEMO={welfare:{name:'고객 문의 상담',open:'고객센터입니다. 무엇을 도와드릴까요?'},trio:{name:'예약·접수',open:'고객센터입니다. 청년·어르신·아동 예약·접수를 도와드릴게요. 어떤 참여를 원하세요?'},refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담원입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담원입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
 function pickDemo(k){curDemo=k;document.querySelectorAll('.demoSel button').forEach(function(b){b.classList.toggle('on',b.dataset.k===k);});messages=[];if($('#chat'))$('#chat').innerHTML='';if($('#tr'))$('#tr').innerHTML='';if($('#chat'))addC('bot',DEMO[k].open);toast(DEMO[k].name+' 시나리오');}
 function toggleSide(){var _s=document.querySelector('.side');var _op=_s.classList.toggle('open');document.getElementById('scrim').classList.toggle('on');var _hb=document.querySelector('.hamb');if(_hb)_hb.setAttribute('aria-expanded',_op?'true':'false');}
 
@@ -2709,7 +2709,7 @@ var SCN={
    ['접수·종료','신청 접수했습니다. 진행 상황은 문자로 안내드려요.','','SMS 발송']],
   edge:['어르신 배려(천천히·쉬운 말)','상담원 전환(TRANSFER_COORDINATOR)','보이는 ARS 화면 동기화']},
  trio:{flow:[['콜처리','인입·본인확인','call'],['LLM','참여유형 분석','llm'],['보이는ARS','매칭화면(SHOW_TRIO_MATCH)','call'],['조건부','청년/어르신/양육가정','cond'],['LLM','일정·동네 매칭','llm'],['보이는ARS','접수확인(SHOW_SAFETY_CHECK)','call'],['종료','매칭신청 접수','end']],
-  script:[['인입·본인확인','고객센터입니다. 예약·접수을 도와드릴게요.','봉사 참여하고 싶어요','발신번호로 본인 확인'],
+  script:[['인입·본인확인','고객센터입니다. 예약·접수를 도와드릴게요.','봉사 참여하고 싶어요','발신번호로 본인 확인'],
    ['참여 유형','청년·어르신·양육가정 중 어떤 참여를 원하세요?','청년 봉사요','참여유형 분기'],
    ['매칭 화면','매칭 화면을 보내드렸어요. 활동 요일과 동네를 골라 주세요.','','보이는 ARS: SHOW_TRIO_MATCH'],
    ['접수확인','참여 전 4단계 접수확인을 안내드릴게요.','','보이는 ARS: SHOW_SAFETY_CHECK'],
