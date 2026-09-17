@@ -21,6 +21,7 @@
 import os
 import sys
 import json
+import base64
 import time
 import socket
 import unittest
@@ -95,7 +96,8 @@ SAME_ORIGIN = {"sec-fetch-site": "same-origin", "x-forwarded-for": "10.0.0.1"}
 
 ENV = ("CALLBOT_API_KEY", "CALLBOT_STRICT", "CALLBOT_DEBUG_ERRORS",
        "CALLBOT_TTS_PROVIDER", "CALLBOT_STT_PROVIDER", "SPEECH_LIVE",
-       "RECORDING_LIVE", "SENTRY_DSN")
+       "RECORDING_LIVE", "SENTRY_DSN",
+       "PII_MASTER_KEY", "PII_MASTER_KEY_OLD")
 
 
 class Base(unittest.TestCase):
@@ -400,14 +402,29 @@ class TestRecordingGate(Base):
         self.assertIsNone(r["audio_ref"])
         self.assertIsNone(r["transcript_ref"])
 
-    def test_live_on_with_consent_keeps_refs_only(self):
-        """참조는 남지만 원문 오디오·전사 필드는 애초에 존재하지 않는다."""
+    def test_live_on_with_consent_without_key_drops_refs(self):
+        """암호화 키가 없으면 참조를 **평문으로 저장하지 않고 폐기**한다(폴백 금지)."""
         os.environ["RECORDING_LIVE"] = "1"
         st = recording_audit.RecordingStore()
         r = st.register("sim-1", "refund", 10, consent=True,
                         audio_ref="s3://a", transcript_ref="s3://t")
-        self.assertEqual(r["audio_ref"], "s3://a")
-        self.assertEqual(r["transcript_ref"], "s3://t")
+        self.assertIsNone(r["audio_ref"])
+        self.assertIsNone(r["transcript_ref"])
+        self.assertEqual(r["protection"], "unavailable")
+        self.assertTrue(any(a["action"] == "register_refs_dropped" for a in st.audit_log()),
+                        "참조를 버린 사실이 감사기록에 없다")
+
+    def test_live_on_with_consent_seals_refs_only(self):
+        """참조는 봉인되어 남고, 원문 오디오·전사 필드는 애초에 존재하지 않는다."""
+        os.environ["RECORDING_LIVE"] = "1"
+        os.environ["PII_MASTER_KEY"] = base64.b64encode(b"K" * 32).decode()
+        st = recording_audit.RecordingStore()
+        r = st.register("sim-1", "refund", 10, consent=True,
+                        audio_ref="s3://a", transcript_ref="s3://t")
+        self.assertEqual(r["protection"], "sealed")
+        self.assertNotIn("s3://", repr(r))
+        self.assertTrue(r["audio_ref"].startswith("pv1."))
+        self.assertEqual(st.reveal("agent-01", r["record_id"], "qa")["audio_ref"], "s3://a")
         for k in r:
             self.assertFalse(k in ("audio", "transcript", "audio_bytes", "text"), k)
 
