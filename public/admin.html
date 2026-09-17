@@ -513,6 +513,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
     <nav class="nav" aria-label="운영 관리 메뉴">
       <a data-v="svccfg"><span class="ic">🎛️</span> 서비스 설정</a>
       <a data-v="disclosure"><span class="ic">📣</span> AI 고지 문구</a>
+      <a data-v="callerid"><span class="ic">📇</span> 발신번호 등록</a>
       <a data-v="basis"><span class="ic">🗓️</span> 기준 관리</a>
       <a data-v="syslog"><span class="ic">📜</span> 접속·녹취 로그</a>
       <a data-v="code"><span class="ic">🧷</span> 공통코드·메뉴</a>
@@ -675,6 +676,59 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
         <div class="card"><h3>🔎 검사 결과 · 실효 문구 <span class="r"><span class="tag neu">통화에서 실제로 읽히는 문장</span></span></h3>
           <div id="dcOut" style="padding:14px 18px" aria-live="polite">
             <div class="summary">아직 확인한 내용이 없습니다. <b>📥 현재 실효 문구 불러오기</b>로 기본 문구와 요건 목록을 확인하거나, 문구를 입력하고 <b>🔍 요건 검사</b>를 누르세요.</div>
+          </div></div>
+      </section>
+      <section id="view-callerid" class="hidden">
+        <div class="card" style="margin-bottom:16px"><h3>📇 발신번호 등록 관리 <span class="r"><span class="tag neu">전기통신사업법 사전등록 · 증빙·만료</span></span></h3>
+          <div style="padding:14px 18px">
+            <div class="hint" style="margin-bottom:14px">아웃바운드에 쓰는 번호는 사용 권한을 <b>증빙해 사전 등록</b>해야 하고, 증빙서류에는 유효기간이 있습니다. 이 대장은 번호별 등록 상태·증빙·만료일을 한 곳에서 관리합니다. <b>증빙 없이는 승인되지 않으며</b>, 저장된 상태가 「등록 완료」여도 만료일이 지나면 목록에 <b>만료</b>로 표시됩니다. 등록 요건 충족(<code>발신 가능</code>)과 실제 발신 허용은 다른 문제입니다 — 실발신은 <b>[승인 필요]</b>. 저장은 현재 서버 인스턴스 메모리에만 남습니다(영속 저장소 <b>[승인 필요]</b>).</div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+              <div style="min-width:170px">
+                <label for="ciTenant" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">테넌트 ID <span style="color:var(--mut);font-weight:400">(영문 소문자·숫자·-·_)</span></label>
+                <input id="ciTenant" type="text" value="demo-shop" maxlength="40" autocomplete="off" aria-describedby="ciTenantErr" onkeydown="if(event.key==='Enter'){event.preventDefault();ciRegister();}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="ciTenantErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+              <div style="min-width:170px">
+                <label for="ciNumber" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">발신번호 <span style="color:var(--mut);font-weight:400">(국내 번호만)</span></label>
+                <input id="ciNumber" type="tel" placeholder="예) 1588-0000" maxlength="20" autocomplete="off" aria-describedby="ciNumberErr" onkeydown="if(event.key==='Enter'){event.preventDefault();ciRegister();}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="ciNumberErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+              <div style="min-width:150px">
+                <label for="ciLabel" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">표시명 <span style="color:var(--mut);font-weight:400">(선택)</span></label>
+                <input id="ciLabel" type="text" placeholder="예) 대표 상담" maxlength="60" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+              </div>
+            </div>
+            <div class="hint" style="margin:14px 0 6px;font-weight:700">승인·갱신에 쓰는 증빙 정보</div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+              <div style="min-width:200px">
+                <label for="ciEvidence" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">증빙 종류</label>
+                <select id="ciEvidence" aria-describedby="ciEvidenceErr" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                  <option value="">— 정책을 불러오는 중 —</option>
+                </select>
+                <div id="ciEvidenceErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+              <div style="min-width:160px">
+                <label for="ciIssued" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">증빙 발급일</label>
+                <input id="ciIssued" type="date" aria-describedby="ciIssuedErr" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="ciIssuedErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+              <div style="min-width:140px">
+                <label for="ciValid" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">등록 유효기간(일)</label>
+                <input id="ciValid" type="number" min="1" max="1825" value="365" aria-describedby="ciValidErr" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="ciValidErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="primary" id="ciRegBtn" onclick="ciRegister()">➕ 등록 신청</button>
+              <button id="ciLoadBtn" onclick="ciLoad()">📥 현황 불러오기</button>
+              <button id="ciListBtn" onclick="ciList()">🧾 번호 목록</button>
+              <button id="ciPolicyBtn" onclick="ciPolicy()">📋 등록 정책</button>
+              <button id="ciHistBtn" onclick="ciHistory()">📜 변경 이력</button>
+            </div>
+          </div></div>
+        <div class="card"><h3>🔎 등록 현황 <span class="r"><span class="tag neu">서버 응답 그대로</span></span></h3>
+          <div id="ciOut" style="padding:14px 18px" aria-live="polite">
+            <div class="summary">아직 불러온 내용이 없습니다. <b>📥 현황 불러오기</b>로 등록된 번호와 만료 임박 건을 확인하거나, 번호를 입력하고 <b>➕ 등록 신청</b>을 누르세요.</div>
           </div></div>
       </section>
       <section id="view-cpaas" class="hidden">
@@ -1348,7 +1402,7 @@ var MENU=[['상담',[['voice','음성 상담'],['chat','텍스트 상담']]],
  ['상담지원 AI',[['assistdesk','상담 Assist'],['ta','TA 텍스트분석'],['qamgmt','QA 품질관리'],['kms','KMS 지식관리'],['nlu','NLU 엔진'],['sllm','sLLM']]],
  ['운영',[['home','에이전트 홈'],['monitor','실시간 모니터링'],['hist','대화 이력'],['report','운영 통계'],['alerts','알림 센터'],['builder','시나리오 빌더'],['qa','품질성능평가'],['abtest','A/B 테스트'],['agents','상담사 현황'],['cpaas','CPaaS 연계 테스트']]],
  ['통합통계',[['board','전광판'],['statin','콜봇 이용통계'],['statout','아웃바운드 통계'],['statsvc','상세서비스 통계'],['chan','채널 점유현황'],['sysresp','시스템 응답현황'],['calls','고객 통화 이력']]],
- ['관리',[['svccfg','서비스 설정'],['disclosure','AI 고지 문구'],['basis','기준 관리'],['syslog','접속·녹취 로그'],['code','공통코드·메뉴'],['accounts','계정 · 권한']]],
+ ['관리',[['svccfg','서비스 설정'],['disclosure','AI 고지 문구'],['callerid','발신번호 등록'],['basis','기준 관리'],['syslog','접속·녹취 로그'],['code','공통코드·메뉴'],['accounts','계정 · 권한']]],
  ['멀티모달',[['mm','멀티모달 현황'],['mmhist','멀티모달 이력'],['docs','필요서류 관리']]]];
 function syncTopmenu(){var tb=document.querySelector('.topbar'),tm=document.getElementById('topmenu');if(tb&&tm)tm.style.top=Math.max(0,tb.offsetHeight-1)+'px';}
 window.addEventListener('load',function(){syncTopmenu();setTimeout(syncTopmenu,300);});
@@ -1421,7 +1475,7 @@ function _doSearch(){var q=(document.getElementById('gsearch').value||'').trim()
  pop.innerHTML=top.length?('<div class="hd">검색 결과 '+res.length+'건</div>'+top.map(function(r,i){return '<div class="it" id="gsopt-'+i+'" role="option" aria-selected="false" onmousemove="_gsIdx='+i+';_gsAD()" onclick="show(\''+r.v+'\');closePops();document.getElementById(\'gsearch\').value=\'\'">'+hl(r.t)+'<span class="c">'+r.c+'</span></div>';}).join('')):'<div class="it" style="color:var(--dim)">\''+esc(q)+'\' 검색 결과 없음</div>';
  pop.classList.add('show');var _gi=document.getElementById('gsearch');if(_gi)_gi.setAttribute('aria-expanded','true');_gsAD();}
 
-const titles={voice:['음성 상담','실시간 음성 상담 콘솔'],wellbeing:['안부 전화 연동','안부 콜봇 연동 검증 · 전화망 미경유 시연'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],disclosure:['AI 고지 문구','테넌트별 통화 시작 고지 · 법정 요건 검사'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
+const titles={voice:['음성 상담','실시간 음성 상담 콘솔'],wellbeing:['안부 전화 연동','안부 콜봇 연동 검증 · 전화망 미경유 시연'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],disclosure:['AI 고지 문구','테넌트별 통화 시작 고지 · 법정 요건 검사'],callerid:['발신번호 등록','번호별 등록 상태 · 증빙 · 만료 관리'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
 var curView='home';
 function show(v){if(!titles[v]||!document.getElementById('view-'+v))return;curView=v;try{if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);}catch(e){}document.querySelectorAll('section[id^=view-]').forEach(s=>s.classList.add('hidden'));var _el=$('#view-'+v);_el.classList.remove('hidden');_el.classList.remove('anim');void _el.offsetWidth;_el.classList.add('anim');
   $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='AICC Portal · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
@@ -2689,6 +2743,100 @@ function dcHistory(){dcBtns(true);dcBusy('변경 이력 조회 중…');
     dcSet('<div class="hint" style="margin-bottom:8px">최근 '+hs.length+'건 · append-only</div><table><thead><tr><th>시각(UTC)</th><th>테넌트</th><th>동작</th><th>버전</th><th>주체</th><th>문구</th></tr></thead><tbody>'+rows+'</tbody></table>');
   }).catch(function(e){dcFail('요청 실패: '+dcEsc(e));}).then(function(){dcBtns(false);},function(){dcBtns(false);});}
 (function(){var s=document.getElementById('view-disclosure');if(!s||!window.MutationObserver)return;var done=false;new MutationObserver(function(){if(done||s.classList.contains('hidden'))return;done=true;dcCounter();dcLoad();}).observe(s,{attributes:true,attributeFilter:['class']});})();
+function ciEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+function ciSet(h){var o=document.getElementById('ciOut');if(o)o.innerHTML=h;}
+function ciBusy(m){ciSet('<div class="summary" role="status">⏳ '+ciEsc(m)+'</div>');}
+function ciFail(m){ciSet('<div class="summary" style="color:var(--red)" role="alert"><b>⚠ 요청을 처리하지 못했습니다</b><br>'+m+'</div>');}
+function ciBtns(dis){['ciRegBtn','ciLoadBtn','ciListBtn','ciPolicyBtn','ciHistBtn'].forEach(function(i){var b=document.getElementById(i);if(b)b.disabled=!!dis;});}
+function ciJson(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t);}catch(e){}return {s:r.status,d:d};});}
+function ciClearErr(){['ciTenantErr','ciNumberErr','ciEvidenceErr','ciIssuedErr','ciValidErr'].forEach(function(i){var e=document.getElementById(i);if(e)e.textContent='';});['ciTenant','ciNumber','ciEvidence','ciIssued','ciValid'].forEach(function(i){var e=document.getElementById(i);if(e)e.removeAttribute('aria-invalid');});}
+function ciFieldErr(field,msg){var map={tenant_id:['ciTenant','ciTenantErr'],tenant:['ciTenant','ciTenantErr'],number:['ciNumber','ciNumberErr'],evidence_type:['ciEvidence','ciEvidenceErr'],issued_at:['ciIssued','ciIssuedErr'],valid_days:['ciValid','ciValidErr']},m=map[field];if(!m)return false;var i=document.getElementById(m[0]),e=document.getElementById(m[1]);if(e)e.textContent=msg||'';if(i){i.setAttribute('aria-invalid','true');i.focus();}return true;}
+function ciHttpErr(x){if(!x.d){ciFail('서버가 예상과 다른 응답을 보냈습니다 (HTTP '+x.s+').');return;}var det=(x.d.details||[]);var li=det.map(function(f){return '<li><b>'+ciEsc(f.key||f.field)+'</b> — '+ciEsc(f.reason)+'</li>';}).join('');
+  ciFail(ciEsc(x.d.error||x.d.message||'요청이 거부되었습니다')+' (HTTP '+x.s+(x.d.code?' · '+ciEsc(x.d.code):'')+')'
+    +(li?'<ul style="margin:8px 0 0 18px">'+li+'</ul>':'')
+    +(x.s===401||x.s===403?'<br>콘솔 세션이 만료되었을 수 있습니다. 페이지를 새로고침한 뒤 다시 시도하세요.':'')
+    +(x.s===501?'<br><b>[승인 필요]</b> 실발신 관련 기능은 사람이 승인하기 전까지 열리지 않습니다.':''));
+  var f0=det[0];if(f0&&f0.field)ciFieldErr(f0.field,f0.reason);}
+function ciBadge(st){var m={verified:['ok','등록 완료'],pending:['neu','심사 중'],expired:['bad','만료'],rejected:['bad','반려'],revoked:['neu','사용 중지']},v=m[st]||['neu',st];return '<span class="tag '+v[0]+'">'+ciEsc(v[1])+'</span>';}
+function ciRows(list){if(!list||!list.length)return '<div class="summary">등록된 번호가 없습니다. 위에서 번호를 입력하고 <b>➕ 등록 신청</b>을 누르면 심사 중 상태로 대장에 올라갑니다.</div>';
+  var rows=list.map(function(n){var left=(n.days_left==null?'-':(n.days_left+'일'));
+    var warn=n.expiring_soon?' <span class="tag bad">만료 임박</span>':'';
+    var acts='';
+    if(n.status==='pending'){acts+='<button onclick="ciAct(\''+ciEsc(n.id)+'\',\'verify\')">승인</button> <button onclick="ciAct(\''+ciEsc(n.id)+'\',\'reject\')">반려</button> ';}
+    if(n.status==='verified'||n.status==='expired'){acts+='<button onclick="ciAct(\''+ciEsc(n.id)+'\',\'renew\')">갱신</button> ';}
+    if(n.status!=='revoked'&&n.status!=='rejected'){acts+='<button onclick="ciAct(\''+ciEsc(n.id)+'\',\'revoke\')">중지</button>';}
+    if(!acts)acts='<span class="hint">-</span>';
+    return '<tr><td><code>'+ciEsc(n.id)+'</code></td><td><code>'+ciEsc(n.number_masked)+'</code></td><td>'+ciEsc(n.label||'-')+'</td><td><code>'+ciEsc(n.tenant_id)+'</code></td><td>'+ciBadge(n.status)+warn+'</td><td>'+ciEsc(n.evidence_type||'-')+'</td><td>'+ciEsc(n.expires_at||'-')+'</td><td>'+ciEsc(left)+'</td><td>'+(n.outbound_ready?'가능':'불가')+'</td><td>'+acts+'</td></tr>';}).join('');
+  return '<table><thead><tr><th>ID</th><th>번호(마스킹)</th><th>표시명</th><th>테넌트</th><th>상태</th><th>증빙</th><th>만료(UTC)</th><th>잔여</th><th>발신 요건</th><th>조치</th></tr></thead><tbody>'+rows+'</tbody></table>';}
+function ciInputs(){return {tenant_id:((document.getElementById('ciTenant')||{}).value||'').trim().toLowerCase(),number:((document.getElementById('ciNumber')||{}).value||'').trim(),label:((document.getElementById('ciLabel')||{}).value||'').trim()};}
+function ciEvidenceInput(){var t=((document.getElementById('ciEvidence')||{}).value||''),d=((document.getElementById('ciIssued')||{}).value||''),v=((document.getElementById('ciValid')||{}).value||'');
+  if(!t){ciFieldErr('evidence_type','증빙 종류를 고르세요. 증빙 없이는 승인되지 않습니다.');return null;}
+  if(!d){ciFieldErr('issued_at','증빙 발급일을 입력하세요.');return null;}
+  var ms=Date.parse(d+'T00:00:00Z');if(isNaN(ms)){ciFieldErr('issued_at','발급일 형식이 올바르지 않습니다.');return null;}
+  var vd=parseInt(v,10);if(!(vd>=1&&vd<=1825)){ciFieldErr('valid_days','유효기간은 1~1825일 사이의 숫자여야 합니다.');return null;}
+  return {evidence_type:t,issued_at:Math.floor(ms/1000),valid_days:vd};}
+function ciPost(payload,okMsg){ciBtns(true);ciBusy('처리 중…');
+  return fetch('/api/caller_id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(ciJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){ciHttpErr(x);return;}
+    ciSet('<div class="summary" role="status">✅ '+ciEsc(okMsg)+' — <code>'+ciEsc(x.d.number.id)+'</code> '+ciBadge(x.d.number.status)+'</div><div class="hint" style="margin:8px 0">'+ciEsc(x.d.activation_note||'')+'</div>');
+    ciLoad();
+  }).catch(function(e){ciFail('요청 실패: '+ciEsc(e));}).then(function(){ciBtns(false);},function(){ciBtns(false);});}
+function ciRegister(){ciClearErr();var v=ciInputs();
+  if(!v.tenant_id){ciFieldErr('tenant_id','테넌트 ID를 입력하세요(예: demo-shop).');return;}
+  if(!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(v.tenant_id)){ciFieldErr('tenant_id','영문 소문자·숫자·-·_ 로 1~40자만 가능합니다.');return;}
+  if(!v.number){ciFieldErr('number','발신번호를 입력하세요.');return;}
+  ciPost({op:'register',tenant_id:v.tenant_id,number:v.number,label:v.label},'등록 신청을 접수했습니다(심사 중)');}
+function ciAct(id,op){ciClearErr();var body={op:op,id:id};
+  if(op==='verify'||op==='renew'){var e=ciEvidenceInput();if(!e)return;body.evidence_type=e.evidence_type;body.issued_at=e.issued_at;body.valid_days=e.valid_days;}
+  if(op==='revoke'&&!window.confirm('이 번호를 사용 중지합니다.\n보관된 번호 원문은 암호 파기되어 되돌릴 수 없습니다. 계속할까요?'))return;
+  if(op==='reject'&&!window.confirm('이 등록 신청을 반려합니다. 계속할까요?'))return;
+  var msg={verify:'등록을 승인했습니다',renew:'등록을 갱신했습니다',reject:'등록 신청을 반려했습니다',revoke:'번호를 사용 중지했습니다'}[op]||'처리했습니다';
+  ciPost(body,msg);}
+function ciLoad(){ciBtns(true);ciBusy('등록 현황을 불러오는 중…');
+  fetch('/api/caller_id').then(ciJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){ciHttpErr(x);return;}
+    var d=x.d,c=d.counts||{};
+    var chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+      +'<span class="tag neu">전체 '+ciEsc(d.total)+'</span>'
+      +'<span class="tag ok">등록 완료 '+ciEsc(c.verified||0)+'</span>'
+      +'<span class="tag neu">심사 중 '+ciEsc(c.pending||0)+'</span>'
+      +'<span class="tag bad">만료 '+ciEsc(c.expired||0)+'</span>'
+      +'<span class="tag neu">반려 '+ciEsc(c.rejected||0)+'</span>'
+      +'<span class="tag neu">중지 '+ciEsc(c.revoked||0)+'</span>'
+      +'<span class="tag '+(d.cpaas_live?'ok':'neu')+'">실발신 게이트 '+(d.cpaas_live?'ON':'OFF')+'</span>'
+      +'<span class="tag '+(d.vault&&d.vault.available?'ok':'bad')+'">번호 봉인 '+(d.vault&&d.vault.available?'사용':'키 미설정')+'</span></div>';
+    var warn='';
+    if((d.expiring_soon||[]).length)warn+='<div class="summary" style="margin-bottom:10px"><b>⏰ 만료 임박 '+d.expiring_soon.length+'건</b> — 증빙을 재제출해 갱신하세요.</div>';
+    if((d.expired||[]).length)warn+='<div class="summary" style="color:var(--red);margin-bottom:10px"><b>⛔ 만료 '+d.expired.length+'건</b> — 이 번호로는 발신할 수 없습니다.</div>';
+    if(!(d.vault&&d.vault.available))warn+='<div class="hint" style="margin-bottom:10px">번호 원문 봉인 키(<code>PII_MASTER_KEY</code>)가 설정되지 않아 <b>번호 원문을 보관하지 않습니다</b>(마스킹만 저장). 키 등록은 <b>[승인 필요]</b>.</div>';
+    ciSet(chips+warn+'<div class="hint" style="margin-bottom:8px">'+ciEsc(d.activation_note||'')+' · 저장: '+ciEsc(d.persistence||'')+'</div>'+ciRows((d.expiring_soon||[]).concat(d.expired||[]).length?(d.expiring_soon||[]).concat(d.expired||[]):null)+'<div class="hint" style="margin-top:8px">전체 목록은 <b>🧾 번호 목록</b>에서 봅니다.</div>');
+  }).catch(function(e){ciFail('요청 실패: '+ciEsc(e));}).then(function(){ciBtns(false);},function(){ciBtns(false);});}
+function ciList(){ciBtns(true);ciBusy('번호 목록을 불러오는 중…');
+  fetch('/api/caller_id?op=list').then(ciJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){ciHttpErr(x);return;}
+    ciSet('<div class="hint" style="margin-bottom:8px">등록 '+ciEsc((x.d.numbers||[]).length)+'건 · 번호는 마스킹되어 표시됩니다 · 저장: '+ciEsc(x.d.persistence||'')+'</div>'+ciRows(x.d.numbers));
+  }).catch(function(e){ciFail('요청 실패: '+ciEsc(e));}).then(function(){ciBtns(false);},function(){ciBtns(false);});}
+function ciPolicy(){ciBtns(true);ciBusy('등록 정책을 불러오는 중…');
+  fetch('/api/caller_id?op=policy').then(ciJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){ciHttpErr(x);return;}
+    var d=x.d;ciFillEvidence(d.evidence_types);
+    var tr=(d.transitions||[]).map(function(t){return '<tr><td><code>'+ciEsc(t.op)+'</code></td><td>'+ciEsc(t.label)+'</td><td>'+ciEsc((t.from||[]).join(', '))+'</td><td>'+ciEsc(t.to)+'</td><td>'+(t.needs_evidence?'필요':'-')+'</td></tr>';}).join('');
+    ciSet('<div class="summary">'+ciEsc(d.legal||'')+'</div>'
+      +'<div class="hint" style="margin:10px 0">증빙 유효기간 '+ciEsc(d.evidence_max_age_days)+'일 · 기본 등록 유효기간 '+ciEsc(d.default_valid_days)+'일 · 만료 '+ciEsc(d.expiry_warn_days)+'일 전 경고 · 최대 '+ciEsc(d.max_numbers)+'건<br>'+ciEsc(d.number_rules||'')+'</div>'
+      +'<table><thead><tr><th>동작</th><th>설명</th><th>가능한 현재 상태</th><th>결과</th><th>증빙</th></tr></thead><tbody>'+tr+'</tbody></table>');
+  }).catch(function(e){ciFail('요청 실패: '+ciEsc(e));}).then(function(){ciBtns(false);},function(){ciBtns(false);});}
+function ciHistory(){ciBtns(true);ciBusy('변경 이력을 불러오는 중…');
+  fetch('/api/caller_id?op=history').then(ciJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){ciHttpErr(x);return;}
+    var hs=(x.d.history||[]).slice().reverse();
+    if(!hs.length){ciSet('<div class="summary">변경 이력이 없습니다. 등록·승인·갱신·중지가 일어나면 순서대로 남습니다.</div>');return;}
+    var rows=hs.map(function(h){return '<tr><td>'+ciEsc(h.ts)+'</td><td><code>'+ciEsc(h.id)+'</code></td><td>'+ciEsc(h.action)+'</td><td><code>'+ciEsc(h.detail)+'</code></td><td>'+ciEsc(h.actor||'-')+'</td></tr>';}).join('');
+    ciSet('<div class="hint" style="margin-bottom:8px">최근 '+hs.length+'건 · 번호는 마스킹되어 기록됩니다</div><table><thead><tr><th>시각(UTC)</th><th>ID</th><th>동작</th><th>번호(마스킹)</th><th>주체</th></tr></thead><tbody>'+rows+'</tbody></table>');
+  }).catch(function(e){ciFail('요청 실패: '+ciEsc(e));}).then(function(){ciBtns(false);},function(){ciBtns(false);});}
+function ciFillEvidence(types){var s=document.getElementById('ciEvidence');if(!s||!types||!types.length)return;if(s.getAttribute('data-filled')==='1')return;
+  s.innerHTML='<option value="">— 증빙 종류를 고르세요 —</option>'+types.map(function(t){return '<option value="'+ciEsc(t)+'">'+ciEsc(t)+'</option>';}).join('');s.setAttribute('data-filled','1');}
+function ciInit(){fetch('/api/caller_id?op=policy').then(ciJson).then(function(x){if(x.s===200&&x.d&&x.d.ok)ciFillEvidence(x.d.evidence_types);}).catch(function(){});ciLoad();}
+(function(){var s=document.getElementById('view-callerid');if(!s||!window.MutationObserver)return;var done=false;new MutationObserver(function(){if(done||s.classList.contains('hidden'))return;done=true;ciInit();}).observe(s,{attributes:true,attributeFilter:['class']});})();
 function cpaasSim(sc){cpaasBusy('실제 API 호출 중… (텔레포니 과금 0)');fetch('/api/sim_call?scenario='+sc).then(function(r){return r.json();}).then(function(d){var o=document.getElementById('cpaasOut');if(!o)return;if(d.error){o.innerHTML='<div class="summary" style="color:var(--red)">오류: '+esc(d.error)+'</div>';return;}var chat=(d.turns||[]).map(function(t){return '<div style="margin-bottom:10px"><div style="text-align:right"><span style="display:inline-block;background:var(--warmbg);color:var(--warm2);padding:7px 11px;border-radius:12px;font-size:13px;max-width:80%">'+esc(t.user)+'</span></div><div style="margin-top:5px"><span style="display:inline-block;background:var(--panel2);border:1px solid var(--line);padding:7px 11px;border-radius:12px;font-size:13px;max-width:85%;white-space:pre-wrap">'+esc(t.bot)+'</span></div></div>';}).join('');o.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="tag pos">✅ '+esc(d.billing||'')+'</span><span class="tag neu">시나리오: '+esc(d.scenario||'')+'</span>'+(d.transferred?'<span class="tag neg">상담사 전환</span>':'')+'</div>'+chat;}).catch(function(e){cpaasBusy('요청 실패: '+e);});}
 function cpaasStatus(){cpaasBusy('어댑터 상태 확인 중…');fetch('/api/voice').then(function(r){return r.json();}).then(function(d){var o=document.getElementById('cpaasOut');o.innerHTML='<div style="margin-bottom:8px"><span class="tag pos">어댑터 연결됨</span></div><pre style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;overflow:auto">'+esc(JSON.stringify(d,null,2))+'</pre>';}).catch(function(e){cpaasBusy('요청 실패: '+e);});}
 function cpaasCampaign(){cpaasBusy('캠페인 dry-run 요청 중… (발신 안 함)');fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'campaign',numbers:['01011112222','01033334444'],scenario:'care'})}).then(function(r){return r.json();}).then(function(d){var o=document.getElementById('cpaasOut');var n=(d.would_call!=null?d.would_call:d.queued)||0;o.innerHTML='<div style="margin-bottom:10px"><span class="tag pos">✅ '+esc(d.mode||'')+'</span> <span class="tag neu">발신 예정 '+n+'건</span></div><pre style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;overflow:auto">'+esc(JSON.stringify(d,null,2))+'</pre>';}).catch(function(e){cpaasBusy('요청 실패: '+e);});}

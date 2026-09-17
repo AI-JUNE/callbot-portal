@@ -216,7 +216,8 @@ class TestIntegrity(Base):
         parts = self.env.split(".")
         tail = parts[3]
         alt = None
-        for ch in "ABCDEFGH":
+        alphabet = ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        for ch in alphabet:
             cand = tail[:-1] + ch
             if cand == tail:
                 continue
@@ -227,8 +228,7 @@ class TestIntegrity(Base):
                     break
             except Exception:
                 continue
-        if alt is None:
-            self.skipTest("이 길이에서는 비정규 표기가 존재하지 않는다")
+        self.assertIsNotNone(alt, "이 길이라면 비정규 표기가 반드시 존재한다")
         parts[3] = alt
         with self.assertRaises(pii_vault.VaultTamper):
             pii_vault.unseal(".".join(parts), "REC-0001/audio")
