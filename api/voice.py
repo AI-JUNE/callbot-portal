@@ -24,6 +24,22 @@ try:
     from assist import run_assist
 except Exception:
     run_assist = None
+try:
+    # 실측 통화 지표 수집기. 없어도 통화는 정상 처리된다(집계만 비어 있을 뿐).
+    # 호출은 전부 예외를 전파하지 않는 래퍼이고, 삼킨 실패는 collector.errors 로 드러난다.
+    import call_metrics
+except Exception:                       # pragma: no cover
+    call_metrics = None
+
+
+def _metric(fn_name, *a, **kw):
+    """지표 수집이 통화를 끊지 않게 감싼다(수집 실패 < 통화 성공)."""
+    if call_metrics is None:
+        return None
+    try:
+        return getattr(call_metrics, fn_name)(*a, **kw)
+    except Exception:                   # pragma: no cover
+        return None
 
 CPAAS = os.environ.get("CPAAS_PROVIDER", "sim")
 try:
@@ -173,6 +189,10 @@ def handle_twilio(p):
 
     # 통화 종료류
     if status in ("completed", "canceled", "busy", "no-answer", "failed"):
+        # 실측: 연결 자체가 안 된 종료(busy/no-answer/failed)는 통화 실패로 구분한다.
+        # completed/canceled 는 사유를 단정하지 않고 수집기의 관측 규칙에 맡긴다.
+        _metric("finish", cid,
+                outcome="failed" if status in ("busy", "no-answer", "failed") else None)
         _Session.drop(cid)
         _log_call({"from": frm, "ev": "통화종료", "text": status})
         return _say_then_hangup("이용해 주셔서 감사합니다.")
@@ -189,6 +209,7 @@ def handle_twilio(p):
     if not sess:
         sess = {"messages": [], "scenario": scenario, "phone": frm}
         _Session.put(cid, sess)
+        _metric("start", cid, scenario=scenario)
         _log_call({"from": frm, "ev": "통화연결", "text": ""})
 
     # 녹음 콜백이 아니면(=첫 진입) 인사 후 녹음 요청
@@ -213,7 +234,9 @@ def handle_twilio(p):
         r = run_turn(sess["messages"], phone=frm, scenario=sess["scenario"])
         sess["messages"] = r["messages"]
         _log_call({"from": frm, "ev": "봇응답", "text": r.get("reply", "")})
+        _metric("mark_turn", cid)
         if r.get("transferred"):
+            _metric("mark_outcome", cid, "transferred")
             agent = (os.environ.get("CALLBOT_AGENT_PHONE", "") or "").strip()
             if agent:
                 out = _say_then_dial("상담사에게 연결해 드리겠습니다. 잠시만 기다려 주세요.", agent, to, cid)
@@ -267,6 +290,7 @@ def handle_event(ev):
         if sess is None:
             _Session.put(cid, {"messages": [], "scenario": ev["scenario"],
                                "phone": ev["from"], "started": time.time()})
+            _metric("start", cid, scenario=ev.get("scenario"), tenant=ev.get("tenant"))
         # 이미 세션이 있으면 answered 재배달이다 — 대화 이력을 지우지 않는다.
         return _act_say_then_listen(greeting(ev.get("tenant")))
     if ev["type"] == "speech":
@@ -283,7 +307,9 @@ def handle_event(ev):
             r = run_turn(sess["messages"], phone=sess.get("phone", ""), scenario=sess.get("scenario", "refund"))
             sess["messages"] = r["messages"]
             _Session.put(cid, sess)
+            _metric("mark_turn", cid)
             if r.get("transferred"):
+                _metric("mark_outcome", cid, "transferred")
                 return _act_transfer()
             return _act_say_then_listen(r["reply"])
         return _act_say_then_listen("현재 응대 엔진 점검 중입니다. 상담사에게 연결해 드릴게요.")
@@ -296,6 +322,7 @@ def handle_event(ev):
                 result = run_assist("summary", convo)
             except Exception:
                 result = None
+        _metric("finish", cid)
         _persist_call_result(cid, sess, result)
         _Session.drop(cid)
         return {"ok": True, "summary": result}

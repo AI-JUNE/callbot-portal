@@ -18,6 +18,9 @@
   (c) period 가 문자열이 아니면(list·dict 등) `in` 이 TypeError 를 내던 것을 today 로 폴백.
 - `data_source="demo"` 를 응답에 함께 실어 **수치가 실측이 아님을 소비자가 알 수 있게** 한다.
   (새 수치를 추가하는 것이 아니라, 기존 데모 수치에 정직한 꼬리표를 붙이는 것)
+- B160: **실측 블록(`measured`)** 추가 — `call_metrics` 가 이 인스턴스에서 실제로 처리한
+  통화만 세어 둔 값. 데모 수치와 **섞지 않고 별도 블록**으로 내보낸다. 표본 0건이면
+  비율은 `null`(0.0 으로 내리지 않는다). 헤드라인 수치는 여전히 `data_source="demo"`.
 - 실 CTI·실통계 연동은 [승인 필요] — 여기서는 sim 집계만.
 
 사용:
@@ -84,6 +87,44 @@ def _norm_stats(raw, keys):
     return out
 
 
+# B160: 실측 블록 고정 스키마 — 수집기가 없거나 죽어도 콘솔이 깨지지 않는다.
+MEASURED_CALL_KEYS = ("total", "bot_completed", "transferred", "abandoned",
+                      "failed", "in_progress")
+MEASURED_RATE_KEYS = ("auto_rate", "transfer_rate", "avg_duration_sec", "avg_turns")
+
+# 소비자가 '봇 자동완결'을 과대해석하지 않도록 판정 정의를 함께 싣는다.
+MEASURED_DEFINITION = {
+    "bot_completed": "상담사 전환 없이 봇 응대 턴이 1회 이상 있었고 통화가 종료됨",
+    "transferred": "엔진이 상담사 전환을 결정함",
+    "abandoned": "봇 응대 턴 없이 통화가 종료됨",
+    "failed": "통화가 연결되지 못하거나 오류로 종료됨",
+}
+
+
+def _measured(period):
+    """실측 관측치(call_metrics). 수집기 장애가 대시보드를 죽이지 않는다.
+
+    비어 있어도 **데모 값으로 채우지 않는다** — 없는 것은 없는 대로 0/null 이다.
+    """
+    raw = None
+    try:
+        import call_metrics
+        raw = call_metrics.summary(period=period)
+    except Exception:
+        raw = None
+    if not isinstance(raw, dict):
+        return {"data_source": "unavailable", "period": period, "sample_size": 0,
+                "window_sec": 0, "partial": True,
+                "calls": {k: 0 for k in MEASURED_CALL_KEYS},
+                **{k: None for k in MEASURED_RATE_KEYS},
+                "collector": {"errors": 0, "orphan_finishes": 0, "dropped": 0,
+                              "retention_sec": 0, "scope": "instance"},
+                "definition": dict(MEASURED_DEFINITION)}
+    raw = dict(raw)
+    raw["definition"] = dict(MEASURED_DEFINITION)
+    return raw
+
+
 def _flag(name):
     """환경 플래그를 **읽기만** 한다(설정·활성화 없음)."""
     try:
@@ -141,6 +182,9 @@ def get_ops_summary(baseline=None, period="today"):
         "recording": rec,
         # B146: 활성화 게이트 현황(읽기 전용 · 여기서 켜지 않음)
         "gates": gate_flags(),
+        # B160: 이 인스턴스가 실제로 처리한 통화의 관측치(데모와 분리).
+        # 위쪽 calls/wait/sla 는 데모다 — 둘을 합치지 않는다.
+        "measured": _measured(period),
     }
 
 
@@ -273,6 +317,33 @@ if __name__ == "__main__":
         os.environ.pop("SPEECH_LIVE", None)
     else:
         os.environ["SPEECH_LIVE"] = _saved
+    # --- B160: 실측 블록 ---
+    m = s["measured"]
+    assert m["data_source"] in ("measured", "unavailable")
+    for k in MEASURED_CALL_KEYS:
+        assert isinstance(m["calls"][k], int), k
+    # 표본이 없으면 비율은 null — 0.0 으로 내리거나 데모 값으로 채우지 않는다
+    if m["sample_size"] == 0:
+        assert all(m[k] is None for k in MEASURED_RATE_KEYS), m
+    # 헤드라인은 여전히 데모 — 실측이 데모 자리에 끼어들지 않는다
+    assert s["data_source"] == "demo" and s["calls"]["today"] == 214
+    assert set(m["definition"]) == {"bot_completed", "transferred", "abandoned", "failed"}
+    # 수집기가 죽어도 스키마는 그대로
+    import builtins as _b
+    _real = _b.__import__
+
+    def _boom(name, *a, **kw):
+        if name == "call_metrics":
+            raise RuntimeError("down")
+        return _real(name, *a, **kw)
+    _b.__import__ = _boom
+    try:
+        u = _measured("today")
+    finally:
+        _b.__import__ = _real
+    assert u["data_source"] == "unavailable" and u["calls"]["total"] == 0
+    assert all(u[k] is None for k in MEASURED_RATE_KEYS)
+
     # 직렬화 가능
     json.dumps(s, ensure_ascii=False)
     print("ops_stats selftest OK:", json.dumps(w, ensure_ascii=False)[:160], "...")

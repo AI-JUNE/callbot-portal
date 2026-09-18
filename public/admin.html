@@ -877,6 +877,8 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
         <div class="card" style="margin-bottom:16px"><h3>🎙️ 음성엔진 프로바이더 상태 <span class="r"><button onclick="speechHealthLoad(true)">🔄 새로고침</button> <span id="shGate" style="color:var(--dim);font-size:11px"></span></span></h3><div id="shBody" style="padding:12px 18px" aria-live="polite"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">읽기전용 상태 조회 · 실호출·과금 없음. 비-sim 프로바이더 활성화는 <b>[승인 필요]</b></div></div>
         <!-- B146: 에스컬레이션 큐 · 녹취/감사 sim 현황 — /api/ops_stats 읽기전용 집계(통화 원문·개인정보 미포함) -->
         <div class="card" style="margin-bottom:16px"><h3>🧑‍💼 상담원 연결 큐 · 녹취/감사 현황 <span class="r"><button onclick="opsSimLoad(true)">🔄 새로고침</button> <span id="osGate" style="color:var(--dim);font-size:11px"></span></span></h3><div id="osBody" style="padding:12px 18px" aria-live="polite"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">프로세스 단위 sim 집계 · 통화 원문·개인정보 미포함. 실녹취·실 CTI 연동은 <b>[승인 필요]</b></div></div>
+        <!-- B160: 실측 통화 지표 — /api/ops_stats 의 measured 블록만 그린다. 이 인스턴스가 실제 처리한 통화만 집계하며 데모 수치와 섞지 않는다. 하드코딩 수치 없음 -->
+        <div class="card" style="margin-bottom:16px"><h3>📐 실측 통화 지표 <span class="tag pos">실측</span> <span class="r"><button onclick="cmLoad(true)">🔄 새로고침</button> <span id="cmScope" style="color:var(--dim);font-size:11px"></span></span></h3><div id="cmBody" style="padding:12px 18px" aria-live="polite" role="status"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">위쪽 KPI(<u>샘플 데이터</u>)와 달리 <b>이 서버 인스턴스가 실제 처리한 통화</b>만 셉니다. 표본이 없으면 비율을 비워 둡니다(0%로 표시하지 않습니다). 통화 원문·전화번호는 집계에 포함되지 않습니다. 인스턴스 메모리 기준이라 다중 인스턴스 합산·영속 집계는 <b>[승인 필요]</b></div></div>
         <div class="card" style="margin-bottom:16px"><h3>🗂️ 콜 대기열 보드 <span class="r" style="color:var(--dim);font-size:11px">대기 → 봇 처리 → 상담원 → 완료 · 2.5초 갱신</span></h3><div id="queueBoard" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:12px 16px"></div></div>
         <div class="card"><h3>📡 현재 통화 현황 <span class="r"><span class="live">LIVE</span> <span style="color:var(--dim);font-size:11px">개인정보 자동 마스킹 · 2.5초 갱신</span> <span id="monSpeech" style="color:var(--dim);font-size:11px"></span></span></h3>
           <table><thead><tr><th>고객(마스킹)</th><th>채널</th><th>유형</th><th>처리</th><th>현재 노드</th><th>경과</th><th>상태</th></tr></thead><tbody id="monBody"></tbody></table></div>
@@ -1481,7 +1483,7 @@ function show(v){if(!titles[v]||!document.getElementById('view-'+v))return;curVi
   $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='AICC Portal · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
   try{if(typeof srSay==='function')srSay((typeof tr==='function'?tr(titles[v][0]):titles[v][0])+' 화면으로 이동했습니다.');}catch(e){}
   document.querySelectorAll('.nav a').forEach(a=>{a.classList.remove('on');a.removeAttribute('aria-current');if(a.dataset.v===v){a.classList.add('on');a.setAttribute('aria-current','page');}});if(typeof renderFavs==='function')renderFavs();if(typeof navA11y==='function')navA11y();if(typeof tblSortInit==='function')tblSortInit();if(typeof tblFilterInit==='function')tblFilterInit();
-  if(v==='home')renderDash();if(v==='hist'){renderHist();renderHistLog();}if(v==='agents'){renderAgents();renderAgQueue();renderSched();agAssignTimer=setInterval(agAssignTick,2200);}if(monTimer){clearInterval(monTimer);monTimer=null;}if(window._monCardTimer){clearInterval(window._monCardTimer);window._monCardTimer=null;}if(homeTimer){clearInterval(homeTimer);homeTimer=null;}if(agAssignTimer){clearInterval(agAssignTimer);agAssignTimer=null;}if(v==='monitor'){if(typeof monFetchStats==='function')monFetchStats();renderMon();renderSLA();monTimer=setInterval(monTick,2500);}if(v==='home'&&!window._arOff)homeTimer=setInterval(homeRefresh,3500);if(v==='calls')renderCalls();if(v==='board'){renderBoard();renderJourney();renderSankey();}if(v==='kms')renderKms();if(v==='qamgmt'){renderQamgmt();renderCoachCal();}if(window._cpaasTimer&&v!=='cpaas'){clearInterval(window._cpaasTimer);window._cpaasTimer=null;}if(v==='cpaas')renderCpaas();if(v==='mmhist')renderMmhist();if(v==='docs')renderDocs();if(v==='svccfg')svcCount();if(v==='syslog')renderLogs();if(v==='report')renderSchedInfo();if(v==='report')renderReport();if(v==='builder')renderBuilder(curScn);if(v==='qa')renderQa();if(v==='assistdesk'){renderAssistDesk();renderAdeskHist();renderMsgs();renderScripts();}if(v==='nlu'){renderNluData();renderLblQueue();}if(v==='sllm')sllmLoadPrompt();if(v==='ta')renderTaViz();if(v==='agentmgmt')renderAgentMgmt();if(v==='rag')renderRag();if(v==='abtest'){renderAbtest();abLoadPrompts();}if(v==='alerts'){renderAlerts();renderRules();}if(v==='reason')renderReason();if(v==='exportc')renderExportC();if(v==='agents'){renderLeader();renderSched();}if(v==='home'){renderSparks();renderHealth();renderCKpi();}if(v==='monitor'){renderMonGauge();renderSLA();if(typeof speechHealthLoad==='function')speechHealthLoad();if(typeof opsSimLoad==='function')opsSimLoad();if(typeof monCardsAuto==='function')monCardsAuto(true);}if(v==='kb'&&typeof filterKb==='function')filterKb();if(v!=='assistdesk'&&typeof adeskStop==='function')adeskStop(true);if(typeof STAT!=='undefined'&&STAT[v])STAT[v]();if(typeof CHR!=='undefined'&&CHR[v])CHR[v]();if(typeof updateActive==='function'){updateActive();renderNoti();}if(typeof syncBotNav==='function')syncBotNav();if(window.innerWidth<=820){document.querySelector('.side').classList.remove('open');var _sc=document.getElementById('scrim');if(_sc)_sc.classList.remove('on');var _hb2=document.querySelector('.hamb');if(_hb2)_hb2.setAttribute('aria-expanded','false');}}
+  if(v==='home')renderDash();if(v==='hist'){renderHist();renderHistLog();}if(v==='agents'){renderAgents();renderAgQueue();renderSched();agAssignTimer=setInterval(agAssignTick,2200);}if(monTimer){clearInterval(monTimer);monTimer=null;}if(window._monCardTimer){clearInterval(window._monCardTimer);window._monCardTimer=null;}if(homeTimer){clearInterval(homeTimer);homeTimer=null;}if(agAssignTimer){clearInterval(agAssignTimer);agAssignTimer=null;}if(v==='monitor'){if(typeof monFetchStats==='function')monFetchStats();renderMon();renderSLA();monTimer=setInterval(monTick,2500);}if(v==='home'&&!window._arOff)homeTimer=setInterval(homeRefresh,3500);if(v==='calls')renderCalls();if(v==='board'){renderBoard();renderJourney();renderSankey();}if(v==='kms')renderKms();if(v==='qamgmt'){renderQamgmt();renderCoachCal();}if(window._cpaasTimer&&v!=='cpaas'){clearInterval(window._cpaasTimer);window._cpaasTimer=null;}if(v==='cpaas')renderCpaas();if(v==='mmhist')renderMmhist();if(v==='docs')renderDocs();if(v==='svccfg')svcCount();if(v==='syslog')renderLogs();if(v==='report')renderSchedInfo();if(v==='report')renderReport();if(v==='builder')renderBuilder(curScn);if(v==='qa')renderQa();if(v==='assistdesk'){renderAssistDesk();renderAdeskHist();renderMsgs();renderScripts();}if(v==='nlu'){renderNluData();renderLblQueue();}if(v==='sllm')sllmLoadPrompt();if(v==='ta')renderTaViz();if(v==='agentmgmt')renderAgentMgmt();if(v==='rag')renderRag();if(v==='abtest'){renderAbtest();abLoadPrompts();}if(v==='alerts'){renderAlerts();renderRules();}if(v==='reason')renderReason();if(v==='exportc')renderExportC();if(v==='agents'){renderLeader();renderSched();}if(v==='home'){renderSparks();renderHealth();renderCKpi();}if(v==='monitor'){renderMonGauge();renderSLA();if(typeof speechHealthLoad==='function')speechHealthLoad();if(typeof opsSimLoad==='function')opsSimLoad();if(typeof cmLoad==='function')cmLoad();if(typeof monCardsAuto==='function')monCardsAuto(true);}if(v==='kb'&&typeof filterKb==='function')filterKb();if(v!=='assistdesk'&&typeof adeskStop==='function')adeskStop(true);if(typeof STAT!=='undefined'&&STAT[v])STAT[v]();if(typeof CHR!=='undefined'&&CHR[v])CHR[v]();if(typeof updateActive==='function'){updateActive();renderNoti();}if(typeof syncBotNav==='function')syncBotNav();if(window.innerWidth<=820){document.querySelector('.side').classList.remove('open');var _sc=document.getElementById('scrim');if(_sc)_sc.classList.remove('on');var _hb2=document.querySelector('.hamb');if(_hb2)_hb2.setAttribute('aria-expanded','false');}}
 document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',()=>show(a.dataset.v)));
 /* B90: 사이드 내비 키보드 접근성 — .nav a 는 href 가 없어 탭 포커스가 불가능했음(키보드 사용자는 화면 전환 자체가 불가).
    role=link + tabindex=0 부여, Enter/Space 로 활성화. 즐겨찾기 nav 는 동적 생성이라 show() 에서 재적용. */
@@ -1760,6 +1762,75 @@ function opsSimLoad(force,quiet){
  try{fetch('/api/ops_stats?period='+encodeURIComponent(p),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(fin).catch(function(){fin(null);});}
  catch(e){fin(null);}
 }
+/* B160: 실측 통화 지표 — /api/ops_stats 의 measured 블록만 그린다.
+   원칙: 서버가 준 값만 표시한다. 표본이 없으면 비율을 0%로 내리지 않고 비워 둔다(허위 수치 금지). */
+var _cmLoaded=false;
+function _cmPct(v){return (typeof v==='number'&&isFinite(v))?((Math.round(v*1000)/10)+'%'):'—';}
+function _cmSec(v){return (typeof v==='number'&&isFinite(v))?((Math.round(v*10)/10)+'초'):'—';}
+function _cmAvg(v){return (typeof v==='number'&&isFinite(v))?String(Math.round(v*100)/100):'—';}
+function _cmWin(sec){
+ if(typeof sec!=='number'||!isFinite(sec)||sec<=0)return '—';
+ if(sec<3600)return Math.round(sec/60)+'분';
+ if(sec<86400)return (Math.round(sec/360)/10)+'시간';
+ return (Math.round(sec/8640)/10)+'일';
+}
+function _cmTile(label,val,sub){
+ return '<div style="background:var(--bg2,#f7f7f9);border:1px solid var(--line);border-radius:9px;padding:8px 10px">'
+  +'<div style="font-size:10.5px;color:var(--mut)">'+_osEsc(label)+'</div>'
+  +'<div style="font-size:17px;font-weight:800;margin-top:2px">'+_osEsc(val)+'</div>'
+  +(sub?'<div style="font-size:10px;color:var(--dim);margin-top:1px">'+_osEsc(sub)+'</div>':'')+'</div>';
+}
+function _cmRender(m){
+ if(!m||typeof m!=='object')
+  return '<div role="alert" style="font-size:12px;color:var(--dim)">실측 지표를 불러오지 못했습니다.</div>';
+ if(m.data_source==='unavailable')
+  return '<div role="alert" style="font-size:12px;color:var(--dim)">수집기가 응답하지 않아 실측치를 표시할 수 없습니다. 잠시 후 새로고침해 주세요.</div>';
+ var c=m.calls||{},n=(typeof m.sample_size==='number')?m.sample_size:0,out='';
+ if(n===0){
+  out+='<div style="font-size:12px;color:var(--dim);margin-bottom:10px">'
+   +'아직 관측된 통화가 없습니다. 「콜봇 데모」에서 시뮬레이션 통화를 실행하면 여기에 실측치가 쌓입니다.'
+   +(c.in_progress?' 현재 진행 중 '+_osNum(c.in_progress)+'콜.':'')+'</div>';
+ }
+ out+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px">'
+  +_cmTile('종료 통화',_osNum(c.total),'표본')
+  +_cmTile('봇 완결',_osNum(c.bot_completed),_cmPct(m.auto_rate))
+  +_cmTile('상담사 전환',_osNum(c.transferred),_cmPct(m.transfer_rate))
+  +_cmTile('대화 미성립',_osNum(c.abandoned),'')
+  +_cmTile('실패',_osNum(c.failed),'')
+  +_cmTile('진행 중',_osNum(c.in_progress),'')
+  +_cmTile('평균 통화',_cmSec(m.avg_duration_sec),'')
+  +_cmTile('평균 턴',_cmAvg(m.avg_turns),'')
+  +'</div>';
+ if(m.partial)
+  out+='<div style="font-size:11px;color:var(--mut);margin-top:9px">⚠️ 부분 표본 — 관측 구간 '+_osEsc(_cmWin(m.window_sec))+'. 선택한 기간 전체를 대표하지 않습니다.</div>';
+ var col=m.collector||{};
+ if(col.errors||col.orphan_finishes||col.dropped)
+  out+='<div role="alert" style="font-size:11px;color:#b26b16;margin-top:6px">수집 이상 — 오류 '+_osNum(col.errors)+' · 시작 누락 종료 '+_osNum(col.orphan_finishes)+' · 버림 '+_osNum(col.dropped)+'건. 집계가 실제보다 적게 잡혔을 수 있습니다.</div>';
+ var d=m.definition;
+ if(d&&d.bot_completed)
+  out+='<div style="font-size:10.5px;color:var(--dim);margin-top:8px">‘봇 완결’ 기준: '+_osEsc(d.bot_completed)+'</div>';
+ return out;
+}
+function cmLoad(force,quiet){
+ var b=document.getElementById('cmBody');if(!b)return;
+ if(_cmLoaded&&!force)return;_cmLoaded=true;
+ if(!quiet)b.innerHTML='<div style="color:var(--dim);font-size:12px">불러오는 중…</div>';
+ var p=(typeof monPer==='string'&&monPer)?monPer:'today';
+ var fin=function(d){
+  var sc=document.getElementById('cmScope');
+  if(!d||!d.ok){
+   _htmlSet(b,'<div role="alert" style="color:var(--dim);font-size:12px">엔드포인트 조회 불가 — 로컬·데모 환경이거나 API 미배포입니다.</div>');
+   if(sc)sc.textContent='';return;}
+  var m=d.measured;
+  if(sc){var scope=(m&&m.collector&&m.collector.scope)||'';
+   sc.textContent=(m&&m.period?({today:'오늘',week:'주',month:'월'}[m.period]||m.period):'')
+    +(scope==='instance'?' · 인스턴스 기준':'');}
+  _htmlSet(b,_cmRender(m));
+ };
+ try{fetch('/api/ops_stats?period='+encodeURIComponent(p),{cache:'no-store'})
+  .then(function(r){return r.ok?r.json():null;}).then(fin).catch(function(){fin(null);});}
+ catch(e){fin(null);}
+}
 /* B147: view-monitor 카드 자동 갱신(30초) — 기존 자동갱신 토글(cb_autoref) 존중. 읽기전용 GET만 재조회 */
 function _htmlSet(el,h){try{if(el&&el.innerHTML!==h)el.innerHTML=h;}catch(e){}}
 function _monClock(){var d=new Date(),p=function(n){return (n<10?'0':'')+n;};return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
@@ -1769,6 +1840,7 @@ function monCardsTick(){
  try{if(typeof document.visibilityState==='string'&&document.visibilityState==='hidden')return;}catch(e){}
  try{if(typeof speechHealthLoad==='function')speechHealthLoad(true,true);}catch(e){}
  try{if(typeof opsSimLoad==='function')opsSimLoad(true,true);}catch(e){}
+ try{if(typeof cmLoad==='function')cmLoad(true,true);}catch(e){}
  var l=document.getElementById('monAutoLbl');if(l)l.textContent='자동 갱신 30초 · '+_monClock();
 }
 function monCardsAuto(start){
@@ -1783,6 +1855,7 @@ function monCardsAuto(start){
 var monPer='today';
 function monSetPeriod(p,btn){if(monPer===p)return;monPer=p;
  try{if(typeof opsSimLoad==='function')opsSimLoad(true);}catch(e){}
+ try{if(typeof cmLoad==='function')cmLoad(true);}catch(e){}
  try{var g=btn&&btn.parentNode?btn.parentNode.querySelectorAll('button'):[];Array.prototype.forEach.call(g,function(b){b.classList.remove('on');b.setAttribute('aria-pressed','false');});if(btn){btn.classList.add('on');btn.setAttribute('aria-pressed','true');}}catch(e){}
  var lbl=document.getElementById('mInLbl');if(lbl)lbl.textContent=p==='week'?'\ud83d\udce5 \uc8fc\uac04 \uc778\uc785':p==='month'?'\ud83d\udce5 \uc6d4\uac04 \uc778\uc785':'\ud83d\udce5 \uc624\ub298 \uc778\uc785';
  var FB={today:{c:214,r:0.72},week:{c:1486,r:0.71},month:{c:6120,r:0.72}};

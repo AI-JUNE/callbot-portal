@@ -227,7 +227,14 @@ class TestNormalize(Base):
         self.assertEqual(
             set(ops_stats.get_ops_summary()),
             {"ok", "ts", "mode", "period", "calls", "wait", "sla",
-             "escalation", "recording", "gates", "data_source"})
+             "escalation", "recording", "gates", "data_source", "measured"})
+
+    def test_measured_block_is_separate_from_demo(self):
+        """B160: 실측 블록이 데모 수치를 덮어쓰지 않는다(둘을 섞으면 허위가 된다)."""
+        s = ops_stats.get_ops_summary()
+        self.assertEqual(s["data_source"], "demo")
+        self.assertIn(s["measured"]["data_source"], ("measured", "unavailable"))
+        self.assertEqual(s["calls"]["today"], ops_stats.DEMO_BASELINE["calls_today"])
 
 
 # ==========================================================================
