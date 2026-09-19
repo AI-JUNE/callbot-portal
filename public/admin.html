@@ -1429,7 +1429,7 @@ async function sllmGen(){var q=(document.getElementById('sllmIn').value||'').tri
  catch(e){el.innerHTML='<div class="summary">생성 실패 · API 키/네트워크 확인</div>';}}
 
 
-var DEMO={welfare:{name:'고객 문의 상담',open:'고객센터입니다. 무엇을 도와드릴까요?'},trio:{name:'예약·접수',open:'고객센터입니다. 청년·어르신·아동 예약·접수를 도와드릴게요. 어떤 참여를 원하세요?'},refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담원입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담원입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
+var DEMO={welfare:{name:'고객 문의 상담',open:'고객센터입니다. 무엇을 도와드릴까요?'},trio:{name:'예약·접수',open:'고객센터입니다. 예약·접수를 도와드릴게요. 어떤 업무를 원하세요?'},refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담원입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담원입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
 function pickDemo(k){curDemo=k;document.querySelectorAll('.demoSel button').forEach(function(b){b.classList.toggle('on',b.dataset.k===k);});messages=[];if($('#chat'))$('#chat').innerHTML='';if($('#tr'))$('#tr').innerHTML='';if($('#chat'))addC('bot',DEMO[k].open);toast(DEMO[k].name+' 시나리오');}
 function toggleSide(){var _s=document.querySelector('.side');var _op=_s.classList.toggle('open');document.getElementById('scrim').classList.toggle('on');var _hb=document.querySelector('.hamb');if(_hb)_hb.setAttribute('aria-expanded',_op?'true':'false');}
 
@@ -1450,7 +1450,7 @@ function initPopA11y(){var up=document.getElementById('userPop');
  [up,np].forEach(function(p){if(p)p.addEventListener('click',function(e){e.stopPropagation();});});}
 function closePops(){document.querySelectorAll('.popup').forEach(function(p){p.classList.remove('show');});document.querySelectorAll('[aria-haspopup]').forEach(function(b){b.setAttribute('aria-expanded','false');});var _g=document.getElementById('gsearch');if(_g){_g.setAttribute('aria-expanded','false');_g.removeAttribute('aria-activedescendant');}_gsN=0;_gsIdx=-1;}
 document.addEventListener('click',function(e){if(!e.target.closest('.search')&&!e.target.closest('.iconbtn')&&!e.target.closest('.avatar'))closePops();});
-const ORDERS=[{id:'CS-20260630-10042',name:'기초연금 신청',st:'접수완료',cust:'홍금례'},{id:'CS-20260629-09981',name:'예약·접수(청년→어르신 돌봄)',st:'매칭중',cust:'김도윤'},{id:'CS-20260628-09877',name:'돌봄 바우처 신청',st:'서류대기',cust:'이순자'},{id:'CS-20260627-09712',name:'포인트 적립 조회',st:'완료',cust:'박민수'}];
+const ORDERS=[{id:'CS-20260630-10042',name:'서비스 신청',st:'접수완료',cust:'홍길동'},{id:'CS-20260629-09981',name:'예약·접수(방문 상담)',st:'배정중',cust:'김도윤'},{id:'CS-20260628-09877',name:'이용 변경 신청',st:'서류대기',cust:'이서연'},{id:'CS-20260627-09712',name:'멤버십 포인트 조회',st:'완료',cust:'박민수'}];
 var _srchT=null;function doSearch(){clearTimeout(_srchT);_srchT=setTimeout(_doSearch,110);}
 /* B131: 통합 검색 combobox/listbox ARIA + 키보드 탐색(↑↓ 이동·Enter 열기·ESC 닫기) */
 var _gsN=0,_gsIdx=-1;
@@ -1892,7 +1892,7 @@ function renderAgents(){var g=document.getElementById('agrid');if(!g)return;
   return '<div class="agent"><div class="top"><div class="ava">'+a.n[0]+'</div><div><div class="nm">'+a.n+'</div><div class="rl">'+a.r+'</div></div><span style="margin-left:auto">'+sp+'</span></div><div class="mini"><span>오늘 처리</span><b>'+a.t+'건</b></div><div class="mini"><span>평균 응대</span><b>'+avg+'분</b></div></div>';}).join('');
  var sm=document.getElementById('agSummary');if(sm){var on=AGENTS.filter(function(a){return a.s==='on';}).length,busy=AGENTS.filter(function(a){return a.s==='busy';}).length,off=AGENTS.filter(function(a){return a.s==='off';}).length,tot=AGENTS.reduce(function(x,a){return x+a.t;},0);
   sm.innerHTML='<div class="kpi"><div class="l">상담사</div><div class="v">'+AGENTS.length+'명</div><div class="s">대기 '+on+' · 통화 '+busy+' · 오프 '+off+'</div></div><div class="kpi"><div class="l">오늘 처리콜</div><div class="v">'+tot+'건</div><div class="s">인계 Fallback 포함</div></div><div class="kpi"><div class="l">평균 응대</div><div class="v">3.1분</div><div class="s">SLA 5분 이내</div></div><div class="kpi"><div class="l">가동률</div><div class="v">'+Math.round((on+busy)/AGENTS.length*100)+'%</div><div class="s">실시간</div></div>';}}
-const KB=[['기초연금 신청 안내','만 65세 이상·소득인정액 기준 충족 시 신청. 전화·방문 접수 가능, 신분증과 통장 사본 필요. 결과는 문자 안내.'],['예약·접수','고객 요청을 담당 부서·일정 기준으로 접수·배정합니다.'],['4단계 접수확인','참여 전 대면 면접·본인확인·서류 검증 절차를 안내합니다.'],['포인트·적립','활동 시간만큼 적립 적립, 포인트 포인트로 전환·사용. 적립은 활동 승인 후 반영.'],['필요 서류 안내','업무 접수별 서류 상이(신분증·소득 증빙·가족관계 등). 화면으로 목록 안내, 미비 시 상담원가 보완 안내.'],['상담원 전환 기준','복잡한 상담·서류 보완·직접 상담 요청 시  AICC Portal 상담원로 연결.']];
+const KB=[['서비스 신청 안내','가입 조건 충족 시 전화·온라인으로 신청할 수 있습니다. 신분증 등 본인확인 서류가 필요하며, 결과는 문자로 안내합니다.'],['예약·접수','고객 요청을 담당 부서·일정 기준으로 접수·배정합니다.'],['본인확인 절차','접수 전 본인확인과 제출 서류 검증 절차를 안내합니다.'],['멤버십 포인트','이용 실적에 따라 포인트가 적립되며, 적립분은 승인 후 반영됩니다.'],['필요 서류 안내','업무별 필요 서류가 다릅니다(신분증·증빙서류 등). 화면으로 목록을 안내하고, 미비 시 상담원이 보완을 안내합니다.'],['상담원 전환 기준','복잡한 상담·서류 보완·상담원 직접 연결 요청 시 AICC Portal 상담원에게 연결합니다.']];
 function filterKb(){const q=($('#kbq').value||'').trim();const list=KB.filter(k=>!q||k[0].includes(q)||k[1].includes(q));
   $('#kbList').innerHTML=list.length?list.map(k=>`<div class="it"><b>${k[0]}</b><span class="summary">${k[1]}</span></div>`).join(''):'<div class="it" style="color:var(--dim)">검색 결과 없음</div>';}
 $('#msg').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
@@ -2028,7 +2028,7 @@ function qaEdit(i,t){var v=parseInt(t);if(isNaN(v)||v<0)v=0;if(v>QAITEMS[i][1])v
 function qaGap(name){toast('이의제기(GAP) 등록: '+name);}
 function qaCoachAdd(){var inp=document.getElementById('qaCoachIn'),v=(inp.value||'').trim();if(!v){toast(({ko:'코칭 내용을 입력하세요',en:'Please enter coaching content',ja:'コーチング内容を入力してください'})[LANG]||'코칭 내용을 입력하세요');return;}var log=document.getElementById('qaCoachLog'),t=new Date().toTimeString().slice(0,5);if(log.querySelector('.dim,[style*="dim"]')||/등록된 코칭이 없습니다/.test(log.innerHTML))log.innerHTML='';log.innerHTML='<div class="row" style="padding:6px 0"><span>'+t+' · '+esc(v)+'</span><span class="tag pos">등록</span></div>'+log.innerHTML;inp.value='';toast(({ko:'코칭 등록됨',en:'Coaching saved',ja:'コーチングを登録'})[LANG]||'코칭 등록됨');}
 /* ===== NLU 학습데이터·재학습 ===== */
-var INTENTS=[{name:'업무 접수(기초연금·바우처)',cnt:6310,acc:97.1},{name:'예약·접수 신청',cnt:4820,acc:96.2},{name:'접수 확인 문의',cnt:2140,acc:93.4},{name:'포인트·적립',cnt:1980,acc:92.0},{name:'필요서류 안내',cnt:1240,acc:94.5},{name:'상담원 연결',cnt:880,acc:90.8}];
+var INTENTS=[{name:'업무 접수(신청·변경)',cnt:6310,acc:97.1},{name:'예약·접수 신청',cnt:4820,acc:96.2},{name:'접수 확인 문의',cnt:2140,acc:93.4},{name:'멤버십 포인트',cnt:1980,acc:92.0},{name:'필요서류 안내',cnt:1240,acc:94.5},{name:'상담원 연결',cnt:880,acc:90.8}];
 var NLUPERF=[93,91,92,92];
 function renderNluData(){var el=document.getElementById('nluIntents');if(el){el.innerHTML=INTENTS.map(function(it,i){var tg=it.acc>=95?'pos':it.acc>=90?'neu':'neg',lb=it.acc>=95?'우수':it.acc>=90?'양호':'개선';return '<tr><td>'+it.name+'</td><td class="k">'+it.cnt.toLocaleString()+'</td><td class="k">'+it.acc.toFixed(1)+'%</td><td><span class="tag '+tg+'">'+lb+'</span></td><td><button onclick="nluAddUtter('+i+')">발화+</button></td></tr>';}).join('');}
  var cm=document.getElementById('nluCM');if(cm){var labs=['반품','주문','결제','상품','멤버십','불만'],h='<table style="font-size:13px;border-collapse:collapse;min-width:520px"><thead><tr><th style="padding:8px 14px"></th>'+labs.map(function(l){return '<th style="padding:8px 14px;font-weight:800">'+l+'</th>';}).join('')+'</tr></thead><tbody>';
@@ -2473,7 +2473,7 @@ function kpiDel(i){CKPI.splice(i,1);saveCKpi();renderCKpi();}
 function saveCKpi(){try{localStorage.setItem('cb_ckpi',JSON.stringify(CKPI));}catch(e){}}
 function loadCKpi(){try{var v=JSON.parse(localStorage.getItem('cb_ckpi')||'[]');if(Array.isArray(v))CKPI=v;}catch(e){}renderCKpi();}
 /* NLU 라벨링 */
-var LBL_QUEUE=['기초연금 언제 나오나요','적립 어떻게 쌓나요','매칭 언제 되나요','서류 뭐가 필요한가요','접수확인 꼭 받아야 하나요'],LBL_LOG=[];
+var LBL_QUEUE=['접수 결과 언제 나오나요','포인트 어떻게 쌓나요','예약 언제 확정되나요','서류 뭐가 필요한가요','본인확인 꼭 해야 하나요'],LBL_LOG=[];
 function renderLblQueue(){var q=document.getElementById('lblQueue');if(q)q.innerHTML='<span style="font-size:11px;color:var(--dim);align-self:center">미분류 큐:</span>'+LBL_QUEUE.map(function(u){return '<span class="chip" style="cursor:pointer" onclick="document.getElementById(\'lblUtter\').value=this.textContent">'+u+'</span>';}).join('');
  var sel=document.getElementById('lblIntent');if(sel&&typeof INTENTS!=='undefined')sel.innerHTML=INTENTS.map(function(it){return '<option>'+it.name+'</option>';}).join('');
  var log=document.getElementById('lblLog');if(log)log.innerHTML=LBL_LOG.map(function(l){return '<div class="row" style="padding:4px 0;font-size:12px"><span>'+esc(l.u)+' → <b>'+l.i+'</b></span><span class="tag pos">라벨됨</span></div>';}).join('');}
@@ -2607,7 +2607,7 @@ function scnDiffRender(){var el=document.getElementById('scnDiffBody');if(!el)re
  el.innerHTML=rows.map(function(r){return '<div style="display:flex;gap:8px;align-items:baseline"><span aria-hidden="true" style="color:'+co[r[0]]+';font-weight:800;flex-shrink:0">'+ic[r[0]]+'</span><span class="tag" style="flex-shrink:0">'+r[1]+'</span><span'+(r[3]&&r[3]!==r[2]?' title="'+esc(r[3])+'"':'')+'>'+esc(r[2])+'</span></div>';}).join('')+'<div style="color:var(--dim);margin-top:8px">기준 → 비교 방향의 변경입니다 (＋ 추가 · － 삭제 · ✎ 수정)</div>';}
 
 /* 콜 리즌 코드 */
-var REASONS=[{code:'R-WLF',cat:'업무',name:'업무 접수(기초연금·바우처)',type:'인바운드',cnt:1260,on:true},{code:'R-TRI',cat:'매칭',name:'예약·접수 신청',type:'인바운드',cnt:980,on:true},{code:'R-SFT',cat:'안전',name:'접수 확인 문의',type:'인바운드',cnt:562,on:true},{code:'R-CRD',cat:'카드',name:'포인트·적립',type:'인바운드',cnt:620,on:true},{code:'R-OB1',cat:'캠페인',name:'안부·업무 재안내',type:'아웃바운드',cnt:410,on:true},{code:'R-OB2',cat:'안내',name:'서류 보완 안내',type:'아웃바운드',cnt:300,on:false}];
+var REASONS=[{code:'R-APL',cat:'업무',name:'업무 접수(신청·변경)',type:'인바운드',cnt:1260,on:true},{code:'R-RSV',cat:'예약',name:'예약·접수 신청',type:'인바운드',cnt:980,on:true},{code:'R-CFM',cat:'확인',name:'접수 확인 문의',type:'인바운드',cnt:562,on:true},{code:'R-PNT',cat:'포인트',name:'멤버십 포인트',type:'인바운드',cnt:620,on:true},{code:'R-OB1',cat:'캠페인',name:'업무 재안내',type:'아웃바운드',cnt:410,on:true},{code:'R-OB2',cat:'안내',name:'서류 보완 안내',type:'아웃바운드',cnt:300,on:false}];
 function renderReason(){var el=document.getElementById('reasonBody');if(!el)return;var tf='전체';document.querySelectorAll('#view-reason .seg button.on').forEach(function(b){tf=b.textContent.trim();});var q=((document.getElementById('reasonQ')||{}).value||'').trim();
  var rows=REASONS.filter(function(r){return (tf==='전체'||r.type===tf)&&(!q||(r.code+r.name+r.cat).indexOf(q)>=0);});
  el.innerHTML=rows.length?rows.map(function(r){var i=REASONS.indexOf(r);return '<tr><td><b>'+r.code+'</b></td><td>'+r.cat+'</td><td>'+r.name+'</td><td>'+r.type+'</td><td class="k">'+r.cnt.toLocaleString()+'</td><td><span class="tag '+(r.on?'pos':'neu')+'" onclick="reasonToggle('+i+')" style="cursor:pointer">'+(r.on?'사용':'미사용')+'</span></td><td><a onclick="toast(\'코드 '+r.code+' 상세\')" style="color:var(--accent);cursor:pointer">상세</a></td></tr>';}).join(''):'<tr><td colspan="7" style="color:var(--dim)">조건에 맞는 사유코드가 없습니다.</td></tr>';}
@@ -2924,15 +2924,15 @@ var curScn='welfare';
 var SCN={
  welfare:{flow:[['콜처리','인입·본인확인','call'],['LLM','의도분석','llm'],['보이는ARS','신청화면(SHOW_WELFARE_FORM)','call'],['조건부','업무 항목 분기','cond'],['LLM+RAG','자격·서류 안내','llm'],['보이는ARS','서류/안전(SHOW_DOCS)','call'],['종료','접수·SMS','end']],
   script:[['인입·본인확인','고객센터입니다. 무엇을 도와드릴까요?','예약 변경하고 싶어요','발신번호로 본인 확인'],
-   ['의도/항목','기초연금·돌봄·바우처 중 어떤 업무를 도와드릴까요?','기초연금이요','업무 항목 분기'],
+   ['의도/항목','신청·변경·조회 중 어떤 업무를 도와드릴까요?','신청이요','업무 항목 분기'],
    ['신청 화면','신청 화면을 보내드렸어요. 성함과 생년월일을 말씀해 주세요.','','보이는 ARS: SHOW_WELFARE_FORM'],
    ['자격·서류','자격 요건과 필요 서류를 안내드릴게요.','','RAG 업무정책 인용'],
    ['접수·종료','신청 접수했습니다. 진행 상황은 문자로 안내드려요.','','SMS 발송']],
-  edge:['어르신 배려(천천히·쉬운 말)','상담원 전환(TRANSFER_COORDINATOR)','보이는 ARS 화면 동기화']},
- trio:{flow:[['콜처리','인입·본인확인','call'],['LLM','참여유형 분석','llm'],['보이는ARS','매칭화면(SHOW_TRIO_MATCH)','call'],['조건부','청년/어르신/양육가정','cond'],['LLM','일정·동네 매칭','llm'],['보이는ARS','접수확인(SHOW_SAFETY_CHECK)','call'],['종료','매칭신청 접수','end']],
+  edge:['어르신 배려(천천히·쉬운 말)','상담원 전환(TRANSFER_AGENT)','보이는 ARS 화면 동기화']},
+ trio:{flow:[['콜처리','인입·본인확인','call'],['LLM','참여유형 분석','llm'],['보이는ARS','예약화면(SHOW_RESERVATION)','call'],['조건부','신규/변경/취소','cond'],['LLM','일정·지점 배정','llm'],['보이는ARS','접수확인(SHOW_CONFIRM)','call'],['종료','예약 접수 완료','end']],
   script:[['인입·본인확인','고객센터입니다. 예약·접수를 도와드릴게요.','봉사 참여하고 싶어요','발신번호로 본인 확인'],
-   ['참여 유형','청년·어르신·양육가정 중 어떤 참여를 원하세요?','청년 봉사요','참여유형 분기'],
-   ['매칭 화면','매칭 화면을 보내드렸어요. 활동 요일과 동네를 골라 주세요.','','보이는 ARS: SHOW_TRIO_MATCH'],
+   ['업무 유형','신규·변경·취소 중 어떤 예약을 원하세요?','신규 예약이요','업무유형 분기'],
+   ['예약 화면','예약 화면을 보내드렸어요. 원하시는 날짜와 지점을 골라 주세요.','','보이는 ARS: SHOW_RESERVATION'],
    ['접수확인','참여 전 4단계 접수확인을 안내드릴게요.','','보이는 ARS: SHOW_SAFETY_CHECK'],
    ['접수·종료','매칭 신청 접수했습니다. 결과는 문자로 안내드려요.','','SMS 발송']],
   edge:['4단계 접수확인 필수','아동학대 전력 확인','보이는 ARS 화면 동기화']},
