@@ -330,6 +330,50 @@ def attribution_at(tenant_id, at=None):
     return None
 
 
+def attribution_periods(tenant_id, frm=None, to=None) -> list:
+    """`[frm, to)` 와 겹치는 귀속 기간들(원시 타임스탬프 포함 사본).
+
+    `attribution_at` 은 한 시점만 답한다. 정산은 "이 달 안에서 담당이 언제
+    바뀌었나"를 알아야 실적을 기간별로 쪼갤 수 있어서 경계가 필요하다.
+    반환은 사본이라 호출자가 고쳐도 장부가 변하지 않는다(조회는 부작용 없음).
+    미등록 고객사는 빈 목록 — 예외가 아니라 "근거 없음"으로 다룬다.
+    """
+    tid = validate_tenant_id(tenant_id)
+    lo = None if frm is None else float(frm)
+    hi = None if to is None else float(to)
+    if lo is not None and hi is not None and hi < lo:
+        raise ValueError("조회 종료가 시작보다 빠릅니다")
+    out = []
+    with _LOCK:
+        acc = _ACCOUNTS.get(tid)
+        if acc is None:
+            return out
+        for p in acc["periods"]:
+            p_to = p["to_ts"]
+            if lo is not None and p_to is not None and p_to <= lo:
+                continue
+            if hi is not None and p["from_ts"] >= hi:
+                continue
+            out.append({
+                "partner_id": p["partner_id"],
+                "channel": p["channel"],
+                "owner_masked": p["owner_masked"],
+                "from_ts": p["from_ts"],
+                "to_ts": p_to,
+                "attribution": "partner" if p["partner_id"] else "direct",
+            })
+    return out
+
+
+def partner_name(partner_id) -> str:
+    """파트너 표시명. 없으면 빈 문자열 — 없는 이름을 지어내지 않는다."""
+    if not partner_id:
+        return ""
+    with _LOCK:
+        rec = _PARTNERS.get(str(partner_id).strip().lower())
+        return rec["name"] if rec else ""
+
+
 def _period_view(p) -> dict:
     d = dict(p)
     d["from"] = _iso(p["from_ts"])
