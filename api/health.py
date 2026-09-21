@@ -267,7 +267,9 @@ def _speech():
                 info["tts"]["active"] = p.name
                 info["tts"]["forced_sim"] = bool(m.get("forced_sim"))
         except Exception as e:  # 헬스는 절대 실패하지 않도록 best-effort
-            info["note"] = "speech_providers unavailable: %s" % e
+            # 예외 "문구"는 싣지 않는다 — /health 는 무인증 공개 응답이라
+            # 내부 경로·설정값이 그대로 새면 누구나 읽는다(타입명만).
+            info["note"] = "speech_providers unavailable: %s" % type(e).__name__
     return info
 
 
@@ -280,7 +282,8 @@ def _monitoring():
         import monitoring
         return monitoring.status()
     except Exception as e:  # 헬스는 절대 실패하지 않는다
-        return {"enabled": False, "note": "monitoring unavailable: %s" % e}
+        # 예외 문구에 DSN·내부 경로가 섞일 수 있다 — 타입명만 노출한다.
+        return {"enabled": False, "note": "monitoring unavailable: %s" % type(e).__name__}
 
 
 def _ratelimit_status():
