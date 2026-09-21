@@ -514,6 +514,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
       <a data-v="svccfg"><span class="ic">🎛️</span> 서비스 설정</a>
       <a data-v="disclosure"><span class="ic">📣</span> AI 고지 문구</a>
       <a data-v="callerid"><span class="ic">📇</span> 발신번호 등록</a>
+      <a data-v="settle"><span class="ic">💴</span> 정산 리포트</a>
       <a data-v="basis"><span class="ic">🗓️</span> 기준 관리</a>
       <a data-v="syslog"><span class="ic">📜</span> 접속·녹취 로그</a>
       <a data-v="code"><span class="ic">🧷</span> 공통코드·메뉴</a>
@@ -729,6 +730,34 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
         <div class="card"><h3>🔎 등록 현황 <span class="r"><span class="tag neu">서버 응답 그대로</span></span></h3>
           <div id="ciOut" style="padding:14px 18px" aria-live="polite">
             <div class="summary">아직 불러온 내용이 없습니다. <b>📥 현황 불러오기</b>로 등록된 번호와 만료 임박 건을 확인하거나, 번호를 입력하고 <b>➕ 등록 신청</b>을 누르세요.</div>
+          </div></div>
+      </section>
+      <section id="view-settle" class="hidden">
+        <div class="card" style="margin-bottom:16px"><h3>💴 파트너 정산 리포트 <span class="r"><span class="tag neu">초안 전용 · 읽기</span></span></h3>
+          <div style="padding:14px 18px">
+            <div class="hint" style="margin-bottom:14px">월 단위로 <b>귀속 기간(계약)·이용 실적·수수료 산출 근거</b>를 한 표에 놓습니다. <b>요율은 설정값</b>(<code>PARTNER_RATE_CARD</code>)이고 기본은 미설정입니다 &mdash; 요율이나 매출이 없으면 금액을 0원으로 만들지 않고 <b>빈 칸</b>으로 두고 사유를 적습니다. 정산월 중간에 담당 파트너가 바뀌면 그 날 실적을 <b>점유 시간 비율로 나누되 합은 보존</b>합니다. 이 화면은 서버 응답만 그립니다. 확정·청구·지급은 <b>[승인 필요]</b>.</div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+              <div style="min-width:160px">
+                <label for="slMonth" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">정산월 <span style="color:var(--mut);font-weight:400">(YYYY-MM)</span></label>
+                <input id="slMonth" type="text" placeholder="예) 2026-08" maxlength="7" autocomplete="off" aria-describedby="slMonthErr" onkeydown="if(event.key==='Enter'){event.preventDefault();slRun();}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="slMonthErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+              <div style="min-width:200px">
+                <label for="slPartner" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">파트너 ID <span style="color:var(--mut);font-weight:400">(선택 · <code>-</code> 는 파트너 없는 줄)</span></label>
+                <input id="slPartner" type="text" placeholder="비우면 전체" maxlength="40" autocomplete="off" aria-describedby="slPartnerErr" onkeydown="if(event.key==='Enter'){event.preventDefault();slRun();}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="slPartnerErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="primary" id="slRunBtn" onclick="slRun()">📊 리포트 조회</button>
+              <button id="slCsvBtn" onclick="slCsv()">⬇️ CSV 내려받기</button>
+              <button id="slRateBtn" onclick="slRate()">💳 요율표 확인</button>
+              <button id="slCovBtn" onclick="slCoverage()">📦 실적 커버리지</button>
+            </div>
+          </div></div>
+        <div class="card"><h3>🔎 산출 결과 <span class="r"><span class="tag neu">서버 응답 그대로</span></span></h3>
+          <div id="slOut" style="padding:14px 18px" aria-live="polite">
+            <div class="summary">아직 불러온 내용이 없습니다. 정산월을 비워 두면 <b>지난달</b>을 조회합니다. <b>📊 리포트 조회</b>를 눌러 시작하세요.</div>
           </div></div>
       </section>
       <section id="view-cpaas" class="hidden">
@@ -1404,7 +1433,7 @@ var MENU=[['상담',[['voice','음성 상담'],['chat','텍스트 상담']]],
  ['상담지원 AI',[['assistdesk','상담 Assist'],['ta','TA 텍스트분석'],['qamgmt','QA 품질관리'],['kms','KMS 지식관리'],['nlu','NLU 엔진'],['sllm','sLLM']]],
  ['운영',[['home','에이전트 홈'],['monitor','실시간 모니터링'],['hist','대화 이력'],['report','운영 통계'],['alerts','알림 센터'],['builder','시나리오 빌더'],['qa','품질성능평가'],['abtest','A/B 테스트'],['agents','상담사 현황'],['cpaas','CPaaS 연계 테스트']]],
  ['통합통계',[['board','전광판'],['statin','콜봇 이용통계'],['statout','아웃바운드 통계'],['statsvc','상세서비스 통계'],['chan','채널 점유현황'],['sysresp','시스템 응답현황'],['calls','고객 통화 이력']]],
- ['관리',[['svccfg','서비스 설정'],['disclosure','AI 고지 문구'],['callerid','발신번호 등록'],['basis','기준 관리'],['syslog','접속·녹취 로그'],['code','공통코드·메뉴'],['accounts','계정 · 권한']]],
+ ['관리',[['svccfg','서비스 설정'],['disclosure','AI 고지 문구'],['callerid','발신번호 등록'],['settle','정산 리포트'],['basis','기준 관리'],['syslog','접속·녹취 로그'],['code','공통코드·메뉴'],['accounts','계정 · 권한']]],
  ['멀티모달',[['mm','멀티모달 현황'],['mmhist','멀티모달 이력'],['docs','필요서류 관리']]]];
 function syncTopmenu(){var tb=document.querySelector('.topbar'),tm=document.getElementById('topmenu');if(tb&&tm)tm.style.top=Math.max(0,tb.offsetHeight-1)+'px';}
 window.addEventListener('load',function(){syncTopmenu();setTimeout(syncTopmenu,300);});
@@ -1477,7 +1506,7 @@ function _doSearch(){var q=(document.getElementById('gsearch').value||'').trim()
  pop.innerHTML=top.length?('<div class="hd">검색 결과 '+res.length+'건</div>'+top.map(function(r,i){return '<div class="it" id="gsopt-'+i+'" role="option" aria-selected="false" onmousemove="_gsIdx='+i+';_gsAD()" onclick="show(\''+r.v+'\');closePops();document.getElementById(\'gsearch\').value=\'\'">'+hl(r.t)+'<span class="c">'+r.c+'</span></div>';}).join('')):'<div class="it" style="color:var(--dim)">\''+esc(q)+'\' 검색 결과 없음</div>';
  pop.classList.add('show');var _gi=document.getElementById('gsearch');if(_gi)_gi.setAttribute('aria-expanded','true');_gsAD();}
 
-const titles={voice:['음성 상담','실시간 음성 상담 콘솔'],wellbeing:['안부 전화 연동','안부 콜봇 연동 검증 · 전화망 미경유 시연'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],disclosure:['AI 고지 문구','테넌트별 통화 시작 고지 · 법정 요건 검사'],callerid:['발신번호 등록','번호별 등록 상태 · 증빙 · 만료 관리'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
+const titles={voice:['음성 상담','실시간 음성 상담 콘솔'],wellbeing:['안부 전화 연동','안부 콜봇 연동 검증 · 전화망 미경유 시연'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],disclosure:['AI 고지 문구','테넌트별 통화 시작 고지 · 법정 요건 검사'],callerid:['발신번호 등록','번호별 등록 상태 · 증빙 · 만료 관리'],settle:['정산 리포트','파트너별 귀속·실적·수수료 산출 근거 · 초안'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
 var curView='home';
 function show(v){if(!titles[v]||!document.getElementById('view-'+v))return;curView=v;try{if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);}catch(e){}document.querySelectorAll('section[id^=view-]').forEach(s=>s.classList.add('hidden'));var _el=$('#view-'+v);_el.classList.remove('hidden');_el.classList.remove('anim');void _el.offsetWidth;_el.classList.add('anim');
   $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='AICC Portal · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
