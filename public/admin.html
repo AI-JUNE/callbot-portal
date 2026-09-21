@@ -2845,6 +2845,107 @@ function dcHistory(){dcBtns(true);dcBusy('변경 이력 조회 중…');
     dcSet('<div class="hint" style="margin-bottom:8px">최근 '+hs.length+'건 · append-only</div><table><thead><tr><th>시각(UTC)</th><th>테넌트</th><th>동작</th><th>버전</th><th>주체</th><th>문구</th></tr></thead><tbody>'+rows+'</tbody></table>');
   }).catch(function(e){dcFail('요청 실패: '+dcEsc(e));}).then(function(){dcBtns(false);},function(){dcBtns(false);});}
 (function(){var s=document.getElementById('view-disclosure');if(!s||!window.MutationObserver)return;var done=false;new MutationObserver(function(){if(done||s.classList.contains('hidden'))return;done=true;dcCounter();dcLoad();}).observe(s,{attributes:true,attributeFilter:['class']});})();
+/* ---- 정산 리포트(파트너) — 서버 응답만 그린다. 값이 없으면 0 이 아니라 — 로 둔다 ---- */
+function slEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+function slSet(h){var o=document.getElementById('slOut');if(o)o.innerHTML=h;}
+function slBusy(m){slSet('<div class="summary" role="status">⏳ '+slEsc(m)+'</div>');}
+function slFail(m){slSet('<div class="summary" style="color:var(--red)" role="alert"><b>⚠ 요청을 처리하지 못했습니다</b><br>'+m+'</div>');}
+function slBtns(dis){['slRunBtn','slCsvBtn','slRateBtn','slCovBtn'].forEach(function(i){var b=document.getElementById(i);if(b)b.disabled=!!dis;});}
+function slJson(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t);}catch(e){}return {s:r.status,d:d};});}
+function slClearErr(){['slMonthErr','slPartnerErr'].forEach(function(i){var e=document.getElementById(i);if(e)e.textContent='';});['slMonth','slPartner'].forEach(function(i){var e=document.getElementById(i);if(e)e.removeAttribute('aria-invalid');});}
+function slFieldErr(field,msg){var map={month:['slMonth','slMonthErr'],partner:['slPartner','slPartnerErr']},m=map[field];if(!m)return false;
+  var i=document.getElementById(m[0]),e=document.getElementById(m[1]);if(e)e.textContent=msg||'';if(i){i.setAttribute('aria-invalid','true');try{i.focus();}catch(err){}}return true;}
+function slHttpErr(x){if(!x.d){slFail('서버가 예상과 다른 응답을 보냈습니다 (HTTP '+x.s+').');return;}
+  var det=(x.d.details||[]);var li=det.map(function(f){return '<li><b>'+slEsc(f.key||f.field)+'</b> — '+slEsc(f.reason)+'</li>';}).join('');
+  slFail(slEsc(x.d.error||x.d.message||'요청이 거부되었습니다')+' (HTTP '+x.s+(x.d.code?' · '+slEsc(x.d.code):'')+')'
+    +(li?'<ul style="margin:8px 0 0 18px">'+li+'</ul>':'')
+    +(x.s===401||x.s===403?'<br>콘솔 세션이 만료되었을 수 있습니다. 페이지를 새로고침한 뒤 다시 시도하세요.':'')
+    +(x.s===405?'<br>정산 API 는 읽기 전용입니다. 요율은 설정값으로 등록합니다.':''));
+  var f0=det[0];if(f0&&f0.field)slFieldErr(f0.field,f0.reason);}
+function slNum(v){return (v===null||v===undefined)?'—':String(v).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function slQuery(){slClearErr();
+  var m=((document.getElementById('slMonth')||{}).value||'').trim();
+  var p=((document.getElementById('slPartner')||{}).value||'').trim().toLowerCase();
+  if(m&&!/^20\d\d-(0[1-9]|1[0-2])$/.test(m)){slFieldErr('month','YYYY-MM 형식으로 입력하세요(예: 2026-08).');return null;}
+  if(p&&p!=='-'&&!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(p)){slFieldErr('partner','영문 소문자·숫자·-·_ 로 1~40자, 또는 파트너 없는 줄만 보려면 -');return null;}
+  var q=[];if(m)q.push('month='+encodeURIComponent(m));if(p)q.push('partner='+encodeURIComponent(p));
+  return q.join('&');}
+function slStatusTag(st){var m={ok:['ok','산출완료'],rate_missing:['bad','요율 미설정'],revenue_missing:['bad','매출 미보고'],direct:['neu','직접계약'],unattributed:['bad','귀속 없음']},v=m[st]||['neu',st||'-'];
+  return '<span class="tag '+v[0]+'">'+slEsc(v[1])+'</span>';}
+function slRows(lines){
+  if(!lines||!lines.length)return '<div class="summary">이 달에 집계된 이용 실적이 없습니다. 실적이 들어오면 귀속 기간과 함께 줄이 생깁니다(없는 수치를 만들지 않습니다).</div>';
+  var rows=lines.map(function(l){
+    return '<tr><td><code>'+slEsc(l.partner_id||'-')+'</code></td><td>'+slEsc(l.partner_name||'-')+'</td>'
+      +'<td><code>'+slEsc(l.tenant_id)+'</code></td><td>'+slEsc(l.channel_label||l.channel||'-')+(l.split?' <span class="tag neu">기간분할</span>':'')+'</td>'
+      +'<td class="hint">'+slEsc(l.from)+'<br>'+slEsc(l.to)+'</td>'
+      +'<td style="text-align:right">'+slNum(l.calls)+'</td><td style="text-align:right">'+slNum(l.minutes)+'</td>'
+      +'<td style="text-align:right">'+slNum(l.revenue_krw)+(l.revenue_partial?' <span class="tag bad">일부</span>':'')+'</td>'
+      +'<td><code>'+slEsc(l.rate_key||'-')+'</code></td>'
+      +'<td style="text-align:right"><b>'+slNum(l.commission_krw)+'</b></td>'
+      +'<td>'+slStatusTag(l.status)+'</td><td class="hint">'+slEsc(l.basis||'')+'</td></tr>';}).join('');
+  return '<table><thead><tr><th>파트너</th><th>파트너명</th><th>고객사</th><th>유입경로</th><th>실적 기간(UTC)</th><th>건수</th><th>분</th><th>매출(원)</th><th>요율키</th><th>수수료(원)</th><th>상태</th><th>산출 근거</th></tr></thead><tbody>'+rows+'</tbody></table>';}
+function slRender(d){
+  var rc=d.rate_card||{},t=d.totals||{};
+  var chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+    +'<span class="tag neu">'+slEsc(d.month)+' 정산</span>'
+    +'<span class="tag neu">초안(draft)</span>'
+    +'<span class="tag '+(rc.configured?'ok':'bad')+'">요율표 '+(rc.configured?slEsc(rc.version)+' ('+slEsc(rc.rules)+'건)':'미설정')+'</span>'
+    +'<span class="tag neu">줄 '+slEsc(t.lines||0)+'</span>'
+    +'<span class="tag neu">건수 '+slNum(t.calls)+'</span>'
+    +'<span class="tag '+(t.complete?'ok':'bad')+'">수수료 합계 '+slNum(t.commission_krw)+'원'+(t.complete?'':' · 미완')+'</span>'
+    +(d.in_progress?'<span class="tag bad">진행 중인 달</span>':'')+'</div>';
+  var warn='';
+  if(!rc.configured)warn+='<div class="summary" style="margin-bottom:10px"><b>💳 요율표가 설정되지 않았습니다</b> — 계약 요율을 <code>PARTNER_RATE_CARD</code> 에 등록하기 전까지 수수료를 산출하지 않습니다(0원으로 계산하지 않습니다). <b>[승인 필요]</b></div>';
+  (rc.problems||[]).forEach(function(p){warn+='<div class="summary" style="color:var(--red);margin-bottom:6px">⚠ 요율표: '+slEsc(p)+'</div>';});
+  if((d.attention||[]).length){
+    warn+='<div class="summary" style="margin-bottom:10px"><b>🔍 확인이 필요한 '+d.attention.length+'건</b><ul style="margin:6px 0 0 18px">'
+      +d.attention.map(function(a){return '<li><code>'+slEsc(a.tenant_id)+'</code> '+slStatusTag(a.status)+' — '+slEsc(a.note)+'</li>';}).join('')+'</ul></div>';}
+  if(d.in_progress)warn+='<div class="hint" style="margin-bottom:10px">아직 끝나지 않은 달입니다. 확정 대상이 아니라 중간 집계입니다.</div>';
+  var roll='';
+  if((d.by_partner||[]).length){
+    roll='<table style="margin-bottom:12px"><thead><tr><th>파트너</th><th>고객사 줄</th><th>건수</th><th>매출(원)</th><th>수수료(원)</th><th>확인 필요</th></tr></thead><tbody>'
+      +d.by_partner.map(function(p){return '<tr><td><code>'+slEsc(p.partner_id||'-')+'</code> '+slEsc(p.partner_name||'')+'</td><td style="text-align:right">'+slNum(p.tenants)+'</td><td style="text-align:right">'+slNum(p.calls)+'</td><td style="text-align:right">'+slNum(p.revenue_krw)+'</td><td style="text-align:right"><b>'+slNum(p.commission_krw)+'</b></td><td style="text-align:right">'+slNum(p.needs_attention)+'</td></tr>';}).join('')
+      +'</tbody></table>';}
+  var foot='<div class="hint" style="margin-top:8px">'+slEsc(d.note||'')+'<br>통화 '+slEsc(d.currency||'')+' · 부가세 '+slEsc(d.vat||'')+' · '+slEsc(d.rounding||'')+' · 기간 경계 '+slEsc((d.period||{}).timezone||'')+'<br>실적 표본: '+slNum((d.usage||{}).records)+'건 / 버킷 '+slNum((d.usage||{}).buckets)+' · 수집 범위 '+slEsc(((d.usage||{}).collector||{}).scope||'')+'</div>';
+  slSet(chips+warn+roll+slRows(d.lines)+foot);}
+function slRun(){var q=slQuery();if(q===null)return;slBtns(true);slBusy('정산 근거를 모으는 중…');
+  fetch('/api/settlement?op=report'+(q?'&'+q:''),{cache:'no-store'}).then(slJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){slHttpErr(x);return;}
+    slRender(x.d);
+  }).catch(function(e){slFail('요청 실패: '+slEsc(e));}).then(function(){slBtns(false);},function(){slBtns(false);});}
+function slCsv(){var q=slQuery();if(q===null)return;slBtns(true);slBusy('CSV 를 만드는 중…');
+  fetch('/api/settlement?op=export'+(q?'&'+q:''),{cache:'no-store'}).then(function(r){
+    if(!r.ok)return slJson(r).then(function(x){slHttpErr(x);return null;});
+    return r.blob().then(function(b){
+      var name='settlement.csv';
+      try{var cd=r.headers.get('Content-Disposition')||'';var m=cd.match(/filename="([^"]+)"/);if(m)name=m[1];}catch(e){}
+      try{var u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(u);},2000);}
+      catch(e){slFail('내려받기를 시작하지 못했습니다: '+slEsc(e));return;}
+      slSet('<div class="summary" role="status">✅ <code>'+slEsc(name)+'</code> 를 내려받았습니다. 엑셀에서 바로 열립니다(UTF-8 BOM). 값이 없는 칸은 0 이 아니라 빈 칸입니다.</div>');});
+  }).catch(function(e){slFail('요청 실패: '+slEsc(e));}).then(function(){slBtns(false);},function(){slBtns(false);});}
+function slRate(){slBtns(true);slBusy('요율표를 확인하는 중…');
+  fetch('/api/settlement?op=ratecard',{cache:'no-store'}).then(slJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){slHttpErr(x);return;}
+    var d=x.d,keys=Object.keys(d.rates||{});
+    var head='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span class="tag '+(keys.length?'ok':'bad')+'">'+(keys.length?'요율 '+keys.length+'건':'미설정')+'</span><span class="tag neu">출처 '+slEsc(d.source)+'</span><span class="tag neu">판번호 '+slEsc(d.version||'-')+'</span><span class="tag neu">'+slEsc(d.currency)+' · 부가세 '+slEsc(d.vat)+'</span><span class="tag neu">API 수정 불가</span></div>';
+    var probs=(d.problems||[]).map(function(p){return '<div class="summary" style="color:var(--red);margin-bottom:6px">⚠ '+slEsc(p)+'</div>';}).join('');
+    var body=keys.length
+      ? '<table><thead><tr><th>요율 키(파트너/유입경로)</th><th>매출 수수료율(%)</th><th>건당 수수료(원)</th></tr></thead><tbody>'
+        +keys.map(function(k){var r=d.rates[k]||{};return '<tr><td><code>'+slEsc(k)+'</code></td><td style="text-align:right">'+slEsc(r.commission_pct==null?'—':r.commission_pct)+'</td><td style="text-align:right">'+slEsc(r.unit_fee_krw==null?'—':r.unit_fee_krw)+'</td></tr>';}).join('')+'</tbody></table>'
+      : '<div class="summary">등록된 요율이 없습니다. 계약 요율을 환경변수 <code>PARTNER_RATE_CARD</code> 로 등록하기 전까지 수수료는 산출되지 않습니다. <b>[승인 필요]</b></div>';
+    slSet(head+probs+body+'<div class="hint" style="margin-top:8px">요율 조회는 우선순위를 따릅니다: <code>파트너/경로</code> → <code>파트너/*</code> → <code>*/경로</code> → <code>*/*</code>.</div>');
+  }).catch(function(e){slFail('요청 실패: '+slEsc(e));}).then(function(){slBtns(false);},function(){slBtns(false);});}
+function slCoverage(){var q=slQuery();if(q===null)return;slBtns(true);slBusy('실적 커버리지를 확인하는 중…');
+  fetch('/api/settlement?op=usage'+(q?'&'+q:''),{cache:'no-store'}).then(slJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){slHttpErr(x);return;}
+    var d=x.d,c=d.collector||{};
+    var chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span class="tag neu">'+slEsc(d.month)+'</span><span class="tag '+(d.data_source==='measured'?'ok':'bad')+'">'+(d.data_source==='measured'?'실측':'표본 없음')+'</span><span class="tag neu">고객사 '+slNum(d.tenants)+'</span><span class="tag neu">건수 '+slNum(d.calls)+'</span><span class="tag neu">분 '+slNum(d.minutes)+'</span><span class="tag '+(c.errors?'bad':'neu')+'">수집 오류 '+slNum(c.errors)+'</span><span class="tag '+(c.dropped?'bad':'neu')+'">버린 버킷 '+slNum(c.dropped)+'</span></div>';
+    var note=(d.data_source==='measured')
+      ? '<div class="hint">매출을 함께 보고한 버킷 '+slNum(d.revenue_reported_buckets)+'/'+slNum(d.buckets)+'건. 매출이 없는 줄은 비율 요율을 적용할 근거가 없어 금액을 비웁니다.</div>'
+      : '<div class="summary">이 달에 수집된 이용 실적이 없습니다. 실적이 없으면 정산 리포트도 비어 있습니다(데모 수치를 채우지 않습니다).</div>';
+    slSet(chips+note+'<div class="hint" style="margin-top:8px">보관 '+slEsc(c.retention_days)+'일 · 집계 범위 '+slEsc(c.scope)+' — 인스턴스 메모리라 다중 인스턴스 합산·영속 집계는 <b>[승인 필요]</b>.</div>');
+  }).catch(function(e){slFail('요청 실패: '+slEsc(e));}).then(function(){slBtns(false);},function(){slBtns(false);});}
+(function(){var s=document.getElementById('view-settle');if(!s||!window.MutationObserver)return;var done=false;new MutationObserver(function(){if(done||s.classList.contains('hidden'))return;done=true;slRun();}).observe(s,{attributes:true,attributeFilter:['class']});})();
 function ciEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
 function ciSet(h){var o=document.getElementById('ciOut');if(o)o.innerHTML=h;}
 function ciBusy(m){ciSet('<div class="summary" role="status">⏳ '+ciEsc(m)+'</div>');}
