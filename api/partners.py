@@ -469,6 +469,88 @@ def visible_tenants(role, actor_partner_id=None, at=None) -> list:
     return [t for t in tids if authorize(role, actor_partner_id, t, ts)]
 
 
+# --------------------------------------------------------------------------
+# 조회 스코프 — 2계층(리셀러) 전환 시 필터가 끼어들 **단일 지점**
+# --------------------------------------------------------------------------
+# 왜 별도 함수인가: `visible_tenants()` 는 "장부에 등록된 고객사" 중에서만 고른다.
+# 그런데 실제 조회 경로(고지문구·발신번호·정산 등)는 **장부에 아직 없는 고객사**도
+# 들고 있다(장부 등록은 사람이 하는 일이라 늘 늦는다). 그 목록을 그대로
+# `visible_tenants()` 와 교집합하면 미등록 고객사가 **조용히 사라진다** — 화면에서
+# 데이터가 사라지는 것은 권한 통제가 아니라 사고다.
+#
+# 그래서 이 함수는
+#   1) 승인 전(`PARTNER_RBAC_LIVE` != 1)에는 **아무것도 걸러내지 않는다.**
+#      대신 "켜면 무엇이 가려질지"(`would_hide`)를 계산해 돌려준다 — 반쯤 배선된
+#      채로 배포돼 조용히 데이터가 줄어드는 일을 막고, 켜기 전에 영향을 볼 수 있다.
+#   2) 켠 뒤에도 **장부에 없는 고객사를 말없이 버리지 않는다.** 파트너 역할에게는
+#      보이지 않되(`unknown` 으로 분리해 개수·목록을 돌려준다) 호출자가 "장부에
+#      빠진 고객사가 있다"는 사실을 알 수 있게 한다.
+#   3) 부작용이 없다 — 조회가 장부를 바꾸지 않고 게이트를 켜지도 않는다.
+SCOPE_MAX_REPORT = 50      # would_hide·unknown 목록 길이 상한(응답 비대 방지)
+
+
+def scope_tenants(tenant_ids, role="owner", actor_partner_id=None, at=None) -> dict:
+    """조회 경로가 들고 있는 고객사 목록을 역할 스코프로 거른다.
+
+    반환 dict
+      tenant_ids   : 실제로 돌려줄 목록(승인 전에는 입력 그대로)
+      applied      : 필터가 실제로 적용됐는가(= PARTNER_RBAC_LIVE)
+      role         : 판정에 쓴 역할(미지 역할은 그대로 되돌려주되 unknown_role=True)
+      scope        : "all" | "partner" | None(미지 역할)
+      would_hide   : 켰다면 가려졌을 고객사(승인 전 진단용, 최대 SCOPE_MAX_REPORT)
+      hidden       : 실제로 가려진 개수(applied=False 면 0)
+      unknown      : 장부에 귀속 기록이 없는 고객사(등록 누락 신호)
+      note         : 승인 상태 안내 문구
+
+    순수 함수 — 장부·게이트를 건드리지 않는다.
+    """
+    try:
+        ids = [t for t in (tenant_ids or []) if isinstance(t, str) and t.strip()]
+    except TypeError:
+        raise ValueError("tenant_ids 는 문자열 목록이어야 합니다")
+    ids = [t.strip() for t in ids]
+    seen, ordered = set(), []
+    for t in ids:                       # 중복 제거(순서 보존) — 화면 중복 방지
+        if t not in seen:
+            seen.add(t)
+            ordered.append(t)
+
+    ts = _now() if at is None else float(at)
+    spec = ROLES.get(role)
+    with _LOCK:
+        known = set(_ACCOUNTS)
+
+    if spec is None:                    # 미지 역할 — 판정하지 않고 사실만 알린다
+        return {
+            "tenant_ids": list(ordered), "applied": False, "role": role,
+            "scope": None, "unknown_role": True,
+            "would_hide": list(ordered[:SCOPE_MAX_REPORT]), "hidden": 0,
+            "unknown": sorted(t for t in ordered if t not in known)[:SCOPE_MAX_REPORT],
+            "note": "알 수 없는 역할입니다 — 필터를 적용하지 않았습니다",
+        }
+
+    if spec["scope"] == "all":
+        allowed = list(ordered)
+    else:
+        allowed = [t for t in ordered if authorize(role, actor_partner_id, t, ts)]
+
+    hidden_ids = [t for t in ordered if t not in set(allowed)]
+    unknown = sorted(t for t in ordered if t not in known)
+    live = rbac_live()
+    return {
+        "tenant_ids": list(allowed) if live else list(ordered),
+        "applied": bool(live),
+        "role": role,
+        "scope": spec["scope"],
+        "unknown_role": False,
+        "would_hide": hidden_ids[:SCOPE_MAX_REPORT],
+        "hidden": len(hidden_ids) if live else 0,
+        "unknown": unknown[:SCOPE_MAX_REPORT],
+        "note": ("파트너 스코프가 적용됐습니다" if live else
+                 "[승인 필요] PARTNER_RBAC_LIVE 전까지 필터를 적용하지 않습니다"),
+    }
+
+
 def enforce(role, actor_partner_id, tenant_id, at=None) -> bool:
     """실제 접근 통제 배선 지점. 승인 전에는 호출 자체가 실패한다.
 

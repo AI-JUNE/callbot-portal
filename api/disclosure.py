@@ -249,9 +249,35 @@ def env_override() -> dict | None:
     return {"set": True, "text": env, "ok": res["ok"], "checks": res["checks"], "errors": res["errors"]}
 
 
-def list_tenants() -> list:
+def list_tenants(role=None, actor_partner_id=None, at=None) -> list:
+    """고객사별 고지문구 목록.
+
+    `role` 을 주면 파트너 스코프(2계층 전환 대비)를 거친다 — 판정은 이 모듈이
+    하지 않고 `partners.scope_tenants()` **한 곳**에만 있다. 승인 전에는 그
+    함수가 아무것도 거르지 않으므로 지금 동작은 `role` 유무와 무관하게 같다.
+    """
     with _LOCK:
-        return [dict(v) for _, v in sorted(_TENANTS.items())]
+        rows = [dict(v) for _, v in sorted(_TENANTS.items())]
+    if not role:
+        return rows
+    scope = _scope_tenants([r["tenant_id"] for r in rows], role, actor_partner_id, at)
+    if scope is None:                      # 스코프 모듈 부재 — 조회를 죽이지 않는다
+        return rows
+    keep = set(scope["tenant_ids"])
+    return [r for r in rows if r["tenant_id"] in keep]
+
+
+def _scope_tenants(tids, role, actor_partner_id, at):
+    """partners 모듈이 없거나 터져도 조회가 죽지 않게 감싼 호출(None = 미적용)."""
+    try:
+        import partners
+    except Exception:
+        return None
+    try:
+        return partners.scope_tenants(tids, role=role,
+                                      actor_partner_id=actor_partner_id, at=at)
+    except Exception:
+        return None
 
 
 def history(limit=50) -> list:

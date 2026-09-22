@@ -331,11 +331,37 @@ def reveal_number(cid, actor=None):
     return out
 
 
-def list_numbers(tenant=None, status=None, now=None) -> list:
+def _scope_tenants(tids, role, actor_partner_id, at):
+    """partners 모듈이 없거나 터져도 조회가 죽지 않게 감싼 호출(None = 미적용)."""
+    try:
+        import partners
+    except Exception:
+        return None
+    try:
+        return partners.scope_tenants(tids, role=role,
+                                      actor_partner_id=actor_partner_id, at=at)
+    except Exception:
+        return None
+
+
+def list_numbers(tenant=None, status=None, now=None,
+                 role=None, actor_partner_id=None) -> list:
+    """발신번호 목록.
+
+    `role` 을 주면 파트너 스코프(2계층 전환 대비)를 거친다 — 판정 로직은 여기
+    없고 `partners.scope_tenants()` **한 곳**에만 있다. 승인 전에는 그 함수가
+    아무것도 거르지 않으므로 지금 동작은 `role` 유무와 무관하게 같다.
+    """
     now = _now() if now is None else now
     out = [view(r, now) for r in _NUMBERS.values()]
     if tenant:
         out = [v for v in out if v["tenant_id"] == tenant]
+    if role:
+        scope = _scope_tenants([v["tenant_id"] for v in out], role,
+                               actor_partner_id, now)
+        if scope is not None:
+            keep = set(scope["tenant_ids"])
+            out = [v for v in out if v["tenant_id"] in keep]
     if status:
         out = [v for v in out if v["status"] == status]
     out.sort(key=lambda v: (v["status"] != "expired", v["days_left"] is None,
