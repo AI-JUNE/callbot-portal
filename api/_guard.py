@@ -165,7 +165,12 @@ def deny(h, code, msg, rq=None):
                             extra_headers=(rate_headers() if code == 429 else None))
     except Exception:
         pass
-    body = json.dumps({"ok": False, "error": msg, "code": code}, ensure_ascii=False).encode("utf-8")
+    # _errors 자체가 없거나 터진 최후의 경우 — 여기서도 설정 힌트를 그대로
+    # 노출하지 않는다. 디버그 모드가 아니면 일반 문구만 내려간다(위 _errors
+    # 경로와 같은 노출 규칙을 유지한다).
+    debug_on = (os.environ.get("CALLBOT_DEBUG_ERRORS") or "").strip() in ("1", "true", "yes")
+    shown = msg if debug_on else "요청을 처리할 수 없습니다."
+    body = json.dumps({"ok": False, "error": shown, "code": code}, ensure_ascii=False).encode("utf-8")
     h.send_response(code)
     h.send_header("Content-Type", "application/json; charset=utf-8")
     h.send_header("Access-Control-Allow-Origin", allow_origin_header(h.headers))
