@@ -6,7 +6,7 @@
 - 이벤트 모델: ring → answered → (transcript|dtmf)* → hangup
 
 사용:
-  from sip_adapter import get_adapter
+  from _sip_adapter import get_adapter
   a = get_adapter()                      # 기본 sim
   a.on_event(lambda ev: print(ev))
   a.simulate_inbound("01000000000")      # sim 전용: 인바운드 콜 1건 재생

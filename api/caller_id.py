@@ -39,7 +39,7 @@ from urllib.parse import urlparse, parse_qs
 from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import pii_vault    # noqa: E402
+import _pii_vault as pii_vault    # noqa: E402
 
 MAX_NUMBERS = 200
 HISTORY_MAX = 100

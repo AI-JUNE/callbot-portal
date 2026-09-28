@@ -150,7 +150,7 @@ class TestFallbacks(Patcher):
         self.assertEqual(h.header("Access-Control-Allow-Origin"), "null")
 
     def test_scrub_falls_back_to_plain_text_when_monitoring_unavailable(self):
-        self.break_module("monitoring")
+        self.break_module("_monitoring")
         os.environ["CALLBOT_DEBUG_ERRORS"] = "1"
         try:
             obj = _errors.payload(500, debug="boom")
@@ -159,7 +159,7 @@ class TestFallbacks(Patcher):
         self.assertEqual(obj["debug"], "boom")
 
     def test_scrub_fallback_stringifies_non_text_debug(self):
-        self.break_module("monitoring")
+        self.break_module("_monitoring")
         os.environ["CALLBOT_DEBUG_ERRORS"] = "1"
         try:
             obj = _errors.payload(500, debug=RuntimeError("boom"))
@@ -168,7 +168,7 @@ class TestFallbacks(Patcher):
         self.assertIn("boom", obj["debug"])
 
     def test_monitoring_capture_failure_does_not_break_response(self):
-        self.break_module("monitoring")
+        self.break_module("_monitoring")
         h = FakeHandler()
         obj = _errors.handle(h, RuntimeError("bug"), route="/api/x", method="GET")
         self.assertEqual(h.status, 500)

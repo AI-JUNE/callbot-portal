@@ -24,7 +24,7 @@
   영속 집계(공유 저장소·실 CTI)는 [승인 필요] — 교체점은 `SINK` 하나다.
 
 사용:
-    import call_metrics as cm
+    import _call_metrics as cm
     cm.start("call-1", scenario="refund")
     cm.mark_turn("call-1")
     cm.finish("call-1", outcome="bot_completed")

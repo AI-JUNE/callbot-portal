@@ -20,7 +20,7 @@ def _alt_provider():
         return None
     import sys as _s
     _s.path.insert(0, os.path.dirname(__file__))
-    import speech_providers
+    import _speech_providers as speech_providers
     return speech_providers.get_tts()
 
 
@@ -29,7 +29,7 @@ def _provider_health():
     try:
         import sys as _s
         _s.path.insert(0, os.path.dirname(__file__))
-        import speech_providers
+        import _speech_providers as speech_providers
         h = speech_providers.health_report("tts")
         h["voice"] = VOICE
         return h

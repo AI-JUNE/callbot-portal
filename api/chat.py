@@ -1,7 +1,7 @@
 import os, sys, json
 from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(__file__))
-from engine import run_turn
+from _engine import run_turn
 
 def _key():
     return bool((os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip())
@@ -11,7 +11,7 @@ _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
 import _log
 import _errors
-import monitoring
+import _monitoring as monitoring
 
 # 시나리오 화이트리스트 — engine.run_turn 의 분기와 같은 목록을 유지한다.
 # (드리프트는 tests/test_chat_assist.py 가 감시: 각 값이 서로 다른 프롬프트를 고르는지 확인)

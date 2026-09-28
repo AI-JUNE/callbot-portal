@@ -17,7 +17,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "api"))
-import monitoring  # noqa: E402
+import _monitoring as monitoring  # noqa: E402
 
 GOOD_DSN = "https://abc123@o0.ingest.sentry.io/4507"
 
@@ -89,7 +89,7 @@ class TestScrub(unittest.TestCase):
 
 class TestNoHardcodedDsn(unittest.TestCase):
     def test_source_has_no_dsn_literal(self):
-        with open(os.path.join(ROOT, "api", "monitoring.py"), encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "api", "_monitoring.py"), encoding="utf-8") as f:
             src = f.read()
         # 실제 DSN 리터럴만 탐지(<key>@<host> 같은 문서용 자리표시자는 제외)
         self.assertIsNone(re.search(r"https?://[A-Za-z0-9]{8,}@[A-Za-z0-9.-]+", src),
@@ -129,7 +129,7 @@ class TestHandlersWired(unittest.TestCase):
         """표준 에러 처리기(_errors.handle)가 5xx 를 monitoring 으로 보낸다."""
         with open(os.path.join(ROOT, "api", "_errors.py"), encoding="utf-8") as f:
             src = f.read()
-        self.assertIn("import monitoring", src)
+        self.assertIn("import _monitoring as monitoring", src)   # 라이브러리는 _ 접두사(서버리스 함수로 배포되지 않게)
         self.assertIn("monitoring.capture_error", src)
 
 

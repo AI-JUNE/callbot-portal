@@ -33,9 +33,9 @@ sys.path.insert(0, os.path.join(ROOT, "api"))
 
 import _guard             # noqa: E402
 import _ratelimit         # noqa: E402
-import speech_providers   # noqa: E402
-import tts                # noqa: E402
-import recording_audit    # noqa: E402
+import _speech_providers as speech_providers   # noqa: E402
+import _tts as tts                # noqa: E402
+import _recording_audit as recording_audit    # noqa: E402
 
 
 class NetworkTouched(AssertionError):

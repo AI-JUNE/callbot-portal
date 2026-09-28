@@ -7,7 +7,7 @@
 - 큐는 in-memory. 실제 상담원 배정·CTI 연동은 [승인 필요] — 여기서는 상태 전이만.
 
 사용:
-  from escalation import EscalationPolicy, EscalationQueue
+  from _escalation import EscalationPolicy, EscalationQueue
   pol = EscalationPolicy()
   hit = pol.evaluate(text="상담사 바꿔 주세요", confidence=0.9, fallback_streak=0)
   if hit: ticket = QUEUE.enqueue(session_id="s1", reason=hit["reason"], summary="...")

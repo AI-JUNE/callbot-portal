@@ -29,8 +29,8 @@ sys.path.insert(0, os.path.join(ROOT, "api"))
 
 import _errors        # noqa: E402
 import _ratelimit     # noqa: E402
-import engine         # noqa: E402
-import order_backend  # noqa: E402
+import _engine as engine         # noqa: E402
+import _order_backend as order_backend  # noqa: E402
 import sim_call       # noqa: E402
 import chat           # noqa: E402
 
@@ -409,13 +409,13 @@ class TestSimulate(SimBase):
         self.assertEqual(self.seen, [])
 
     def test_engine_missing_is_sim_error(self):
-        saved = sys.modules.get("engine")
-        sys.modules["engine"] = None       # import 실패 유도
+        saved = sys.modules.get("_engine")
+        sys.modules["_engine"] = None       # import 실패 유도
         try:
             with self.assertRaises(sim_call.SimError):
                 sim_call.simulate("refund")
         finally:
-            sys.modules["engine"] = saved
+            sys.modules["_engine"] = saved
 
     def test_run_turn_error_propagates(self):
         self.raise_exc = RuntimeError("upstream down")
@@ -539,12 +539,12 @@ class TestHttpContract(SimBase):
         self.assertEqual(h.body()["code"], "UPSTREAM_ERROR")
 
     def test_engine_missing_500(self):
-        saved = sys.modules.get("engine")
-        sys.modules["engine"] = None
+        saved = sys.modules.get("_engine")
+        sys.modules["_engine"] = None
         try:
             h = call("/api/sim_call?scenario=refund", SAME_ORIGIN)
         finally:
-            sys.modules["engine"] = saved
+            sys.modules["_engine"] = saved
         self.assertEqual(h.status, 500)
         self.assertFalse(h.body()["ok"])
 

@@ -35,7 +35,7 @@ import time
 import itertools
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import pii_vault    # noqa: E402  (의존성 0 · 같은 폴더)
+import _pii_vault as pii_vault    # noqa: E402  (의존성 0 · 같은 폴더)
 
 # ── 활성화 게이트 ────────────────────────────────────────────────────────────
 def recording_live():

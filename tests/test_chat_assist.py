@@ -26,7 +26,7 @@ import _errors      # noqa: E402
 import _guard       # noqa: E402
 import _log         # noqa: E402
 import _ratelimit   # noqa: E402
-import engine       # noqa: E402
+import _engine as engine       # noqa: E402
 import chat         # noqa: E402
 import assist       # noqa: E402
 

@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "api"))
 
 import caller_id          # noqa: E402
-import pii_vault          # noqa: E402
+import _pii_vault as pii_vault          # noqa: E402
 import voice              # noqa: E402
 import _ratelimit         # noqa: E402
 

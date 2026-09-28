@@ -21,8 +21,8 @@ import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "api"))
 
-import pii_vault           # noqa: E402
-import recording_audit     # noqa: E402
+import _pii_vault as pii_vault           # noqa: E402
+import _recording_audit as recording_audit     # noqa: E402
 
 KEY_A = base64.b64encode(b"A" * 32).decode()
 KEY_B = base64.b64encode(b"B" * 32).decode()

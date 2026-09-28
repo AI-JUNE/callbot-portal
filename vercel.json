@@ -11,6 +11,14 @@
     {
       "source": "/api/wellbeing/:action",
       "destination": "/api/wellbeing?op=:action"
+    },
+    {
+      "source": "/api/stt",
+      "destination": "/api/speech?mode=stt"
+    },
+    {
+      "source": "/api/tts",
+      "destination": "/api/speech?mode=tts"
     }
   ]
 }

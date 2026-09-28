@@ -108,7 +108,7 @@ def _measured(period):
     """
     raw = None
     try:
-        import call_metrics
+        import _call_metrics as call_metrics
         raw = call_metrics.summary(period=period)
     except Exception:
         raw = None
@@ -155,8 +155,8 @@ def get_ops_summary(baseline=None, period="today"):
     total = int(p.get("calls", calls_today))     # 기간 합계(오늘=일 값)
     auto_rate = float(p.get("auto_rate", b["auto_rate"]))
     auto_done = int(round(total * auto_rate))
-    esc = _norm_stats(_safe_stats("escalation", "QUEUE"), ESCALATION_KEYS)
-    rec = _norm_stats(_safe_stats("recording_audit", "STORE"), RECORDING_KEYS)
+    esc = _norm_stats(_safe_stats("_escalation", "QUEUE"), ESCALATION_KEYS)
+    rec = _norm_stats(_safe_stats("_recording_audit", "STORE"), RECORDING_KEYS)
     return {
         "ok": True,
         "ts": int(time.time()),
@@ -192,7 +192,7 @@ from http.server import BaseHTTPRequestHandler
 import _guard
 import _log
 import _errors
-import monitoring
+import _monitoring as monitoring
 try:
     import _audit          # 관리 기능 접근 감사 (부재해도 서비스는 뜬다)
 except Exception:          # pragma: no cover
@@ -333,7 +333,7 @@ if __name__ == "__main__":
     _real = _b.__import__
 
     def _boom(name, *a, **kw):
-        if name == "call_metrics":
+        if name == "_call_metrics":
             raise RuntimeError("down")
         return _real(name, *a, **kw)
     _b.__import__ = _boom

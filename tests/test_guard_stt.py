@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(ROOT, "api"))
 import _guard       # noqa: E402
 import _errors      # noqa: E402
 import _ratelimit   # noqa: E402
-import stt          # noqa: E402
+import _stt as stt          # noqa: E402
 
 
 # --------------------------------------------------------------------------

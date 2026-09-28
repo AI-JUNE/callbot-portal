@@ -26,7 +26,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "api"))
 import _audit          # noqa: E402
-import call_metrics    # noqa: E402
+import _call_metrics as call_metrics    # noqa: E402
 
 
 class FakeHeaders(dict):

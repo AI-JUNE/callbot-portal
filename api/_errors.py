@@ -82,7 +82,7 @@ def _debug_on():
 
 def _scrub(v):
     try:
-        from monitoring import scrub
+        from _monitoring import scrub
         return scrub(v)
     except Exception:
         return v if isinstance(v, str) else str(v)
@@ -211,7 +211,7 @@ def handle(h, exc, route="", method="", rq=None):
     eid = None
     if status >= 500:  # 4xx(사용자 입력 오류)는 모니터링 노이즈이므로 보내지 않는다
         try:
-            import monitoring
+            import _monitoring as monitoring
             eid = monitoring.capture_error(exc, route=route, method=method, request_id=rid)
         except Exception:
             eid = None

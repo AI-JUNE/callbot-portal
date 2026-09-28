@@ -38,7 +38,7 @@ def _alt_provider():
         return None
     import sys as _s
     _s.path.insert(0, os.path.dirname(__file__))
-    import speech_providers
+    import _speech_providers as speech_providers
     return speech_providers.get_stt()
 
 
@@ -47,7 +47,7 @@ def _provider_health():
     try:
         import sys as _s
         _s.path.insert(0, os.path.dirname(__file__))
-        import speech_providers
+        import _speech_providers as speech_providers
         return speech_providers.health_report("stt")
     except Exception:  # 모듈 부재·임포트 실패 시에도 엔드포인트 정상 응답
         # 내부 예외 문구는 노출하지 않는다 — 상세는 구조화 로그·모니터링으로 본다

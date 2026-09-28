@@ -377,7 +377,7 @@ class TestSubsystemFailureIsolation(Base):
         return boom
 
     def test_monitoring_unavailable_does_not_leak_exception_text(self):
-        boom = self._break_import("monitoring")
+        boom = self._break_import("_monitoring")
         info = health._monitoring()
         self.assertFalse(info["enabled"])
         self.assertNotIn(boom, json.dumps(info, ensure_ascii=False))
@@ -397,14 +397,14 @@ class TestSubsystemFailureIsolation(Base):
 
     def test_speech_providers_unavailable_does_not_leak_exception_text(self):
         os.environ["CALLBOT_STT_PROVIDER"] = "clova"
-        boom = self._break_import("speech_providers")
+        boom = self._break_import("_speech_providers")
         info = health._speech()
         self.assertIn("note", info)
         self.assertNotIn(boom, json.dumps(info, ensure_ascii=False))
         self.assertNotIn("secret-token", json.dumps(info, ensure_ascii=False))
 
     def test_subsystem_failures_keep_health_answering_200(self):
-        for mod in ("monitoring", "_ratelimit", "_audit"):
+        for mod in ("_monitoring", "_ratelimit", "_audit"):
             self._break_import(mod)
         r = call("GET")
         self.assertEqual(r.status, 200)

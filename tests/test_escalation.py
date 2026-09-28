@@ -25,8 +25,8 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "api"))
 
-import escalation  # noqa: E402
-import engine  # noqa: E402
+import _escalation as escalation  # noqa: E402
+import _engine as engine  # noqa: E402
 import sim_call  # noqa: E402
 
 
@@ -457,7 +457,7 @@ class TestNoNetwork(unittest.TestCase):
                     os.environ[k] = v
 
     def test_escalation_module_has_no_network_import(self):
-        src = open(os.path.join(ROOT, "api", "escalation.py"), encoding="utf-8").read()
+        src = open(os.path.join(ROOT, "api", "_escalation.py"), encoding="utf-8").read()
         for banned in ("urllib", "requests", "socket", "http.client"):
             self.assertNotIn(banned, src, banned)
 

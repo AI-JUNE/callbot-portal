@@ -580,13 +580,13 @@ class TestEndpoint(Base):
 # ==========================================================================
 class TestEngineWiring(Base):
     def test_안부_프롬프트가_엔진에_등록돼_있다(self):
-        import engine
+        import _engine as engine
         self.assertTrue(hasattr(engine, "PROMPT_WELLBEING"))
         for kw in ("기분", "식사", "수면", "통증"):
             self.assertIn(kw, engine.PROMPT_WELLBEING)
 
     def test_안부_프롬프트는_의료조언을_금지한다(self):
-        import engine
+        import _engine as engine
         self.assertIn("의료조언", engine.PROMPT_WELLBEING)
 
     def test_sim_call_에_안부_대본이_있다(self):

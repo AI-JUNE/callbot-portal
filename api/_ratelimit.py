@@ -67,8 +67,9 @@ ROUTE_CLASS = {
     "chat": "llm",
     "assist": "llm",
     "sim_call": "llm",   # 대본 1회 = LLM 호출 3~8회. default 등급이면 chat 의 16배까지 열린다
-    "stt": "speech",
+    "stt": "speech",       # rewrite 이전 경로(직접 호출 대비)
     "tts": "speech",
+    "speech": "speech",    # stt·tts 를 합친 실제 함수
     "voice": "webhook",
 }
 

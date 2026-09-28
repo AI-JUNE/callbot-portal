@@ -13,11 +13,11 @@ from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
-    from engine import run_turn
+    from _engine import run_turn
 except Exception:
     run_turn = None
 try:
-    from stt import transcribe
+    from _stt import transcribe
 except Exception:
     transcribe = None
 try:
@@ -27,7 +27,7 @@ except Exception:
 try:
     # 실측 통화 지표 수집기. 없어도 통화는 정상 처리된다(집계만 비어 있을 뿐).
     # 호출은 전부 예외를 전파하지 않는 래퍼이고, 삼킨 실패는 collector.errors 로 드러난다.
-    import call_metrics
+    import _call_metrics as call_metrics
 except Exception:                       # pragma: no cover
     call_metrics = None
 

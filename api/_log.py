@@ -38,7 +38,7 @@ if _d not in sys.path:
     sys.path.insert(0, _d)
 
 try:
-    from monitoring import scrub as _scrub
+    from _monitoring import scrub as _scrub
 except Exception:  # 모니터링 모듈이 없어도 로깅은 동작해야 한다
     def _scrub(v):
         return v if isinstance(v, str) else str(v)

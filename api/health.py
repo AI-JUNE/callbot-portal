@@ -257,7 +257,7 @@ def _speech():
             d = os.path.dirname(__file__)
             if d not in sys.path:
                 sys.path.insert(0, d)
-            import speech_providers as sp
+            import _speech_providers as sp
             if info["stt"]["delegated"]:
                 p, m = sp._pick(sp._STT, "CALLBOT_STT_PROVIDER")
                 info["stt"]["active"] = p.name
@@ -279,7 +279,7 @@ def _monitoring():
         d = os.path.dirname(__file__)
         if d not in sys.path:
             sys.path.insert(0, d)
-        import monitoring
+        import _monitoring as monitoring
         return monitoring.status()
     except Exception as e:  # 헬스는 절대 실패하지 않는다
         # 예외 문구에 DSN·내부 경로가 섞일 수 있다 — 타입명만 노출한다.

@@ -25,7 +25,7 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "api"))
 
-import sip_adapter  # noqa: E402
+import _sip_adapter as sip_adapter  # noqa: E402
 import voice        # noqa: E402
 
 

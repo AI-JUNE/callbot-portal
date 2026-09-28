@@ -197,7 +197,7 @@ class TestMonitoringNoise(unittest.TestCase):
     """4xx(사용자 입력 오류)는 모니터링에 보내지 않는다 — 알림 피로 방지."""
 
     def setUp(self):
-        import monitoring
+        import _monitoring as monitoring
         self.monitoring = monitoring
         self.calls = []
         self.orig = monitoring.capture_error
@@ -317,7 +317,7 @@ class TestSttMime(unittest.TestCase):
     """MediaRecorder 가 붙이는 codecs 파라미터 때문에 실사용이 깨지지 않아야 한다."""
 
     def setUp(self):
-        import stt
+        import _stt as stt
         self.stt = stt
 
     def test_browser_variants_accepted(self):
@@ -336,7 +336,7 @@ class TestSttMime(unittest.TestCase):
 
 
 class TestHandlersWired(unittest.TestCase):
-    ROUTES = ("chat.py", "assist.py", "ops_stats.py", "stt.py", "tts.py", "voice.py")
+    ROUTES = ("chat.py", "assist.py", "ops_stats.py", "_stt.py", "_tts.py", "voice.py", "speech.py")
 
     def _src(self, name):
         with open(os.path.join(ROOT, "api", name), encoding="utf-8") as f:

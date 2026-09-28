@@ -22,7 +22,7 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "api"))
-import monitoring  # noqa: E402
+import _monitoring as monitoring  # noqa: E402
 
 GOOD_DSN = "https://abc123@o0.ingest.sentry.io/4507"
 

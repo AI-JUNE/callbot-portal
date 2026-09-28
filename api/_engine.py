@@ -5,12 +5,12 @@ from datetime import datetime, timezone
 # 주문/환불 연동은 order_backend 인터페이스로 위임한다(기본: DemoOrderBackend =
 # 기존 하드코딩 데이터와 동일 응답). 실제 고객사 연동은 ORDER_BACKEND 환경변수로 교체.
 try:
-    from order_backend import get_backend, DEMO_ORDER  # Vercel 서버리스(api/ 평면 import)
+    from _order_backend import get_backend, DEMO_ORDER  # Vercel 서버리스(api/ 평면 import)
 except ImportError:  # 로컬에서 패키지처럼 import 되는 경우
     from api.order_backend import get_backend, DEMO_ORDER  # type: ignore
 
 try:  # 에스컬레이션 큐(P0-4) — 모듈 없으면 조용히 비활성(기본 동작 불변)
-    from escalation import QUEUE as _ESC_QUEUE
+    from _escalation import QUEUE as _ESC_QUEUE
 except ImportError:
     try:
         from api.escalation import QUEUE as _ESC_QUEUE  # type: ignore

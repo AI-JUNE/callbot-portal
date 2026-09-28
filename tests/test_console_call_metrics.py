@@ -22,7 +22,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "api"))
-import call_metrics  # noqa: E402
+import _call_metrics as call_metrics  # noqa: E402
 import ops_stats     # noqa: E402
 
 ADMIN = os.path.join(ROOT, "public", "admin.html")
@@ -108,7 +108,7 @@ def test_unavailable_state_matches_server(js):
     real = builtins.__import__
 
     def _boom(name, *a, **kw):
-        if name == "call_metrics":
+        if name == "_call_metrics":
             raise RuntimeError("down")
         return real(name, *a, **kw)
     builtins.__import__ = _boom

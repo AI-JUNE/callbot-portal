@@ -206,11 +206,11 @@ class TestNormalize(Base):
 
     def test_safe_stats_swallows_missing_module(self):
         self.assertIsNone(ops_stats._safe_stats("__no_such_module__", "QUEUE"))
-        self.assertIsNone(ops_stats._safe_stats("escalation", "__NOPE__"))
+        self.assertIsNone(ops_stats._safe_stats("_escalation", "__NOPE__"))
 
     def test_summary_keeps_schema_when_source_raises(self):
         """stats() 가 터져도 200 스키마 그대로 — 대시보드가 빈 화면이 되지 않는다."""
-        import escalation
+        import _escalation as escalation
         orig = escalation.QUEUE.stats
         escalation.QUEUE.stats = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
         try:
@@ -273,7 +273,7 @@ class TestGates(Base):
 # ==========================================================================
 class TestNoSideEffects(Base):
     def test_repeated_calls_do_not_change_queue(self):
-        import escalation
+        import _escalation as escalation
         before = escalation.QUEUE.stats()
         for _ in range(3):
             call("GET", headers=SAME_ORIGIN)

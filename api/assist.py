@@ -3,7 +3,7 @@ Gemini(engine._call) 재사용. JSON 강제 출력."""
 import os, sys, json, re
 from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(__file__))
-from engine import _call
+from _engine import _call
 
 MODEL = os.environ.get("CALLBOT_GEMINI_MODEL", "gemini-2.5-flash")
 
@@ -70,7 +70,7 @@ _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
 import _log
 import _errors
-import monitoring
+import _monitoring as monitoring
 
 class handler(BaseHTTPRequestHandler):
     # 기본 접근로그는 쿼리스트링(PII 가능)을 그대로 찍으므로 침묵 — 구조화 로그가 대체

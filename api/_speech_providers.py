@@ -7,7 +7,7 @@
 - 기존 api/stt.py·api/tts.py 엔드포인트는 변경하지 않음(추후 이 팩토리로 위임 예정).
 
 사용:
-  from speech_providers import get_stt, get_tts
+  from _speech_providers import get_stt, get_tts
   r = get_stt().transcribe(audio_b64, "audio/webm")     # {"text":..., "provider":..., "sim":...}
   audio, meta = get_tts().synthesize("안내 문구")        # (bytes, {"provider":..., "sim":...})
 

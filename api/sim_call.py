@@ -75,7 +75,7 @@ def simulate(scenario=DEFAULT_SCENARIO, phone=DEMO_PHONE):
     if scenario not in SCRIPTS:
         raise ValueError("unknown scenario")
     try:
-        from engine import run_turn
+        from _engine import run_turn
     except Exception as e:
         raise SimError("engine import 실패: %s" % type(e).__name__)
     script = SCRIPTS[scenario]
