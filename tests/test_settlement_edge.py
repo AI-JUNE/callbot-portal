@@ -149,6 +149,18 @@ class TestRateCardValidationEdge(Base):
 
 
 # ==========================================================================
+# 1-b) 날짜 라벨 — day_index ↔ day_label 이 서로 되돌린다
+# ==========================================================================
+class TestDayLabel(Base):
+    def test_day_label_round_trips_with_day_index(self):
+        # 2026-08-10 12:00 KST
+        import calendar
+        ts = float(calendar.timegm((2026, 8, 10, 3, 0, 0, 0, 0, 0)))
+        idx = st.day_index(ts)
+        self.assertEqual(st.day_label(idx), "2026-08-10")
+
+
+# ==========================================================================
 # 2) 요율 출처 — runtime / env / none
 # ==========================================================================
 class TestCardSource(Base):

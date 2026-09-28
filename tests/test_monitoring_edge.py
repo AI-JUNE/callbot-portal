@@ -77,6 +77,17 @@ class TestFramesEdge(unittest.TestCase):
     def test_object_without_traceback_returns_empty_list(self):
         self.assertEqual(monitoring._frames(_NotAnException()), [])
 
+    def test_real_exception_yields_filename_lineno_function(self):
+        try:
+            raise ValueError("boom")
+        except ValueError as e:
+            frames = monitoring._frames(e)
+        self.assertTrue(frames, "실제 예외는 프레임을 최소 1건 남겨야 한다")
+        f0 = frames[0]
+        self.assertEqual(set(f0.keys()), {"filename", "lineno", "function"})
+        self.assertTrue(f0["filename"].endswith(".py"))
+        self.assertIsInstance(f0["lineno"], int)
+
 
 # ==========================================================================
 # 4) 컨텍스트 필드 — None 값 스킵
