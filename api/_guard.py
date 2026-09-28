@@ -31,9 +31,10 @@ def _env_list(name, default):
 
 
 ALLOWED = _env_list("CALLBOT_ALLOWED_ORIGINS", [
+    "https://aicc.gowon.co.kr",        # AICC 포털 운영 도메인(2026-09-28 연결)
     "https://callbot-portal.vercel.app",
-    "https://eum-mvp.vercel.app",      # 이음 MVP 시연 무대 — TTS(안부 음성) 재사용
-    "https://eum.gowon.kr",
+    "https://eum.gowon.co.kr",         # 이음 시연 무대 — 신경망 TTS(AI 상담원 음성) 재사용
+    "https://eum-mvp.vercel.app",      # 이음 옛 주소(지금은 eum.gowon.co.kr 로 이동) — 캐시된 페이지 대비
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ])

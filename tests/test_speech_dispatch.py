@@ -167,5 +167,27 @@ class TestFunctionCount(unittest.TestCase):
         self.assertEqual(bad, [], "핸들러가 없는데 함수로 배포된다 → _ 접두사를 붙여라: %s" % bad)
 
 
+class TestEumStageOrigin(unittest.TestCase):
+    """이음 시연 무대(eum.gowon.co.kr)가 이 TTS 를 <audio> 로 부른다.
+
+    <audio> 요청에는 Origin 이 없고 Referer(출처만)와 Sec-Fetch-Site: same-site 가 온다.
+    허용 목록에 이음 도메인이 없으면 403 → 시연은 브라우저 기계음으로 폴백한다.
+    예전 목록에는 쓰지 않는 도메인(eum.gowon.kr)만 있었다(2026-09-28).
+    """
+
+    def test_eum_domain_allowed_by_referer(self):
+        import _guard
+        h = {"referer": "https://eum.gowon.co.kr/", "sec-fetch-site": "same-site"}
+        self.assertTrue(_guard._origin_ok(h))
+
+    def test_aicc_domain_allowed(self):
+        import _guard
+        self.assertTrue(_guard._origin_ok({"origin": "https://aicc.gowon.co.kr"}))
+
+    def test_unknown_site_still_refused(self):
+        import _guard
+        self.assertFalse(_guard._origin_ok({"referer": "https://evil.example/", "sec-fetch-site": "cross-site"}))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
