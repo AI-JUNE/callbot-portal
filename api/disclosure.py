@@ -429,6 +429,6 @@ class handler(BaseHTTPRequestHandler):
             _errors.handle(self, e, route="/api/disclosure", method="POST", rq=rq)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     print(json.dumps(effective(None), ensure_ascii=False, indent=2))
     print(json.dumps(check("안녕하세요 온라인몰입니다. 무엇을 도와드릴까요?", "온라인몰"), ensure_ascii=False, indent=2))
