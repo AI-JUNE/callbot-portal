@@ -269,6 +269,19 @@ def _apply(cid, op, actor=None, now=None, evidence_type=None, issued_at=None,
     if cur not in allowed:
         raise ValueError("%s 상태에서는 '%s' 할 수 없습니다(가능: %s)"
                          % (cur, rule["label"], ", ".join(allowed)))
+    # 입력 검증은 **대장을 건드리기 전에** 모두 끝낸다.
+    # 상태를 먼저 바꾸고 나서 거부하면, 거부된 승인 신청이 `verified` 로 남고
+    # `expires_at` 이 0 이라 만료 계산도 걸리지 않아 **무기한 승인번호**처럼
+    # 보인다(outbound_ready=True). 게다가 예외로 빠져나가므로 이력에도 남지
+    # 않는다 — 실발신 승인 근거가 조용히 조작되는 셈이다.
+    vd = None
+    if rule["to"] == "verified":
+        try:
+            vd = int(valid_days)
+        except (TypeError, ValueError):
+            raise ValueError("유효기간(valid_days)은 정수여야 합니다")
+        if not (1 <= vd <= 1825):
+            raise ValueError("유효기간은 1~1825일 사이여야 합니다")
     if rule["needs_evidence"]:
         issued = _validate_evidence(evidence_type, issued_at, now)
         sealed, protection = ((pii_vault.seal("%s|%s" % (evidence_type, _iso(issued)),
@@ -282,12 +295,6 @@ def _apply(cid, op, actor=None, now=None, evidence_type=None, issued_at=None,
         rec["status"] = rule["to"]
         rec["note"] = str(note or "")[:200]
         if rule["to"] == "verified":
-            try:
-                vd = int(valid_days)
-            except (TypeError, ValueError):
-                raise ValueError("유효기간(valid_days)은 정수여야 합니다")
-            if not (1 <= vd <= 1825):
-                raise ValueError("유효기간은 1~1825일 사이여야 합니다")
             rec["verified_at"] = now
             rec["expires_at"] = now + vd * 86400
         elif rule["to"] in ("rejected", "revoked"):
