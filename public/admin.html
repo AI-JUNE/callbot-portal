@@ -579,7 +579,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
             <h3>🤝 실시간 어시스트</h3>
             <div class="blk"><div class="lbl">고객 의도</div><span class="tag intent" id="aIntent">—</span></div>
             <div class="blk"><div class="lbl">감정</div><span class="tag neu" id="aEmo">중립</span><div class="meter"><i id="aEmoBar" style="width:50%"></i></div></div>
-            <div class="blk"><div class="lbl">STT 인식 정확도</div><span class="tag pos" id="aStt">–</span><div class="meter"><i id="aSttBar" style="width:0%;background:var(--green)"></i></div></div>
+            <div class="blk"><div class="lbl">STT 인식 정확도 <span style="color:var(--dim);font-size:11px">(데모 · 실측 아님)</span></div><span class="tag pos" id="aStt">–</span><div class="meter"><i id="aSttBar" style="width:0%;background:var(--green)"></i></div></div>
             <div class="blk"><div class="lbl">대화 요약</div><div class="summary" id="aSum">아직 대화가 없습니다.</div></div>
             <div class="blk"><div class="lbl">추천 액션</div><ul class="acts" id="aActs"><li>통화를 시작하세요</li></ul></div><div class="blk"><div class="lbl">AI 어시스트</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button onclick="assistCall('summary')">📝 요약</button><button onclick="assistCall('ta')">📊 TA</button><button onclick="assistCall('qa')">✅ QA</button></div><div id="assistResult" style="margin-top:10px"></div></div>
             <div class="blk"><div class="lbl">이번 통화</div><div class="row" style="padding:5px 0"><span>토큰</span><b id="vTok">0</b></div>
@@ -900,7 +900,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
         </div>
         <div class="twocol" style="margin-bottom:16px">
           <div class="card"><h3>📈 실시간 봇 처리율</h3><div class="gaugewrap" style="height:160px"><canvas id="monGauge"></canvas></div></div>
-          <div class="card"><h3>✅ SLA 준수 모니터 <span class="r" style="color:var(--dim);font-size:11px">목표 대비 실적</span></h3><div id="slaBody" style="padding:14px 18px"></div></div>
+          <div class="card"><h3>✅ SLA 준수 모니터 <span class="r" style="color:var(--dim);font-size:11px">데모 데이터 · 목표 기준 대비(실적 아님)</span></h3><div id="slaBody" style="padding:14px 18px"></div></div>
         </div>
         <!-- B145: 음성엔진(STT/TTS) 프로바이더 health 카드 — /api/stt · /api/tts?health=1 읽기전용 조회(실호출·과금 없음) -->
         <div class="card" style="margin-bottom:16px"><h3>🎙️ 음성엔진 프로바이더 상태 <span class="r"><button onclick="speechHealthLoad(true)">🔄 새로고침</button> <span id="shGate" style="color:var(--dim);font-size:11px"></span></span></h3><div id="shBody" style="padding:12px 18px" aria-live="polite"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">읽기전용 상태 조회 · 실호출·과금 없음. 비-sim 프로바이더 활성화는 <b>[승인 필요]</b></div></div>
