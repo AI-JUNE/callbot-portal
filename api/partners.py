@@ -91,8 +91,39 @@ def rbac_live() -> bool:
     return (os.environ.get("PARTNER_RBAC_LIVE") or "").strip() == "1"
 
 
+_CLOCK_LOCK = threading.Lock()
+_CLOCK_TICK = 0.001         # 같은 틱에 두 사건이 겹칠 때 벌리는 최소 간격(1ms)
+_LAST_STAMP = 0.0           # 마지막으로 장부에 찍은 시각
+
+
 def _now() -> float:
-    return time.time()
+    """조회용 현재 시각. **장부보다 과거를 가리키지 않는다.**
+
+    쓰기가 `_stamp()` 로 시계보다 살짝 앞선 시각을 찍을 수 있으므로, 조회가
+    맨 시계를 쓰면 방금 연 기간의 시작보다 이른 시점을 물어보게 되어 직전
+    담당이 답으로 나온다. 둘은 같은 눈금을 봐야 한다(읽기는 눈금을 옮기지
+    않는다 — 조회는 부작용이 없다).
+    """
+    return max(time.time(), _LAST_STAMP)
+
+
+def _stamp() -> float:
+    """장부에 찍는 시각. **되감지 않고, 같은 값을 두 번 주지 않는다.**
+
+    Windows 의 `time.time()` 해상도는 15.6ms 라 연속 호출이 **같은 값**을
+    돌려준다. 그대로 쓰면 attach 직후의 reassign 이 `[t, t)` — 길이 0 인
+    귀속 기간을 만든다. 이 기간은 불변식(겹침·빈틈)을 통과하면서도 어떤
+    시점으로도 되짚을 수 없어서, "그때 누구 담당이었냐"에 **직전 담당이
+    아니라 다음 담당**이 답으로 나온다. 정산 분쟁에서 지는 장부다.
+    NTP 보정으로 시계가 뒤로 갈 때도 append-only 장부의 순서는 뒤집히면 안 된다.
+
+    한계: 프로세스 안에서만 단조 증가한다(인스턴스 메모리 장부와 같은 범위).
+    """
+    global _LAST_STAMP
+    with _CLOCK_LOCK:
+        ts = max(time.time(), _LAST_STAMP + _CLOCK_TICK)
+        _LAST_STAMP = ts
+        return ts
 
 
 def _iso(ts) -> str:
@@ -160,7 +191,7 @@ def create_partner(partner_id, name, owner="", note="", actor=None, now=None) ->
     if len(nm) > 60:
         raise ValueError("파트너 이름은 60자 이내")
     reject_contact("owner", owner)
-    ts = _now() if now is None else float(now)
+    ts = _stamp() if now is None else float(now)
     with _LOCK:
         if pid in _PARTNERS:
             raise ValueError("이미 등록된 파트너 ID 입니다")
@@ -184,7 +215,7 @@ def set_partner_status(partner_id, status, actor=None, note="", now=None) -> dic
     if status not in PARTNER_STATUSES:
         raise ValueError("허용값: %s" % ", ".join(PARTNER_STATUSES))
     pid = validate_partner_id(partner_id)
-    ts = _now() if now is None else float(now)
+    ts = _stamp() if now is None else float(now)
     with _LOCK:
         rec = _PARTNERS.get(pid)
         if rec is None:
@@ -246,7 +277,7 @@ def attach(tenant_id, channel, partner_id=None, owner="", contracted_at=None,
     pid = validate_partner_id(partner_id) if partner_id else None
     reject_contact("owner", owner)
     _check_channel(channel, pid)
-    ts = _now() if now is None else float(now)
+    ts = _stamp() if now is None else float(now)
     contracted = float(contracted_at) if contracted_at else ts
     if contracted > ts + 86400:
         raise ValueError("계약일이 미래입니다")
@@ -274,7 +305,7 @@ def reassign(tenant_id, channel, partner_id=None, owner="", reason="",
     pid = validate_partner_id(partner_id) if partner_id else None
     reject_contact("owner", owner)
     _check_channel(channel, pid)
-    ts = _now() if now is None else float(now)
+    ts = _stamp() if now is None else float(now)
     with _LOCK:
         acc = _ACCOUNTS.get(tid)
         if acc is None:
@@ -300,7 +331,7 @@ def reassign(tenant_id, channel, partner_id=None, owner="", reason="",
 def detach(tenant_id, reason="", actor=None, now=None) -> dict:
     """해지. 기간을 닫기만 하고 지우지 않는다 — 지난 정산 근거는 남아야 한다."""
     tid = validate_tenant_id(tenant_id)
-    ts = _now() if now is None else float(now)
+    ts = _stamp() if now is None else float(now)
     with _LOCK:
         acc = _ACCOUNTS.get(tid)
         if acc is None:
@@ -430,6 +461,10 @@ def check_invariants():
             for p in acc["periods"]:
                 if p["to_ts"] is not None and p["to_ts"] < p["from_ts"]:
                     problems.append("%s: 종료가 시작보다 빠름" % tid)
+                elif p["to_ts"] is not None and p["to_ts"] == p["from_ts"]:
+                    # 겹침·빈틈 검사는 통과하지만 어느 시점으로도 조회되지 않는
+                    # 기간이다. 조용히 두면 그 구간의 담당이 다음 담당으로 보인다.
+                    problems.append("%s: 길이 0인 기간(그 시점의 담당을 되짚을 수 없음)" % tid)
                 if prev is not None:
                     if prev["to_ts"] is None:
                         problems.append("%s: 닫히지 않은 기간 뒤에 새 기간" % tid)
@@ -635,10 +670,13 @@ def summary(at=None) -> dict:
 
 
 def _clear_for_tests():
+    global _LAST_STAMP
     with _LOCK:
         _PARTNERS.clear()
         _ACCOUNTS.clear()
         del _HISTORY[:]
+    with _CLOCK_LOCK:       # 장부를 비웠으면 장부 시계도 되돌린다
+        _LAST_STAMP = 0.0
 
 
 # --------------------------------------------------------------------------

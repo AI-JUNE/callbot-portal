@@ -16,7 +16,20 @@
 """
 import os
 
-SPEECH_LIVE = os.environ.get("SPEECH_LIVE", "0") == "1"  # 실호출 게이트. 기본 OFF
+GATE = "SPEECH_LIVE"            # 실호출 게이트. 기본 OFF
+
+
+def is_live() -> bool:
+    """실호출 게이트를 **호출 시점에** 읽는다(`"1"` 정확 일치, 기본 OFF).
+
+    import 시점 상수로 두면 배포 후 환경변수를 바꿔도 이미 뜬 인스턴스에
+    반영되지 않는다 — 켜는 쪽은 불편할 뿐이지만, **끄는 쪽은 비상정지가 듣지
+    않는다**. 게다가 `health.py` 는 이 값을 호출 시점에 따로 읽어서, 헬스가
+    "게이트 OFF" 라고 답하는 동안 팩토리는 라이브 프로바이더를 내주는
+    엇갈림이 생긴다. 두 곳이 같은 순간의 같은 값을 보게 한다.
+    (`sip_adapter.is_live()` 와 같은 규약.)
+    """
+    return (os.environ.get(GATE) or "").strip() == "1"
 
 
 # ── 인터페이스 ────────────────────────────────────────────────
@@ -133,7 +146,7 @@ _TTS = {"sim": SimTTS, "clova": ClovaTTS, "google": GoogleTTS, "aws": AwsTTS}
 
 def _pick(registry, env_key):
     want = (os.environ.get(env_key) or "sim").strip().lower()
-    if want != "sim" and not SPEECH_LIVE:
+    if want != "sim" and not is_live():
         # 게이트 OFF 상태에서는 무조건 sim 폴백 (실호출 원천 차단)
         return registry["sim"](), {"requested": want, "forced_sim": True}
     cls = registry.get(want, registry["sim"])
@@ -156,6 +169,7 @@ _LEGACY = {"stt": "gemini", "tts": "edge"}
 
 def _kind_health(registry, env_key, legacy):
     """단일 종류(stt/tts)의 프로바이더 상태. 인스턴스화·실호출 없음."""
+    live = is_live()            # 한 리포트 안에서는 같은 순간의 값을 쓴다
     raw = (os.environ.get(env_key) or "").strip().lower()
     want = raw or legacy
     delegated = bool(raw) and raw != legacy
@@ -163,7 +177,7 @@ def _kind_health(registry, env_key, legacy):
         known, forced_sim, effective = True, False, legacy
     else:
         known = want in registry
-        forced_sim = (not known) or (want != "sim" and not SPEECH_LIVE)
+        forced_sim = (not known) or (want != "sim" and not live)
         effective = "sim" if forced_sim else want
     provs = []
     for n in sorted(registry):
@@ -191,7 +205,8 @@ def health_report(kind="all"):
     kind: "stt" | "tts" | "all". 반환값은 JSON 직렬화 가능한 dict.
     실호출·키 노출 없음. 게이트(SPEECH_LIVE) 상태만 노출한다.
     """
-    rep = {"gate": "SPEECH_LIVE", "speech_live": SPEECH_LIVE, "sim": not SPEECH_LIVE}
+    live = is_live()
+    rep = {"gate": GATE, "speech_live": live, "sim": not live}
     if kind in ("all", "stt"):
         rep["stt"] = _kind_health(_STT, "CALLBOT_STT_PROVIDER", _LEGACY["stt"])
     if kind in ("all", "tts"):

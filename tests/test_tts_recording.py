@@ -108,9 +108,8 @@ class Base(unittest.TestCase):
         for k in [k for k in list(os.environ) if k.startswith("CALLBOT_RATE_LIMIT")]:
             os.environ.pop(k, None)
         _ratelimit.reset()
-        # 게이트는 import 시점 상수 — 테스트는 항상 OFF(sim) 전제
-        self._live = speech_providers.SPEECH_LIVE
-        speech_providers.SPEECH_LIVE = False
+        # 게이트는 호출 시점에 env 로 읽는다(위에서 SPEECH_LIVE 를 지웠다) — 항상 OFF(sim) 전제
+        self.assertFalse(speech_providers.is_live())
         # 어떤 경로에서도 네트워크를 건드리면 즉시 실패
         self._urlopen = urllib.request.urlopen
         urllib.request.urlopen = self._boom
@@ -122,7 +121,6 @@ class Base(unittest.TestCase):
     def tearDown(self):
         tts._synth = self._synth
         urllib.request.urlopen = self._urlopen
-        speech_providers.SPEECH_LIVE = self._live
         for k, v in self._saved.items():
             if v is None:
                 os.environ.pop(k, None)

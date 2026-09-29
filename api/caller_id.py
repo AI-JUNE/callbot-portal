@@ -359,13 +359,16 @@ def list_numbers(tenant=None, status=None, now=None,
     없고 `partners.scope_tenants()` **한 곳**에만 있다. 승인 전에는 그 함수가
     아무것도 거르지 않으므로 지금 동작은 `role` 유무와 무관하게 같다.
     """
+    # 만료 계산 시계(`_now()`)를 귀속 장부 질의에 그대로 넘기지 않는다 — 장부는
+    # 자기 시계로 답해야 한다(호출자가 시점을 명시했을 때만 그 시점으로 묻는다).
+    at = now
     now = _now() if now is None else now
     out = [view(r, now) for r in _NUMBERS.values()]
     if tenant:
         out = [v for v in out if v["tenant_id"] == tenant]
     if role:
         scope = _scope_tenants([v["tenant_id"] for v in out], role,
-                               actor_partner_id, now)
+                               actor_partner_id, at)
         if scope is not None:
             keep = set(scope["tenant_ids"])
             out = [v for v in out if v["tenant_id"] in keep]
