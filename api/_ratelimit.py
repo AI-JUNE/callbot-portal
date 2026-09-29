@@ -70,6 +70,7 @@ ROUTE_CLASS = {
     "stt": "speech",       # rewrite 이전 경로(직접 호출 대비)
     "tts": "speech",
     "speech": "speech",    # stt·tts 를 합친 실제 함수
+    "voice-studio": "speech",   # 보이스 스튜디오(rewrite 전 경로) — 합성 비용이 드는 경로라 speech 등급
     "voice": "webhook",
 }
 

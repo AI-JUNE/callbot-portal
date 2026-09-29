@@ -30,6 +30,7 @@ import _errors
 import _guard
 import _stt
 import _tts
+import _vstudio
 
 
 def _mode(path):
@@ -37,11 +38,13 @@ def _mode(path):
     try:
         u = urlparse(path or "")
         m = (parse_qs(u.query).get("mode", [""])[0] or "").strip().lower()
-        if m in ("stt", "tts"):
+        if m in ("stt", "tts", "studio"):
             return m
         seg = (u.path or "").rstrip("/").rsplit("/", 1)[-1].lower()
         if seg in ("stt", "tts"):
             return seg
+        if seg == "voice-studio":
+            return "studio"
     except Exception:
         pass
     return "stt"
@@ -54,6 +57,12 @@ class handler(_stt.handler):
         m = "stt"
         try:
             m = _mode(self.path)
+            if m == "studio":
+                # 보이스 스튜디오(09-29) — 같은 가드(요청 제한·출처)를 지난 뒤 처리한다
+                _ok, _c, _msg = _guard.check(self.headers, self.path, allow_webhook=False)
+                if not _ok:
+                    return _vstudio._send(self, _c, {"ok": False, "error": "요청이 너무 많거나 허용되지 않은 곳에서 왔습니다."})
+                return _vstudio.handle_get(self)
             if m == "tts":
                 return _tts.handler.do_GET(self)
             return _stt.handler.do_GET(self)
@@ -62,8 +71,13 @@ class handler(_stt.handler):
             _errors.handle(self, e, route="/api/" + m, method="GET")
 
     def do_POST(self):
-        # 본문을 받는 것은 음성 인식뿐이다(합성은 GET ?text=).
+        # 본문을 받는 것은 음성 인식과 보이스 스튜디오 합성이다(콜봇 합성은 GET ?text=).
         try:
+            if _mode(self.path) == "studio":
+                _ok, _c, _msg = _guard.check(self.headers, self.path, allow_webhook=False)
+                if not _ok:
+                    return _vstudio._send(self, _c, {"ok": False, "error": "요청이 너무 많거나 허용되지 않은 곳에서 왔습니다."})
+                return _vstudio.handle_post(self)
             return _stt.handler.do_POST(self)
         except Exception as e:
             _errors.handle(self, e, route="/api/stt", method="POST")

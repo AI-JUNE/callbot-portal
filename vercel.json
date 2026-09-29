@@ -22,6 +22,10 @@
     {
       "source": "/api/tts",
       "destination": "/api/speech?mode=tts"
+    },
+    {
+      "source": "/api/voice-studio",
+      "destination": "/api/speech?mode=studio"
     }
   ]
 }
