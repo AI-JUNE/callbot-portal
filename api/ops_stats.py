@@ -270,7 +270,7 @@ class handler(BaseHTTPRequestHandler):
             pass
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     s = get_ops_summary()
     assert s["ok"] and s["mode"] == "sim" and s["period"] == "today"
     assert s["calls"]["total"] == s["calls"]["today"] == 214

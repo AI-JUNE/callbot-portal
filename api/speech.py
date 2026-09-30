@@ -33,6 +33,9 @@ import _tts
 import _vstudio
 
 
+_ROUTE = {"stt": "/api/stt", "tts": "/api/tts", "studio": "/api/voice-studio"}
+
+
 def _mode(path):
     """?mode=tts 면 tts, 그 외에는 stt. 경로에 /tts 가 직접 오는 경우도 받는다."""
     try:
@@ -61,26 +64,32 @@ class handler(_stt.handler):
                 # 보이스 스튜디오(09-29) — 같은 가드(요청 제한·출처)를 지난 뒤 처리한다
                 _ok, _c, _msg = _guard.check(self.headers, self.path, allow_webhook=False)
                 if not _ok:
-                    return _vstudio._send(self, _c, {"ok": False, "error": "요청이 너무 많거나 허용되지 않은 곳에서 왔습니다."})
+                    return _guard.deny(self, _c, _msg)
                 return _vstudio.handle_get(self)
             if m == "tts":
                 return _tts.handler.do_GET(self)
             return _stt.handler.do_GET(self)
         except Exception as e:
             # 위임 자체가 실패해도 표준 에러 봉투로 답한다(내부 문구 미노출).
-            _errors.handle(self, e, route="/api/" + m, method="GET")
+            _errors.handle(self, e, route=_ROUTE.get(m, "/api/stt"), method="GET")
 
     def do_POST(self):
         # 본문을 받는 것은 음성 인식과 보이스 스튜디오 합성이다(콜봇 합성은 GET ?text=).
+        m = "stt"
         try:
-            if _mode(self.path) == "studio":
+            m = _mode(self.path)
+            if m == "studio":
                 _ok, _c, _msg = _guard.check(self.headers, self.path, allow_webhook=False)
                 if not _ok:
-                    return _vstudio._send(self, _c, {"ok": False, "error": "요청이 너무 많거나 허용되지 않은 곳에서 왔습니다."})
+                    # 거부도 표준 봉투로. 특히 429 는 Retry-After·X-RateLimit-* 가
+                    # 실려야 배치 제작(한 줄 = 요청 1건)이 얼마나 기다릴지 알 수 있다.
+                    return _guard.deny(self, _c, _msg)
                 return _vstudio.handle_post(self)
             return _stt.handler.do_POST(self)
         except Exception as e:
-            _errors.handle(self, e, route="/api/stt", method="POST")
+            # 라우트를 모드에 맞게 남긴다 — 스튜디오 오류가 /api/stt 로 적히면
+            # 모니터링에서 STT 장애를 쫓게 된다.
+            _errors.handle(self, e, route=_ROUTE.get(m, "/api/stt"), method="POST")
 
     def do_OPTIONS(self):
         fn = getattr(_stt.handler, "do_OPTIONS", None)
