@@ -152,7 +152,13 @@ def send(h, status=500, code=None, message=None, rq=None,
     extra_headers: [(name, value), ...] 추가 응답 헤더. 요청 제한의
     Retry-After·X-RateLimit-* 처럼 본문이 아니라 헤더로 알려야 하는 값에 쓴다.
     이름/값은 개행을 제거해 헤더 인젝션을 막는다.
+
+    rq 를 넘기지 않아도 핸들러가 `self._rq` 로 들고 있으면 그것을 쓴다 —
+    `_guard.deny(h, code, msg)` 처럼 요청 객체를 들고 있지 않은 호출부에서도
+    응답에 request_id 가 붙고 구조화 로그가 한 줄 남는다(조용한 거부 금지).
     """
+    if rq is None:
+        rq = getattr(h, "_rq", None)
     rid = request_id or getattr(rq, "request_id", None)
     obj = payload(status=status, code=code, message=message, request_id=rid,
                   details=details, event_id=event_id, debug=debug)
@@ -178,6 +184,13 @@ def send(h, status=500, code=None, message=None, rq=None,
         h.send_header("Content-Length", str(len(body)))
         h.end_headers()
         h.wfile.write(body)
+    except Exception:
+        pass
+    # 로그는 응답을 쓴 뒤에. 이미 종료된 요청(handle 이 fail 로 먼저 기록)은
+    # finish 가 무시하므로 한 요청에 두 줄이 남지 않는다.
+    try:
+        if rq is not None:
+            rq.finish(obj["status"])
     except Exception:
         pass
     return obj
@@ -207,6 +220,8 @@ def handle(h, exc, route="", method="", rq=None):
     반환: 전송한 봉투(dict). 어떤 단계가 실패해도 응답은 반드시 나간다.
     """
     status, code = classify(exc)
+    if rq is None:
+        rq = getattr(h, "_rq", None)
     rid = getattr(rq, "request_id", None)
     eid = None
     if status >= 500:  # 4xx(사용자 입력 오류)는 모니터링 노이즈이므로 보내지 않는다

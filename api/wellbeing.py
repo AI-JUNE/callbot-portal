@@ -570,6 +570,7 @@ def run_wellbeing(senior_id, callback_url=None, profile="ok", answers=None,
 # --------------------------------------------------------------------------
 import _guard      # noqa: E402
 import _errors     # noqa: E402
+import _log        # noqa: E402
 
 try:
     import _audit
@@ -609,6 +610,10 @@ def _op_from_path(path):
 
 
 class handler(BaseHTTPRequestHandler):
+    # 기본 접근로그는 쿼리스트링을 그대로 찍는다(`?ref=`·`?op=` 와 함께 대상자
+    # 식별자가 섞일 수 있다). 구조화 로그가 경로만 PII 없이 남긴다.
+    log_message = _log.suppress_access_log
+
     def _send(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)

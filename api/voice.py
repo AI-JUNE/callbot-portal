@@ -362,6 +362,7 @@ import os as _os_g, sys as _sys_g
 _sys_g.path.insert(0, _os_g.path.dirname(__file__))
 import _guard
 import _errors
+import _log
 try:
     import _audit          # 관리 기능 접근 감사 (부재해도 웹훅은 동작한다)
 except Exception:          # pragma: no cover
@@ -381,6 +382,10 @@ def _audit_ev(headers, path, method, result, status, **extra):
 
 
 class handler(BaseHTTPRequestHandler):
+    # 기본 접근로그는 요청라인을 그대로 찍는다 — CPaaS 웹훅은 인증을
+    # `?t=<CPAAS_WEBHOOK_TOKEN>` 으로 받으므로 그 토큰이 로그에 남는다.
+    log_message = _log.suppress_access_log
+
     def _send(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)

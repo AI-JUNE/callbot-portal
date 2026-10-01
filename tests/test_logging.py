@@ -191,17 +191,63 @@ class TestRobustness(unittest.TestCase):
         _log.attach(object(), _log.begin(None, "/x", "GET"))  # 예외 없이 통과
 
 
+def _handler_files():
+    """서버리스 함수로 배포되는 핸들러 파일들(밑줄 접두사는 라이브러리)."""
+    api = os.path.join(ROOT, "api")
+    out = []
+    for f in sorted(os.listdir(api)):
+        if not f.endswith(".py") or f.startswith("_"):
+            continue
+        src = open(os.path.join(api, f), encoding="utf-8").read()
+        if "class handler" in src:
+            out.append((f, src))
+    return out
+
+
+# 구조화 로그(_log.begin)까지 배선된 핸들러. 아래 목록은 **줄어들 수 없다** —
+# 새 핸들러를 넣고 배선을 빠뜨리면 test_structured_logging_does_not_regress 가 잡는다.
+LOG_WIRED = ("assist.py", "caller_id.py", "chat.py", "disclosure.py", "ops_stats.py",
+             "partners.py", "settlement.py", "sim_call.py", "speech.py")
+
+# 아직 요청 1건=로그 1줄 배선이 없는 핸들러(접근로그 침묵만 된 상태).
+# 늘어나면 실패한다 — 이 칸이 커지는 것은 관측 가능성이 후퇴하는 것이다.
+LOG_PENDING = ("health.py", "voice.py", "wellbeing.py")
+
+
 class TestHandlersWired(unittest.TestCase):
     def test_handlers_use_log(self):
-        for name in ("chat.py", "assist.py", "ops_stats.py"):
+        for name in LOG_WIRED:
             with open(os.path.join(ROOT, "api", name), encoding="utf-8") as f:
                 src = f.read()
             self.assertIn("import _log", src, name)
             self.assertIn("_log.begin(", src, name)
-            self.assertIn("_log.attach(", src, name)
-            self.assertIn("X-Request-Id", src, name)
             # 기본 접근로그(쿼리스트링 PII 유출) 침묵 배선
             self.assertIn("log_message = _log.suppress_access_log", src, name)
+            # 응답에 요청 ID 를 되돌려주는 배선. 헤더를 직접 쓰거나 _log.attach 로
+            # 붙이거나, speech.py 처럼 응답 쓰기를 다른 모듈에 위임한다
+            # (그 경우 실제 헤더는 tests/test_speech_contract.py 가 요청을 태워 확인).
+            if name != "speech.py":
+                self.assertTrue("X-Request-Id" in src or "_log.attach(" in src, name)
+
+    def test_every_handler_silences_default_access_log(self):
+        """신규 핸들러 드리프트 방지 — 목록이 아니라 api/ 전체를 훑는다.
+
+        기본 구현은 요청라인을 그대로 찍어 `?text=<발화>`·`?t=<웹훅 토큰>` 이
+        로그로 새어 나간다(MONITORING_GUIDE §접근로그 침묵).
+        """
+        missing = [f for f, src in _handler_files()
+                   if "log_message = _log.suppress_access_log" not in src]
+        self.assertEqual(missing, [], "기본 접근로그가 그대로인 핸들러: %s" % missing)
+
+    def test_structured_logging_does_not_regress(self):
+        """_log.begin 배선이 빠진 핸들러 집합이 커지면 실패한다."""
+        pending = sorted(f for f, src in _handler_files() if "_log.begin(" not in src)
+        self.assertEqual(pending, sorted(LOG_PENDING),
+                         "구조화 로그 미배선 핸들러가 달라졌다: %s" % pending)
+
+    def test_wired_and_pending_cover_all_handlers(self):
+        self.assertEqual(sorted(f for f, _ in _handler_files()),
+                         sorted(set(LOG_WIRED) | set(LOG_PENDING)))
 
 
 if __name__ == "__main__":

@@ -101,9 +101,22 @@ class handler(BaseHTTPRequestHandler):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        # 오류 응답(_errors.send)은 이 헤더를 붙인다 — 성공만 빠지면 허용된 다른
+        # 오리진에서 브라우저가 오류는 읽고 성공은 못 읽는 엇갈림이 생긴다
+        # (_vstudio._send 와 같은 규약).
+        self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+        _rq = getattr(self, "_rq", None)
+        if _rq is not None:
+            self.send_header("X-Request-Id", _rq.request_id)
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
+        try:                      # 요청 1건 = 구조화 로그 1줄(성공 경로)
+            if _rq is not None:
+                _rq.finish(code)
+        except Exception:
+            pass
 
     def do_GET(self):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)

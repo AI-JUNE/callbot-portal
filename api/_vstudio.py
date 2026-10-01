@@ -200,9 +200,17 @@ def _send(h, code, obj):
     # 오류 응답(_errors.send)은 이 헤더를 붙인다 — 성공만 빠지면 허용된 다른
     # 오리진에서 브라우저가 성공 응답만 못 읽는 엇갈림이 생긴다.
     h.send_header("Access-Control-Allow-Origin", _allow_origin(h))
+    rq = getattr(h, "_rq", None)
+    if rq is not None:
+        h.send_header("X-Request-Id", rq.request_id)
     h.send_header("Content-Length", str(len(b)))
     h.end_headers()
     h.wfile.write(b)
+    try:                          # 요청 1건 = 구조화 로그 1줄(성공 경로)
+        if rq is not None:
+            rq.finish(code)
+    except Exception:
+        pass
 
 
 def op_of(path):

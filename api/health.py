@@ -31,6 +31,13 @@ try:
 except Exception:   # pragma: no cover
     class _errors:  # type: ignore
         MESSAGE_BY_CODE = {"INTERNAL_ERROR": "일시적인 오류가 발생했습니다."}
+try:
+    import _log     # 기본 접근로그 침묵용 (부재해도 /health 는 동작해야 한다)
+except Exception:   # pragma: no cover
+    class _log:     # type: ignore
+        @staticmethod
+        def suppress_access_log(self, fmt, *args):
+            return
 
 BUILD = os.environ.get("CALLBOT_BUILD", "dev")
 
@@ -348,6 +355,10 @@ def _payload(query=""):
 
 
 class handler(BaseHTTPRequestHandler):
+    # 기본 접근로그는 요청라인을 그대로 찍는다. /health 는 무인증 공개 경로라
+    # 외부가 임의 쿼리를 붙여 부를 수 있다 — 그 문자열을 로그에 남기지 않는다.
+    log_message = _log.suppress_access_log
+
     def _send(self, code, obj):
         d = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
