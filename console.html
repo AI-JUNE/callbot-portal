@@ -896,13 +896,14 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
       </section>
 
       <section id="view-qa" class="hidden">
+        <div class="hint" style="padding:12px 18px">아래 수치는 모두 <b>데모용 샘플</b>입니다. 실제 측정 실적이 아니며, 품질 지표는 도입 환경에서 직접 측정해야 합니다.</div>
         <div class="kpis">
-          <div class="kpi"><div class="l">🎯 STT 인식률</div><div class="v">96.2%</div><div class="s">목표 ≥90%</div></div>
-          <div class="kpi"><div class="l">🧠 의도분석 정확도</div><div class="v">94.8%</div><div class="s">목표 ≥90%</div></div>
-          <div class="kpi"><div class="l">🔁 의도 재분류</div><div class="v">92.5%</div><div class="s">정확도</div></div>
-          <div class="kpi"><div class="l">✍ 문장수 준수율</div><div class="v">98.1%</div><div class="s">2문장 이내</div></div>
-          <div class="kpi"><div class="l">🛡 부적절 답변 거부</div><div class="v">100%</div><div class="s">거부율</div></div>
-          <div class="kpi"><div class="l">⚡ 평균 응답시간</div><div class="v">1.1s</div><div class="s">생성형 1.8s</div></div>
+          <div class="kpi"><div class="l">🎯 STT 인식률</div><div class="v">96.2%</div><div class="s">샘플 수치</div></div>
+          <div class="kpi"><div class="l">🧠 의도분석 정확도</div><div class="v">94.8%</div><div class="s">샘플 수치</div></div>
+          <div class="kpi"><div class="l">🔁 의도 재분류</div><div class="v">92.5%</div><div class="s">샘플 수치</div></div>
+          <div class="kpi"><div class="l">✍ 문장수 준수율</div><div class="v">98.1%</div><div class="s">샘플 수치 · 2문장 이내</div></div>
+          <div class="kpi"><div class="l">🛡 부적절 답변 거부</div><div class="v">100%</div><div class="s">샘플 수치 · 거부율</div></div>
+          <div class="kpi"><div class="l">⚡ 평균 응답시간</div><div class="v">1.1s</div><div class="s">샘플 수치 · 생성형 1.8s</div></div>
         </div>
         <div class="twocol">
           <div class="card"><h3>주요 기능 구현 여부</h3>
@@ -915,7 +916,7 @@ mark{background:#fff3bf;padding:0 3px;border-radius:3px}
           </div>
           <div class="card"><h3>평가 테스트셋 (건수)</h3><div class="chartbody"><canvas id="chQa"></canvas></div></div>
         </div>
-        <div class="card"><h3>시나리오별 평가 결과</h3>
+        <div class="card"><h3>시나리오별 평가 결과 <span class="r" style="color:var(--dim);font-size:11px">데모용 샘플 수치</span></h3>
           <table><thead><tr><th>시나리오</th><th>유형</th><th>STT</th><th>의도 정확도</th><th>응답시간</th><th>문장수 준수</th><th>결과</th></tr></thead><tbody>
             <tr><td>여신 청렴도 조사</td><td>아웃바운드</td><td class="k">96.5%</td><td class="k">95.2%</td><td class="k">1.0s</td><td class="k">—</td><td><span class="tag pos">충족</span></td></tr>
             <tr><td>연체 안내(생성형 AI)</td><td>아웃바운드·LLM</td><td class="k">95.9%</td><td class="k">94.1%</td><td class="k">1.8s</td><td class="k">98.1%</td><td><span class="tag pos">충족</span></td></tr>
