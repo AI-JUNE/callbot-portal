@@ -70,6 +70,7 @@ def _respond(h, body, ctype):
     h.send_header("Content-Type", ctype)
     h.send_header("Cache-Control", "no-store")
     h.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(h.headers))
+    h.send_header("Access-Control-Expose-Headers", _errors.EXPOSE_HEADERS)
     rq = getattr(h, "_rq", None)
     if rq is not None:
         h.send_header("X-Request-Id", rq.request_id)

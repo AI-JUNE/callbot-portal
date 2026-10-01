@@ -227,6 +227,29 @@ class TestResponseHeaders(Base):
         self.assertIsNotNone(r.header("Access-Control-Allow-Origin"))
         self.assertEqual(r.header("Cache-Control"), "no-store")
 
+    def test_retry_after_is_readable_cross_origin(self):
+        """429 의 Retry-After 는 CORS 안전목록에 없다 — 노출 선언이 없으면
+        허용된 다른 오리진의 콘솔은 '얼마나 기다릴지'를 읽을 수 없다(16차 기능)."""
+        _ratelimit.reset()
+        r = None
+        for _ in range(60):      # reset 하지 않고 연속 호출 → speech 등급 한도 초과
+            r = Resp("/api/speech?mode=tts&text=x", headers={"x-forwarded-for": "10.1.2.3"})
+            r.inst.do_GET()
+            if r.status == 429:
+                break
+        else:
+            self.fail("요청 제한에 걸리지 않았다 — 등급 설정을 확인하라")
+        self.assertIsNotNone(r.header("Retry-After"))
+        expose = (r.header("Access-Control-Expose-Headers") or "").lower()
+        self.assertIn("retry-after", expose)
+        self.assertIn("x-request-id", expose)
+
+    def test_success_also_declares_exposed_headers(self):
+        r = self.call("/api/speech?mode=stt")
+        self.assertEqual(r.status, 200)
+        self.assertIn("x-request-id",
+                      (r.header("Access-Control-Expose-Headers") or "").lower())
+
     def test_disallowed_origin_is_not_reflected(self):
         os.environ["CALLBOT_API_KEY"] = "k-secret"
         r = self.call("/api/speech?mode=stt",

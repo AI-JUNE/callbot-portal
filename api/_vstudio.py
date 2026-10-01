@@ -200,6 +200,7 @@ def _send(h, code, obj):
     # 오류 응답(_errors.send)은 이 헤더를 붙인다 — 성공만 빠지면 허용된 다른
     # 오리진에서 브라우저가 성공 응답만 못 읽는 엇갈림이 생긴다.
     h.send_header("Access-Control-Allow-Origin", _allow_origin(h))
+    h.send_header("Access-Control-Expose-Headers", _errors.EXPOSE_HEADERS)
     rq = getattr(h, "_rq", None)
     if rq is not None:
         h.send_header("X-Request-Id", rq.request_id)

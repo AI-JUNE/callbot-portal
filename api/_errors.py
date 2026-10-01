@@ -36,6 +36,15 @@ _d = os.path.dirname(__file__)
 if _d not in sys.path:
     sys.path.insert(0, _d)
 
+# 교차출처에서 브라우저가 **읽을 수 있게 해야 하는** 응답 헤더.
+# CORS 안전목록(Cache-Control·Content-Type·…)에 없는 헤더는 이 목록에 올리지
+# 않으면 `fetch()` 쪽에서 보이지 않는다. 프리플라이트(OPTIONS)의
+# Access-Control-Allow-Headers 는 *요청* 헤더용이라 이 역할을 하지 못한다 —
+# 실제 응답에 함께 나가야 한다. 16차가 붙인 429 의 Retry-After 가 허용된 다른
+# 오리진에서 읽히지 않던 이유가 이것이다.
+EXPOSE_HEADERS = ("X-Request-Id, Retry-After, "
+                  "X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset")
+
 # 기본 본문 상한 — 과금·메모리 방어. 오디오 업로드처럼 큰 입력은 호출측이 올린다.
 MAX_BODY = 1024 * 1024          # 1 MiB
 MAX_BODY_AUDIO = 8 * 1024 * 1024  # 8 MiB (STT base64)
@@ -181,6 +190,7 @@ def send(h, status=500, code=None, message=None, rq=None,
             except Exception:
                 pass
         h.send_header("Access-Control-Allow-Origin", _allow_origin(h.headers))
+        h.send_header("Access-Control-Expose-Headers", EXPOSE_HEADERS)
         h.send_header("Content-Length", str(len(body)))
         h.end_headers()
         h.wfile.write(body)

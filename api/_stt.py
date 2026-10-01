@@ -106,6 +106,7 @@ class handler(BaseHTTPRequestHandler):
         # 오리진에서 브라우저가 오류는 읽고 성공은 못 읽는 엇갈림이 생긴다
         # (_vstudio._send 와 같은 규약).
         self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+        self.send_header("Access-Control-Expose-Headers", _errors.EXPOSE_HEADERS)
         _rq = getattr(self, "_rq", None)
         if _rq is not None:
             self.send_header("X-Request-Id", _rq.request_id)
