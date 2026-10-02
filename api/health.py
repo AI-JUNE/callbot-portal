@@ -362,6 +362,40 @@ def _payload(query=""):
     }
 
 
+def _request_log_all():
+    """shallow 성공까지 전량 기록할지 — 기본 OFF."""
+    return _env_str("HEALTH_REQUEST_LOG") == "1"
+
+
+def _begin(h, method):
+    """요청 1건의 구조화 로그를 열고 `h._rq` 로 걸어 둔다(응답 헤더·로그 공통 키)."""
+    rq = _log.begin(h.headers, "/api/health", method, h.path)
+    try:
+        h._rq = rq
+    except Exception:          # pragma: no cover - 속성 설정이 막힌 대역
+        pass
+    return rq
+
+
+def _close(rq, code, deep=False, **extra):
+    """구조화 로그를 닫는다. 로깅 실패가 헬스체크를 죽이지 않는다.
+
+    **shallow 성공은 기본적으로 남기지 않는다** — /health 는 업타임 모니터와
+    로드밸런서가 수십 초마다 치는 경로라 요청 1건=1줄이면 실제 트래픽이 그
+    한 줄들에 묻힌다(감사 스트림이 deep 점검만 기록하는 것과 같은 판단).
+    실패(4xx·5xx)와 deep 점검은 **항상** 남기고, 전량이 필요하면
+    `HEALTH_REQUEST_LOG=1` 로 켠다.
+    """
+    try:
+        if rq is None:
+            return
+        if code < 400 and not deep and not _request_log_all():
+            return
+        rq.finish(code, mode="deep" if deep else "shallow", **extra)
+    except Exception:
+        pass
+
+
 class handler(BaseHTTPRequestHandler):
     # 기본 접근로그는 요청라인을 그대로 찍는다. /health 는 무인증 공개 경로라
     # 외부가 임의 쿼리를 붙여 부를 수 있다 — 그 문자열을 로그에 남기지 않는다.
@@ -372,7 +406,11 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        _log.attach(self, getattr(self, "_rq", None))
         self.send_header("Access-Control-Allow-Origin", "*")
+        # X-Request-Id 는 CORS 안전목록에 없다 — 노출하지 않으면 브라우저 기반
+        # 모니터가 장애 신고에 붙일 추적 키를 읽지 못한다.
+        self.send_header("Access-Control-Expose-Headers", "X-Request-Id")
         self.send_header("Content-Length", str(len(d)))
         self.end_headers()
         self.wfile.write(d)
@@ -384,6 +422,8 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        rq = _begin(self, "GET")
+        deep = False
         try:
             q = ""
             try:
@@ -391,9 +431,10 @@ class handler(BaseHTTPRequestHandler):
             except Exception:
                 q = ""
             payload = _payload(q)
+            deep = payload.get("checks", {}).get("mode") == "deep"
             # 감사: deep 점검은 외부 도달성 시도를 유발하는 '관리 기능'이므로 기록한다.
             # shallow 헬스체크(업타임 모니터의 대량 호출)는 기록하지 않는다.
-            if payload.get("checks", {}).get("mode") == "deep":
+            if deep:
                 try:
                     import _audit
                     _audit.record(self.headers, "ops.health.deep", "allow", status=200,
@@ -401,16 +442,28 @@ class handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             self._send(200, payload)
-        except Exception:
+            # 등급(healthy/degraded/unhealthy)은 PII 가 아니라 운영 신호다.
+            _close(rq, 200, deep=deep, health=payload.get("status"))
+        except Exception as e:
             # /health 는 status 키가 헬스 등급이므로 표준 봉투의 status(HTTP 코드)와
             # 충돌한다. 등급 의미를 지키되 code 를 붙이고 내부 문구는 노출하지 않는다.
             self._send(500, {"ok": False, "status": "error",
                              "code": "INTERNAL_ERROR",
                              "error": _errors.MESSAGE_BY_CODE["INTERNAL_ERROR"]})
+            # 헬스가 터진 것은 반드시 남긴다 — 응답 본문에 못 싣는 원인을
+            # 여기서는 예외 '타입명'(error_code)으로 남긴다(문구는 기록하지 않는다).
+            try:
+                if rq is not None and not rq.done_flag:
+                    rq.fail(e, 500, mode="deep" if deep else "shallow")
+            except Exception:
+                pass
 
     # HEAD 요청(일부 모니터)도 200으로 응답
     def do_HEAD(self):
+        rq = _begin(self, "HEAD")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        _log.attach(self, rq)
         self.end_headers()
+        _close(rq, 200)
