@@ -609,6 +609,42 @@ def _op_from_path(path):
         return ""
 
 
+# 로그 보조필드는 **아는 값만** 남긴다. op 는 외부가 보내는 값이라 그대로 담으면
+# 임의 문자열(대상자 식별자 포함)이 로그에 섞인다.
+_OPS = ("call", "recent", "result", "failures", "info")
+
+
+def _op_label(op):
+    op = (op or "").strip().lower()
+    if not op:
+        return "info"
+    return op if op in _OPS else "other"
+
+
+def _begin(h, method):
+    """요청 1건 = 구조화 로그 1줄.
+
+    `h._rq` 로 걸어 두면 `_guard.deny`·`_errors.send/handle` 이 request_id 를
+    승계해 거부(401/403/429)·501·오류까지 한 줄씩 남는다. 경로는
+    `_log.safe_path` 가 쿼리를 잘라내므로 `?ref=`·`?op=` 값은 로그에 남지 않는다.
+    """
+    rq = _log.begin(h.headers, "/api/wellbeing", method, h.path)
+    try:
+        h._rq = rq
+    except Exception:          # pragma: no cover - 속성 설정이 막힌 대역
+        pass
+    return rq
+
+
+def _close(rq, code, **extra):
+    """구조화 로그를 닫는다. 로깅 실패가 안부 호출을 죽이지 않는다."""
+    try:
+        if rq is not None:
+            rq.finish(code, **extra)
+    except Exception:
+        pass
+
+
 class handler(BaseHTTPRequestHandler):
     # 기본 접근로그는 쿼리스트링을 그대로 찍는다(`?ref=`·`?op=` 와 함께 대상자
     # 식별자가 섞일 수 있다). 구조화 로그가 경로만 PII 없이 남긴다.
@@ -616,13 +652,19 @@ class handler(BaseHTTPRequestHandler):
 
     def _send(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        rq = getattr(self, "_rq", None)
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        _log.attach(self, rq)
         self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+        # X-Request-Id 는 CORS 안전목록에 없다 — 이음 무대처럼 허용된 다른
+        # 오리진에서 호출하면 노출하지 않으면 읽히지 않는다(오류 응답과 같은 규약).
+        self.send_header("Access-Control-Expose-Headers", _errors.EXPOSE_HEADERS)
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
+        _close(rq, code)
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -632,13 +674,15 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        rq = _begin(self, "GET")
         ok, code, msg = _guard.check(self.headers, self.path, allow_webhook=True)
         if not ok:
             _audit_ev(self.headers, self.path, "GET", "deny", code)
-            return _guard.deny(self, code, msg)
+            return _guard.deny(self, code, msg, rq)
         _audit_ev(self.headers, self.path, "GET", "allow", 200)
         q = parse_qs(urlparse(self.path).query)
         op = (_op_from_path(self.path) or q.get("op", [""])[0] or "").strip().lower()
+        rq.set(op=_op_label(op))
         if op == "recent":
             return self._send({"ok": True, "recent": RECENT})
         if op == "failures":
@@ -648,14 +692,19 @@ class handler(BaseHTTPRequestHandler):
                         "콜백 호스트만 남기며 경로·토큰은 기록하지 않습니다." % _MAX_FAILED})
         if op == "result":
             ref = (q.get("ref", [""])[0] or "").strip()
+            # 오류 봉투는 손으로 조립하지 않고 _errors.send 를 거친다 — 그래야
+            # request_id·details[].field 가 다른 라우트와 같은 모양으로 나간다
+            # (code 값은 기존 소비자를 위해 그대로 유지한다).
             if not ref:
-                return self._send({"ok": False, "code": "VALIDATION_ERROR",
-                                   "error": "ref 파라미터가 필요합니다(raw_ref)"}, code=400)
+                return _errors.send(self, status=400, code="VALIDATION_ERROR", rq=rq,
+                                    message="ref 파라미터가 필요합니다(raw_ref)",
+                                    details=[{"field": "ref", "reason": "필수 항목입니다"}])
             rec = get_result(ref)
             if rec is None:
-                return self._send({"ok": False, "code": "NOT_FOUND",
-                                   "error": "해당 raw_ref 의 결과가 없습니다"
-                                            "(최근 %d건만 보관)" % _MAX_RESULTS}, code=404)
+                return _errors.send(
+                    self, status=404, code="NOT_FOUND", rq=rq,
+                    message="해당 raw_ref 의 결과가 없습니다(최근 %d건만 보관)" % _MAX_RESULTS,
+                    details=[{"field": "ref", "reason": "보관된 결과가 없습니다"}])
             return self._send({"ok": True, "result": rec})
         self._send({
             "ok": True, "endpoint": "wellbeing", "scenario": "안부",
@@ -679,19 +728,21 @@ class handler(BaseHTTPRequestHandler):
         })
 
     def do_POST(self):
+        rq = _begin(self, "POST")
         ok, code, msg = _guard.check(self.headers, self.path, allow_webhook=True)
         if not ok:
             _audit_ev(self.headers, self.path, "POST", "deny", code)
-            return _guard.deny(self, code, msg)
+            return _guard.deny(self, code, msg, rq)
         _audit_ev(self.headers, self.path, "POST", "allow", 200, live=live_mode())
         try:
             body = _errors.read_json(self, max_bytes=MAX_BODY, required=True)
             op = _op_from_path(self.path) or str(body.get("op") or "call").lower()
+            rq.set(op=_op_label(op))
             if op not in ("call", ""):
                 raise _errors.ValidationError.field("op", "지원하지 않는 동작입니다(call)")
             if live_mode() or str(body.get("mode") or "").lower() == "live":
                 # 실발신은 코드가 아니라 사람 승인으로만 열린다.
-                return _errors.send(self, status=501, code="NOT_IMPLEMENTED",
+                return _errors.send(self, status=501, code="NOT_IMPLEMENTED", rq=rq,
                                     message="실회선 발신은 승인 후 활성화됩니다([승인 필요]). "
                                             "현재는 전화망 미경유 시뮬레이션만 제공합니다.")
             senior_id = _errors.as_str(body, "senior_id", required=True, max_len=64,
@@ -706,6 +757,9 @@ class handler(BaseHTTPRequestHandler):
                                     answers=answers)
             except ValueError as e:
                 raise _errors.ValidationError.field("request", str(e))
+            # 판정 결과·전송 성공 여부만 남긴다 — 대상자 ID·콜백 URL 은 담지 않는다.
+            rq.set(risk=(out.get("payload") or {}).get("risk_level"),
+                   delivered=bool((out.get("delivery") or {}).get("delivered")))
             # 웹훅 전송 실패는 502 로 드러낸다 — 성공으로 위장하지 않는다.
             d = out.get("delivery") or {}
             if callback_url and not d.get("delivered"):

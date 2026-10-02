@@ -381,6 +381,44 @@ def _audit_ev(headers, path, method, result, status, **extra):
         return None
 
 
+# 로그 보조필드는 **아는 값만** 남긴다. `op`·`type` 은 외부(CPaaS·콘솔)가 보내는
+# 값이라 그대로 담으면 임의 문자열이 로그에 섞이고 집계 카디널리티가 터진다.
+_OPS = ("log", "campaign")
+_EVENTS = ("answered", "speech", "completed")
+
+
+def _label(value, known):
+    v = value.strip().lower() if isinstance(value, str) else ""
+    if not v:
+        return None
+    return v if v in known else "other"
+
+
+def _begin(h, method):
+    """요청 1건 = 구조화 로그 1줄.
+
+    `h._rq` 로 걸어 두면 `_guard.deny`·`_errors.handle` 이 request_id 를 승계해
+    거부(401/403/429)와 오류까지 한 줄씩 남는다(조용한 실패 금지).
+    경로는 `_log.safe_path` 가 쿼리를 잘라내므로 웹훅 인증 `?t=<CPAAS_WEBHOOK_TOKEN>`
+    은 로그에 남지 않는다.
+    """
+    rq = _log.begin(h.headers, "/api/voice", method, h.path)
+    try:
+        h._rq = rq
+    except Exception:          # pragma: no cover - 속성 설정이 막힌 대역
+        pass
+    return rq
+
+
+def _close(rq, code, **extra):
+    """구조화 로그를 닫는다. 로깅 실패가 통화 처리를 죽이지 않는다."""
+    try:
+        if rq is not None:
+            rq.finish(code, **extra)
+    except Exception:
+        pass
+
+
 class handler(BaseHTTPRequestHandler):
     # 기본 접근로그는 요청라인을 그대로 찍는다 — CPaaS 웹훅은 인증을
     # `?t=<CPAAS_WEBHOOK_TOKEN>` 으로 받으므로 그 토큰이 로그에 남는다.
@@ -388,20 +426,29 @@ class handler(BaseHTTPRequestHandler):
 
     def _send(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        rq = getattr(self, "_rq", None)
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        _log.attach(self, rq)
         self.send_header("Access-Control-Allow-Origin", _guard.allow_origin_header(self.headers))
+        # X-Request-Id 는 CORS 안전목록에 없다 — 노출하지 않으면 허용된 다른
+        # 오리진에서 사용자 신고와 로그를 맞출 수 없다(오류 응답과 같은 규약).
+        self.send_header("Access-Control-Expose-Headers", _errors.EXPOSE_HEADERS)
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
+        _close(rq, code)
 
     def _send_xml(self, xml, code=200):
         b = xml.encode("utf-8")
+        rq = getattr(self, "_rq", None)
         self.send_response(code)
         self.send_header("Content-Type", "application/xml; charset=utf-8")
+        _log.attach(self, rq)
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
+        _close(rq, code, kind="voiceml")
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -410,12 +457,14 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        rq = _begin(self, "GET")
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=True)
         if not _ok:
             _audit_ev(self.headers, self.path, "GET", "deny", _c)
-            return _guard.deny(self, _c, _m)
+            return _guard.deny(self, _c, _m, rq)
         _audit_ev(self.headers, self.path, "GET", "allow", 200)
         q = parse_qs(urlparse(self.path).query)
+        rq.set(op=_label(q.get("op", [""])[0], _OPS))
         if q.get("op", [""])[0] == "log":
             self._send({"ok": True, "live": LIVE, "recent": RECENT, "webhook": "/api/voice", "provider": CPAAS})
             return
@@ -424,10 +473,11 @@ class handler(BaseHTTPRequestHandler):
                     "note": "CPaaS webhook adapter"})
 
     def do_POST(self):
+        rq = _begin(self, "POST")
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=True)
         if not _ok:
             _audit_ev(self.headers, self.path, "POST", "deny", _c)
-            return _guard.deny(self, _c, _m)
+            return _guard.deny(self, _c, _m, rq)
         _audit_ev(self.headers, self.path, "POST", "allow", 200, live=LIVE)
         try:
             # 입력검증: 본문 상한(256KiB). CPaaS 이벤트·폼은 작다 — 과대 본문은 413.
@@ -454,9 +504,12 @@ class handler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise _errors.ValidationError.field("body", "JSON 객체여야 합니다")
             if body.get("op") == "campaign":
+                rq.set(op="campaign")
                 self._send(trigger_campaign(body.get("numbers", []), body.get("scenario", "care"), body.get("meta")))
                 return
             ev = _parse_event(body)
+            # 이벤트 종류만 남긴다 — 발화 원문·번호는 담지 않는다(PII).
+            rq.set(ev=_label(ev.get("type"), _EVENTS))
             if ev.get("type") == "answered":
                 _log_call({"from": ev.get("from", ""), "ev": "통화연결", "text": ""})
             elif ev.get("type") == "speech" and ev.get("text"):
@@ -464,4 +517,4 @@ class handler(BaseHTTPRequestHandler):
             self._send(handle_event(ev))
         except Exception as e:
             # 표준 에러 봉투 — 웹훅 응답도 같은 규약을 따른다(내부 문구 미노출)
-            _errors.handle(self, e, route="/api/voice", method="POST")
+            _errors.handle(self, e, route="/api/voice", method="POST", rq=rq)

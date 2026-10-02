@@ -32,12 +32,20 @@ except Exception:   # pragma: no cover
     class _errors:  # type: ignore
         MESSAGE_BY_CODE = {"INTERNAL_ERROR": "일시적인 오류가 발생했습니다."}
 try:
-    import _log     # 기본 접근로그 침묵용 (부재해도 /health 는 동작해야 한다)
+    import _log     # 접근로그 침묵 + 구조화 로그 (부재해도 /health 는 동작해야 한다)
 except Exception:   # pragma: no cover
     class _log:     # type: ignore
         @staticmethod
         def suppress_access_log(self, fmt, *args):
             return
+
+        @staticmethod
+        def begin(*a, **kw):
+            return None
+
+        @staticmethod
+        def attach(*a, **kw):
+            return None
 
 BUILD = os.environ.get("CALLBOT_BUILD", "dev")
 

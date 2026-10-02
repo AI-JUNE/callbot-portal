@@ -109,6 +109,23 @@ def error_code(exc):
         return "ERROR"
 
 
+def level_for(status):
+    """상태코드 -> 로그 레벨. 2xx/3xx=info · 4xx=warn · 5xx=error.
+
+    4xx 는 '요청한 쪽의 잘못'이라 서비스 장애가 아니다. 알림 규칙이 level 로
+    걸리므로 이 구분이 흐려지면 노이즈에 묻혀 5xx 를 놓친다.
+    """
+    try:
+        s = int(status)
+    except Exception:
+        return "error"
+    if s >= 500:
+        return "error"
+    if s >= 400:
+        return "warn"
+    return "info"
+
+
 def emit(record):
     """JSON 1줄 출력. 실패해도 절대 예외를 던지지 않는다."""
     try:
@@ -171,17 +188,23 @@ class Request(object):
             return self
         self.done_flag = True
         self.set(**kv)
-        level = "warn" if 400 <= int(status) < 500 else ("error" if int(status) >= 500 else "info")
-        emit(self._record(level, int(status)))
+        emit(self._record(level_for(status), int(status)))
         return self
 
     def fail(self, exc, status=500, **kv):
-        """오류 종료 — 예외 '메시지'는 기록하지 않는다(PII 유입 차단). 코드만 남긴다."""
+        """오류 종료 — 예외 '메시지'는 기록하지 않는다(PII 유입 차단). 코드만 남긴다.
+
+        레벨은 finish() 와 같은 규칙으로 상태코드에서 뽑는다. 예전에는 무조건
+        `error` 였는데, `_errors.handle` 이 입력검증 실패(400·413)까지 이 경로로
+        보내기 때문에 **사용자 오타가 서비스 장애와 같은 레벨**로 쌓였다 —
+        level=error 로 거는 알림이 그만큼 울리면 진짜 5xx 가 묻힌다.
+        error_code 는 상태와 무관하게 남긴다(4xx 도 어느 검증에서 걸렸는지 집계).
+        """
         if self.done_flag:
             return self
         self.done_flag = True
         self.set(**kv)
-        emit(self._record("error", int(status), error_code(exc)))
+        emit(self._record(level_for(status), int(status), error_code(exc)))
         return self
 
     # with 블록 지원

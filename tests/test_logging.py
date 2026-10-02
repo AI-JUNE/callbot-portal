@@ -207,11 +207,12 @@ def _handler_files():
 # 구조화 로그(_log.begin)까지 배선된 핸들러. 아래 목록은 **줄어들 수 없다** —
 # 새 핸들러를 넣고 배선을 빠뜨리면 test_structured_logging_does_not_regress 가 잡는다.
 LOG_WIRED = ("assist.py", "caller_id.py", "chat.py", "disclosure.py", "ops_stats.py",
-             "partners.py", "settlement.py", "sim_call.py", "speech.py")
+             "partners.py", "settlement.py", "sim_call.py", "speech.py",
+             "voice.py", "wellbeing.py")
 
 # 아직 요청 1건=로그 1줄 배선이 없는 핸들러(접근로그 침묵만 된 상태).
 # 늘어나면 실패한다 — 이 칸이 커지는 것은 관측 가능성이 후퇴하는 것이다.
-LOG_PENDING = ("health.py", "voice.py", "wellbeing.py")
+LOG_PENDING = ("health.py",)
 
 
 class TestHandlersWired(unittest.TestCase):
