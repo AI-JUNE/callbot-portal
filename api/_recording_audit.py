@@ -250,7 +250,7 @@ class RecordingStore:
 STORE = RecordingStore()  # 모듈 전역(프로세스 단위 sim 저장소)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     import base64
     assert not recording_live(), "테스트는 RECORDING_LIVE off 전제"
     st = RecordingStore(retention_days=90)

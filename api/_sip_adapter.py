@@ -223,7 +223,7 @@ def get_adapter():
     return _ADAPTERS.get(want, SimSIPAdapter)()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     a = get_adapter()
     got = []
     a.on_event(got.append)

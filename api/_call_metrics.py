@@ -285,7 +285,7 @@ def reset():
     SINK.reset()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     import json as _json
 
     reset()

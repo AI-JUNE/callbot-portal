@@ -112,7 +112,7 @@ class EscalationQueue:
 QUEUE = EscalationQueue()  # 모듈 전역(프로세스 단위 sim 큐)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     pol = EscalationPolicy()
     assert pol.evaluate("상담사 바꿔 주세요")["reason"] == "request"
     assert pol.evaluate("그냥 사람이랑 얘기할게요")["reason"] == "request"

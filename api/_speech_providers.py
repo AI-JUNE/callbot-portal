@@ -214,7 +214,7 @@ def health_report(kind="all"):
     return rep
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     stt, tts = get_stt(), get_tts()
     print("STT:", stt.name, stt.transcribe("QUJD", "audio/webm"))
     audio, meta = tts.synthesize("테스트 안내 문구")

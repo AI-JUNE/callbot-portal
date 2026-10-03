@@ -576,7 +576,7 @@ class handler(BaseHTTPRequestHandler):
             _errors.handle(self, e, route="/api/caller_id", method="POST", rq=rq)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     _clear_for_tests()
     now = time.time()
     r = register("demo", "010-1234-5678", "대표 상담", actor="tester", now=now)

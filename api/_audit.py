@@ -318,7 +318,7 @@ def reset():
             _COUNT[k] = 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     class H(dict):
         def get(self, k, d=None):
             return dict.get(self, k, d)

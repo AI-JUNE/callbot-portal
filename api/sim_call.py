@@ -131,6 +131,6 @@ class handler(BaseHTTPRequestHandler):
             _errors.handle(self, e, route="/api/sim_call", method="GET", rq=rq)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     sc = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SCENARIO
     print(json.dumps(simulate(sc), ensure_ascii=False, indent=2))

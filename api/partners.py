@@ -871,7 +871,7 @@ def _field_for(op, msg):
     return "tenant_id"
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     _clear_for_tests()
     t0 = 1_700_000_000.0
     p = create_partner("ch-alpha", "테스트 파트너", owner="홍길동", now=t0)

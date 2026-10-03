@@ -1,21 +1,28 @@
 from __future__ import annotations
-import os, re, json, urllib.request
+import os, re, sys, json, urllib.request
 from datetime import datetime, timezone
+
+# 평면 import(Vercel 서버리스는 api/ 안에서 모듈을 찾는다)를 이 모듈이 **스스로**
+# 보장한다 — 저장소의 다른 모듈(voice.py 등)과 같은 방식.
+# 예전에는 importer 가 sys.path 를 미리 손봐 둔 것에 기대고 실패 시
+# `api.order_backend`·`api.escalation` 으로 폴백했는데, 그 이름들은 `_` 접두 모듈로
+# 바뀐 뒤로 존재하지 않아 폴백이 성립하지 않았다(ModuleNotFoundError). 더 나쁜 쪽은
+# 에스컬레이션이었다 — 2단 폴백이 깨진 이름을 거쳐 `_ESC_QUEUE=None` 으로 떨어지므로
+# 상담사 전환 티켓이 조용히 사라지는 경로였다.
+_d = os.path.dirname(os.path.abspath(__file__))
+if _d not in sys.path:
+    sys.path.insert(0, _d)
 
 # 주문/환불 연동은 order_backend 인터페이스로 위임한다(기본: DemoOrderBackend =
 # 기존 하드코딩 데이터와 동일 응답). 실제 고객사 연동은 ORDER_BACKEND 환경변수로 교체.
-try:
-    from _order_backend import get_backend, DEMO_ORDER  # Vercel 서버리스(api/ 평면 import)
-except ImportError:  # 로컬에서 패키지처럼 import 되는 경우
-    from api.order_backend import get_backend, DEMO_ORDER  # type: ignore
+# 이 import 는 감싸지 않는다 — 툴 실행부가 없으면 엔진은 할 일이 없고, 조용히
+# 반쪽으로 동작하는 것보다 import 시점에 드러나는 편이 낫다(호출부 voice.py 가 흡수).
+from _order_backend import get_backend, DEMO_ORDER
 
 try:  # 에스컬레이션 큐(P0-4) — 모듈 없으면 조용히 비활성(기본 동작 불변)
     from _escalation import QUEUE as _ESC_QUEUE
-except ImportError:
-    try:
-        from api.escalation import QUEUE as _ESC_QUEUE  # type: ignore
-    except ImportError:
-        _ESC_QUEUE = None
+except Exception:
+    _ESC_QUEUE = None
 
 _ORDER = DEMO_ORDER  # 하위 호환(외부에서 참조하던 이름 유지)
 
@@ -103,26 +110,60 @@ def _mem(messages):
             if n=="escalate_to_agent": m["transferred"]=True
     m["affirm"]=bool(_AFFIRM.search(lu)); return m
 
+_RX_AMOUNT=re.compile(r"^-?\d+(?:\.\d+)?$")
+
+def _amount(v):
+    """금액류 값 → 정수. 해석할 수 없으면 None(가드가 '확인 불가'로 다룬다).
+
+    확정 금액은 LLM 이, 견적·정책 한도는 주문 백엔드(ORDER_BACKEND=http 면 고객사
+    REST API 의 임의 JSON)가 준다 — 셋 다 우리가 타입을 보장할 수 없는 바깥 값이다.
+    예전에는 그대로 int()/비교에 넣었기 때문에 한도가 `"159000"`(문자열)로만 와도
+    `int > str` TypeError 로 가드 안에서 터졌다. 환불이 나가지는 않았지만 **판정도
+    감사기록도 남지 않고** 요청은 500 으로 끝났다 — 위험 툴 시도가 흔적 없이 사라지는
+    쪽이 더 나쁘다. 해석 불가는 예외가 아니라 '차단' 판정으로 돌려준다(fail-safe).
+    """
+    if isinstance(v,bool): return None          # True==1 로 새어 들어오는 것 차단
+    if isinstance(v,int): return v
+    if isinstance(v,float): return int(v)
+    if isinstance(v,str):
+        s=v.strip().replace(",","").replace(" ","")
+        if _RX_AMOUNT.match(s):
+            try: return int(float(s))
+            except Exception: return None
+    return None
+
 # 환불 실제 접수(confirm_refund) = 되돌리기 어려운 위험 동작.
 # 아래 가드는 fail-safe: 조건 미충족 시 접수를 막고(esc=True면 상담사 전환) 안전한 방향으로만 실패한다.
 # 실제 접수 자체는 order_backend 구현체가 담당하며(데모=가짜 응답, HTTP=ORDER_API_ALLOW_WRITE 필요),
 # 이 가드는 그 앞단에서 "2단계 확인·금액 재확인"을 강제하는 관문이다.
 def _guard(name,inp,m):
     if name=="confirm_refund":
-        a=int(inp.get("refund_amount",0) or 0)
+        a=_amount(inp.get("refund_amount"))
         # (1단계) LLM 이 넘긴 명시 확정 플래그
         if not inp.get("user_confirmed"): return False,"사용자 확정 없이 환불 불가",False
         # (2단계) 고객 발화상의 명시 동의(네/동의 등)
         if not m["affirm"]: return False,"명시 동의 미확인",False
-        # 금액 유효성
+        # 금액 유효성 — 숫자로 읽히지 않으면 금액을 '모르는' 상태이므로 확정하지 않는다
+        if a is None: return False,"환불 금액 형식 오류",False
         if a<=0: return False,"금액 0 이하",False
         # 2단계 확인: 사전 견적(quote_refund) 없이는 확정 불가 → 상담사 전환
         if not m.get("awaiting"): return False,"사전 견적(quote_refund) 없이 환불 확정 불가",True
         # 금액 재확인: 고객에게 안내한 견적 금액과 확정 금액이 일치해야 함 → 불일치 시 상담사 전환
+        # 견적 금액을 '모르는' 상태는 일치로 넘기지 않는다. 예전에는 quoted_amount 가
+        # None 이면 이 검사를 건너뛰었는데, quote_refund 가 금액 없는 응답을 주는 경우
+        # (HttpOrderBackend 의 `{"error":"backend_unavailable"}`·비JSON 본문 등)
+        # awaiting 만 True 가 되어 **백엔드 장애가 금액 재확인을 꺼 버렸다** —
+        # 정책 한도까지 미조회 상태면 임의 금액이 그대로 승인되는 fail-open 경로였다.
         q=m.get("quoted_amount")
-        if q is not None and a!=int(q): return False,f"견적 금액과 불일치(확정 {a} ≠ 견적 {q})",True
+        qa=_amount(q)
+        if qa is None: return False,"견적 금액 확인 불가(견적 결과에 금액 없음)",True
+        if a!=qa: return False,f"견적 금액과 불일치(확정 {a} ≠ 견적 {qa})",True
         # 정책 한도 초과 → 상담사 전환
-        if m["max_refund"] is not None and a>m["max_refund"]: return False,f"한도 초과({a}>{m['max_refund']})",True
+        mx=m["max_refund"]
+        if mx is not None:
+            mxa=_amount(mx)
+            if mxa is None: return False,"정책 한도 확인 불가(형식 오류)",True
+            if a>mxa: return False,f"한도 초과({a}>{mxa})",True
         return True,"",False
     if name=="request_redelivery" and not m["affirm"]: return False,"재배달도 동의 후",False
     return True,"",False

@@ -774,7 +774,7 @@ class handler(BaseHTTPRequestHandler):
 # --------------------------------------------------------------------------
 # 셀프테스트 (네트워크 미사용)
 # --------------------------------------------------------------------------
-if __name__ == "__main__":
+if __name__ == "__main__":     # pragma: no cover
     a = score_answers(PROFILES["ok"])
     assert a["risk_level"] == RISK_LOW, a
     assert a["mood_score"] >= 4, a
