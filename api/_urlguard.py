@@ -73,15 +73,13 @@ def _numeric_host(host):
                 nums.append(int(part, 10))
         except ValueError:
             return None
-    try:
-        if len(nums) == 1 and 0 <= nums[0] <= 0xFFFFFFFF:
-            return ipaddress.IPv4Address(nums[0])
-        if len(nums) == 4 and all(0 <= n <= 255 for n in nums):
-            return ipaddress.IPv4Address(
-                (nums[0] << 24) | (nums[1] << 16) | (nums[2] << 8) | nums[3])
-    except (ipaddress.AddressValueError, ValueError):
-        return None
-    return None
+    # 범위를 먼저 확인하므로 IPv4Address 는 여기서 예외를 내지 않는다.
+    if len(nums) == 1 and 0 <= nums[0] <= 0xFFFFFFFF:
+        return ipaddress.IPv4Address(nums[0])
+    if len(nums) == 4 and all(0 <= n <= 255 for n in nums):
+        return ipaddress.IPv4Address(
+            (nums[0] << 24) | (nums[1] << 16) | (nums[2] << 8) | nums[3])
+    return None            # 라벨 2~3개·범위 초과 = IP 표기가 아니다(도메인으로 본다)
 
 
 def as_ip(host):
@@ -112,17 +110,15 @@ def check(url, label="url", allow_insecure=False, allowlist=(), max_len=MAX_URL)
         return False, "%s 이 너무 깁니다" % label
     try:
         p = urlparse(u)
+        host = (p.hostname or "").lower()
     except Exception:
+        # 대괄호가 깨진 IPv6 표기(`https://[::1`) 등 — urlsplit 이 ValueError 를
+        # 낸다. 형식 오류로 돌린다(해석 실패를 통과로 바꾸지 않는다).
         return False, "%s 형식이 올바르지 않습니다" % label
     if p.scheme not in ("http", "https"):
         return False, "http(s) 주소만 허용합니다"
     if p.scheme == "http" and not allow_insecure:
         return False, "https 주소만 허용합니다"
-    try:
-        host = (p.hostname or "").lower()
-    except Exception:
-        # 대괄호가 깨진 IPv6 표기 등 — 형식 오류로 돌린다(통과시키지 않는다)
-        return False, "%s 형식이 올바르지 않습니다" % label
     if not host:
         return False, "호스트가 없습니다"
     if allowlist:

@@ -172,6 +172,24 @@ class TestRecordingUrlRules(GuardBase):
         self.assertNotIn("SECRET-TOKEN", reason)
         self.assertNotIn("169.254", reason)
 
+    def test_깨진_IPv6_표기는_형식오류로_닫는다(self):
+        """해석 실패를 '통과'로 바꾸지 않는다(파싱 예외 = 거부)."""
+        for u in ("https://[::1", "https://[v6", "http://[:::"):
+            ok, reason = _urlguard.check(u, label="recording_url")
+            self.assertFalse(ok, u)
+            self.assertIn("형식", reason)
+
+    def test_숫자표기_해석_경계(self):
+        """IP 표기가 아닌 것을 IP 로 단정하지 않는다(과차단 방지)."""
+        self.assertIsNone(_urlguard.as_ip("1..2"))          # 빈 라벨
+        self.assertIsNone(_urlguard.as_ip("1.2.3"))         # 라벨 3개
+        self.assertIsNone(_urlguard.as_ip("1.2"))           # 라벨 2개
+        self.assertIsNone(_urlguard.as_ip("99999999999"))   # 32비트 초과
+        self.assertIsNone(_urlguard.as_ip("08.0.0.1"))      # 8진 리터럴이 아님
+        self.assertIsNone(_urlguard.as_ip("cdn.clawops.io"))
+        self.assertEqual(str(_urlguard.as_ip("2130706433")), "127.0.0.1")
+        self.assertEqual(str(_urlguard.as_ip("0177.0.0.1")), "127.0.0.1")
+
     def test_안부_콜백과_같은_규칙을_쓴다(self):
         """규칙이 두 군데 적혀 있으면 한쪽만 고쳐진다 — 같은 모듈을 쓰는지 고정."""
         import wellbeing

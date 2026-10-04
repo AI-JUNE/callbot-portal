@@ -18,7 +18,9 @@
  - **오류를 삼키지 않는다**: 웹훅 전송 실패는 응답 `delivery.delivered=false` 와
    사유로 그대로 드러낸다(200 으로 위장하지 않는다).
  - **SSRF 방어**: `callback_url` 은 https(개발 시 http 허용) + 사설/루프백/메타데이터
-   주소 차단. `WELLBEING_CALLBACK_HOSTS` 로 화이트리스트를 걸 수 있다.
+   주소 차단(규칙은 `api/_urlguard.py` — 녹음 다운로드와 공용).
+   `WELLBEING_CALLBACK_HOSTS` 로 화이트리스트를 걸 수 있고, 리다이렉트로 검증
+   범위를 벗어나면 전송 성공으로 보고하지 않는다(`delivered=false` + 사유).
 
 환경변수
   CALLBACK_SECRET            웹훅 HMAC 서명 키. 미설정 시 서명 생략(로컬)
@@ -300,6 +302,23 @@ def check_callback_url(url):
 # --------------------------------------------------------------------------
 # 4) 웹훅 발송
 # --------------------------------------------------------------------------
+def _redirect_escape(resp, url):
+    """리다이렉트로 검증 범위를 벗어났으면 사유 문구, 아니면 "".
+
+    `urlopen` 은 리다이렉트를 따라가므로 최종 주소를 다시 검증해야 가드가
+    무력화되지 않는다(`voice._fetch_recording` 과 같은 규약). 사유에는 호스트
+    판정 결과만 담고 URL 은 담지 않는다.
+    """
+    try:
+        final = resp.geturl() or ""
+    except Exception:
+        return ""                      # 최종 주소를 못 읽으면 판단 재료가 없다
+    if not final or final == url:
+        return ""
+    ok, reason = check_callback_url(final)
+    return "" if ok else "리다이렉트 이탈: " + reason
+
+
 def deliver(url, payload, timeout=WEBHOOK_TIMEOUT, secret=None):
     """결과 웹훅 POST. 실패를 삼키지 않고 사유를 그대로 반환한다."""
     secret = _secret() if secret is None else secret
@@ -320,9 +339,17 @@ def deliver(url, payload, timeout=WEBHOOK_TIMEOUT, secret=None):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             out["status"] = int(getattr(resp, "status", 0) or resp.getcode() or 0)
-            out["delivered"] = 200 <= out["status"] < 300
-            if not out["delivered"]:
-                out["error"] = "콜백이 %d 로 응답했습니다" % out["status"]
+            escaped = _redirect_escape(resp, url)
+            if escaped:
+                # 검증을 통과한 콜백이 302 로 내부·타 호스트를 가리키면 urllib 이
+                # 따라가 버린다(POST 는 GET 으로 바뀌어 본문은 안 가지만, 내부
+                # 주소로의 요청은 실제로 나간다). 그 응답을 '보냈다'고 보고하면
+                # 거짓이므로 전송 실패로 돌린다 — 다시 보내도 같은 곳으로 간다.
+                out["error"] = escaped
+            else:
+                out["delivered"] = 200 <= out["status"] < 300
+                if not out["delivered"]:
+                    out["error"] = "콜백이 %d 로 응답했습니다" % out["status"]
     except urllib.error.HTTPError as e:
         out["status"] = int(getattr(e, "code", 0) or 0)
         out["error"] = "콜백이 %s 로 응답했습니다" % (out["status"] or "오류")
