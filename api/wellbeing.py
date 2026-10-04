@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import ipaddress
 import json
 import os
 import sys
@@ -54,6 +53,10 @@ try:
 except Exception:  # 모니터링 모듈이 없어도 동작해야 한다
     def _scrub(v):
         return v if isinstance(v, str) else str(v)
+
+# SSRF 가드는 보안 통제라 폴백을 두지 않는다 — 모듈을 못 불러오면 검증 없이
+# 나가는 것보다 import 시점에 드러나는 편이 안전하다(fail-closed).
+import _urlguard  # noqa: E402
 
 SCHEMA = "wellbeing.result.v1"
 EVENT = "wellbeing.result"
@@ -270,61 +273,28 @@ def verify_signature(body, secret, ts, signature, tolerance=SIGNATURE_TOLERANCE,
 # --------------------------------------------------------------------------
 # 3) 콜백 URL 검증 (SSRF 방어)
 # --------------------------------------------------------------------------
-_BLOCKED_HOSTS = {
-    "localhost", "localhost.localdomain", "ip6-localhost",
-    "metadata.google.internal", "metadata", "instance-data",
-}
+_BLOCKED_HOSTS = _urlguard.BLOCKED_HOSTS     # 하위호환 별칭(구현은 _urlguard 하나)
 
 
 def _allow_insecure():
-    return (os.environ.get("WELLBEING_ALLOW_INSECURE") or "").strip() == "1"
+    return _urlguard.env_flag("WELLBEING_ALLOW_INSECURE")
 
 
 def _host_allowlist():
-    v = (os.environ.get("WELLBEING_CALLBACK_HOSTS") or "").strip()
-    return [x.strip().lower() for x in v.split(",") if x.strip()] if v else []
+    return _urlguard.env_hosts("WELLBEING_CALLBACK_HOSTS")
 
 
 def check_callback_url(url):
     """(ok, reason). 사설망·루프백·메타데이터 주소로의 웹훅을 막는다.
 
-    한계: DNS 를 조회하지 않으므로 공개 도메인이 사설 IP 로 해석되는
-    rebinding 은 막지 못한다. 그 방어는 아웃바운드 프록시 몫이며,
+    판정 규칙은 `api/_urlguard.py` 한 곳에만 있다 — 녹음 다운로드(`voice`)도
+    같은 함수를 쓰므로 한쪽만 고쳐지는 일이 생기지 않는다.
+    한계(DNS rebinding)와 우회 표기 처리는 그 모듈 주석에 적어 두었고,
     엄격히 잠그려면 `WELLBEING_CALLBACK_HOSTS` 화이트리스트를 쓴다.
     """
-    u = (url or "").strip()
-    if not u:
-        return False, "callback_url 이 비어 있습니다"
-    if len(u) > 2048:
-        return False, "callback_url 이 너무 깁니다"
-    try:
-        p = urlparse(u)
-    except Exception:
-        return False, "callback_url 형식이 올바르지 않습니다"
-    if p.scheme not in ("http", "https"):
-        return False, "http(s) 주소만 허용합니다"
-    if p.scheme == "http" and not _allow_insecure():
-        return False, "https 주소만 허용합니다"
-    host = (p.hostname or "").lower()
-    if not host:
-        return False, "호스트가 없습니다"
-    allow = _host_allowlist()
-    if allow:
-        if host not in allow:
-            return False, "허용되지 않은 콜백 호스트입니다"
-        return True, ""
-    if host in _BLOCKED_HOSTS or host.endswith(".internal") or host.endswith(".local"):
-        if not _allow_insecure():
-            return False, "내부 주소로는 보낼 수 없습니다"
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        ip = None
-    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local
-                           or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-        if not _allow_insecure():
-            return False, "사설·루프백 주소로는 보낼 수 없습니다"
-    return True, ""
+    return _urlguard.check(url, label="callback_url",
+                           allow_insecure=_allow_insecure(),
+                           allowlist=_host_allowlist())
 
 
 # --------------------------------------------------------------------------

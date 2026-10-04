@@ -6,11 +6,16 @@
 - 과금은 CPAAS_LIVE=1 + 실제 통화 발생 시에만.
 """
 from __future__ import annotations
-import os, sys, json, time
+import os, sys, json, time, base64
+import urllib.request
 from urllib.parse import parse_qs, urlparse, quote
 from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(__file__))
+
+# SSRF 가드는 보안 통제라 폴백을 두지 않는다 — 모듈을 못 불러오면 검증 없이
+# 외부 URL 로 나가는 것보다 import 시점에 드러나는 편이 안전하다(fail-closed).
+import _urlguard
 
 try:
     from _engine import run_turn
@@ -329,16 +334,104 @@ def handle_event(ev):
     return {"ok": True, "ignored": ev["type"]}
 
 
-def _transcribe_url(url):
+# --------------------------------------------------------------------------
+# 녹음 다운로드 — 외부가 준 URL 로 서버가 직접 나가는 경로(SSRF 표면)
+# --------------------------------------------------------------------------
+RECORDING_TIMEOUT = 15.0                 # 초 — 서버리스 30초 예산 안에 STT 까지 끝내야 한다
+RECORDING_MAX_BYTES = 6 * 1024 * 1024    # 원문 6MiB -> base64 8MiB(_errors.MAX_BODY_AUDIO)
+# 다운로드 결과 집계 — 실패를 조용히 삼키지 않기 위한 최소 사실만 담는다(URL 없음).
+RECORDING_STATS = {"fetched": 0, "rejected": 0, "failed": 0, "last_reason": None}
+
+
+def _recording_note(kind, reason):
+    """녹음 다운로드 거부·실패를 드러낸다.
+
+    `_transcribe_url` 은 요청 객체를 들고 있지 않아 요청 로그에 얹을 수 없다 —
+    대신 구조화 로그 1줄과 카운터(`GET /api/voice`)로 남긴다. URL 은 기록하지
+    않는다(서명 쿼리·식별자가 실린다). 사유는 우리가 만든 고정 문구이거나
+    예외 '타입명' 뿐이다(예외 문구에는 URL 이 섞인다).
+    """
     try:
-        import urllib.request, base64
-        with urllib.request.urlopen(url, timeout=20) as resp:
-            audio = resp.read()
-        if transcribe:
-            return transcribe(base64.b64encode(audio).decode(), "audio/wav")
-    except Exception:
+        RECORDING_STATS[kind] = int(RECORDING_STATS.get(kind) or 0) + 1
+        RECORDING_STATS["last_reason"] = reason
+        _log.emit({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                   "level": "warn", "service": _log.SERVICE, "route": "/api/voice",
+                   "event": "recording_fetch", "result": kind, "reason": reason})
+    except Exception:                    # pragma: no cover - 집계 실패가 통화를 끊지 않는다
         pass
-    return ""
+
+
+def _recording_hosts():
+    return _urlguard.env_hosts("CPAAS_RECORDING_HOSTS")
+
+
+def check_recording_url(url):
+    """(ok, reason). 녹음 URL 로 나가도 되는지 판정한다.
+
+    녹음 URL 은 웹훅 **본문**(`RecordingUrl`·`recordingUrl`)으로 들어오는 외부
+    값이다. 검증 없이 내려받으면 서버가 대신 `file:///etc/passwd`·사설망·클라우드
+    메타데이터(169.254.169.254)를 읽어 STT(LLM)로 흘려보낸다. 웹훅 앞단 가드는
+    Origin 헤더만으로도 통과하므로(`_guard._origin_ok`) 인증으로 치지 않는다.
+    규칙은 안부 콜백과 같은 모듈(`_urlguard`)을 쓴다.
+    """
+    return _urlguard.check(url, label="recording_url",
+                           allow_insecure=_urlguard.env_flag("CPAAS_ALLOW_INSECURE_RECORDING"),
+                           allowlist=_recording_hosts())
+
+
+def _fetch_recording(url, timeout=None, max_bytes=None):
+    """녹음 파일 바이트. 상한 초과·리다이렉트 이탈은 예외로 거부한다.
+
+    `urlopen` 은 리다이렉트를 따라가므로 검증을 통과한 주소가 302 로 사설망을
+    가리키면 가드가 무력화된다 — 최종 URL(`geturl()`)을 **다시** 검증해 본문을
+    버린다. 중간 요청 자체를 막는 것은 아웃바운드 프록시·호스트 화이트리스트
+    (`CPAAS_RECORDING_HOSTS`) 몫이다.
+
+    상한·타임아웃은 기본값으로 굳히지 않고 호출 시점에 읽는다(운영 중 조정 반영).
+    """
+    timeout = RECORDING_TIMEOUT if timeout is None else timeout
+    max_bytes = RECORDING_MAX_BYTES if max_bytes is None else max_bytes
+    req = urllib.request.Request(url, method="GET",
+                                 headers={"User-Agent": "callbot-voice/1"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        try:
+            final = resp.geturl() or ""
+        except Exception:                # geturl 을 못 읽어도 다운로드는 계속한다
+            final = ""
+        if final and final != url:
+            ok, reason = check_recording_url(final)
+            if not ok:
+                raise PermissionError("리다이렉트 이탈: " + reason)
+        data = resp.read(int(max_bytes) + 1)
+    if len(data) > max_bytes:
+        raise ValueError("녹음이 상한(%d바이트)을 넘습니다" % max_bytes)
+    return data
+
+
+def _transcribe_url(url):
+    """녹음 URL -> 전사 텍스트. 실패하면 "" (호출부는 재청취를 안내한다)."""
+    ok, reason = check_recording_url(url)
+    if not ok:
+        _recording_note("rejected", reason)
+        return ""
+    if not transcribe:
+        _recording_note("failed", "STT 모듈 미적재")
+        return ""
+    try:
+        audio = _fetch_recording(url)
+    except Exception as e:
+        _recording_note("failed", type(e).__name__)
+        return ""
+    if not audio:
+        _recording_note("failed", "빈 녹음")
+        return ""
+    try:
+        text = transcribe(base64.b64encode(audio).decode(), "audio/wav")
+    except Exception as e:
+        _recording_note("failed", type(e).__name__)
+        return ""
+    RECORDING_STATS["fetched"] = int(RECORDING_STATS.get("fetched") or 0) + 1
+    return text or ""
 
 
 def _persist_call_result(cid, sess, result):
@@ -470,6 +563,9 @@ class handler(BaseHTTPRequestHandler):
             return
         self._send({"ok": True, "endpoint": "voice-webhook", "provider": CPAAS,
                     "live": LIVE, "engine": bool(run_turn), "stt": bool(transcribe),
+                    # 실측 집계(만든 수치가 아니라 이 인스턴스가 실제로 처리한 건수).
+                    # 거부·실패가 0 이 아니면 녹음 주소가 가드에 걸리고 있다는 뜻이다.
+                    "recording": dict(RECORDING_STATS),
                     "note": "CPaaS webhook adapter"})
 
     def do_POST(self):
