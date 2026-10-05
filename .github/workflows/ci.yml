@@ -40,6 +40,7 @@ jobs:
         run: python -m coverage report --sort=cover --fail-under=97
 
       # 문법·HTML·중복 id·금지어(§13-1)·복지 잔재(§13-5)
+      # + 아웃바운드 호출 등록부(요청 유래 URL 은 _urlguard 경유)·라우트 요청로그 배선
       - name: 릴리스 게이트
         run: python scripts/verify.py
 

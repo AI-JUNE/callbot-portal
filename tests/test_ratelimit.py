@@ -4,8 +4,9 @@
 검증 대상 (COMMERCIAL_READINESS 'rate limit 공개 API 적용')
   1) 등급 분류 — 과금 경로(llm·speech)와 웹훅·조회를 구분한다
   2) IP 한도 — 초과시 거부, 윈도가 지나면 회복
-  3) 전역 한도 — IP 를 바꿔도 총량은 막힌다(과금 상한). 전역 초과시 IP 카운터를
-     추가로 소모하지 않는다(정상 사용자 이중 벌점 방지)
+  3) 전역 한도 — IP 를 바꿔도 총량은 막힌다(과금 상한). **거부된 요청은 어느
+     버킷도 소모하지 않는다** — 전역 초과가 IP 카운터를 깎지 않고(이중 벌점 방지),
+     IP 초과가 전역 예산을 깎지 않는다(한 명의 폭주로 전체가 막히지 않는다)
   4) 응답 규약 — 429 봉투 + Retry-After·X-RateLimit-* 헤더
   5) 메모리 — 키 사전이 무한히 자라지 않는다
   6) 가용성 — 제한 로직 장애는 요청을 막지 않는다(허용 쪽으로 기운다)
@@ -167,6 +168,35 @@ class TestGlobalCap(Base):
         for _ in range(10):
             _ratelimit.check(hdr("1.1.1.1"), "/api/chat")  # 전부 전역에서 차단
         self.assertEqual(len(_ratelimit._HITS.get("llm:1.1.1.1", [])), 0)
+
+    def test_ip_block_does_not_burn_global_budget(self):
+        """한 명의 폭주가 전역 과금 상한을 통째로 먹어선 안 된다 (21차 회귀).
+
+        고친 것: 전역 카운터를 먼저 **소비**하고 나서 IP 한도를 보던 순서 때문에,
+        IP 한도에서 429 로 돌려보낸 요청들이 전역 예산을 그대로 깎았다. 분당 20회를
+        넘긴 클라이언트 하나가 240회 전역 상한을 혼자 소진하면, 그 1분 동안
+        **다른 모든 사용자가** `429 (global)` 을 받는다. 막는 장치가 피해를 퍼뜨린다.
+        """
+        os.environ["CALLBOT_RATE_LIMIT_LLM"] = "1"
+        os.environ["CALLBOT_RATE_LIMIT_GLOBAL_LLM"] = "5"
+        allowed = [_ratelimit.check(hdr("1.1.1.1"), "/api/chat").allowed
+                   for _ in range(30)]
+        self.assertEqual(allowed.count(True), 1)
+        # 거부된 29건은 어느 버킷도 소모하지 않았다
+        self.assertEqual(len(_ratelimit._HITS.get("@global:llm", [])), 1)
+        # 그래서 다른 사용자는 남은 전역 예산을 그대로 쓴다
+        others = [_ratelimit.check(hdr("2.2.2.%d" % i), "/api/chat").allowed
+                  for i in range(4)]
+        self.assertEqual(others, [True, True, True, True])
+
+    def test_rejected_request_consumes_nothing(self):
+        os.environ["CALLBOT_RATE_LIMIT_LLM"] = "2"
+        os.environ["CALLBOT_RATE_LIMIT_GLOBAL_LLM"] = "9"
+        for _ in range(2):
+            self.assertTrue(_ratelimit.check(hdr("4.4.4.4"), "/api/chat").allowed)
+        before = {k: list(v) for k, v in _ratelimit._HITS.items()}
+        self.assertFalse(_ratelimit.check(hdr("4.4.4.4"), "/api/chat").allowed)
+        self.assertEqual({k: list(v) for k, v in _ratelimit._HITS.items()}, before)
 
     def test_global_budget_per_class(self):
         os.environ["CALLBOT_RATE_LIMIT_GLOBAL_LLM"] = "1"

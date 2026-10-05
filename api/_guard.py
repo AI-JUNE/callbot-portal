@@ -90,11 +90,48 @@ def rate_headers():
         return []
 
 
+def _host_of(value):
+    """URL 또는 Host 헤더에서 호스트(필요시 포트 포함)만. 비교용 소문자."""
+    s = (value or "").strip().rstrip("/")
+    if not s:
+        return ""
+    if "://" in s:
+        try:
+            s = urlparse(s).netloc
+        except Exception:
+            return ""
+    return s.lower()
+
+
+def _same_origin_contradicted(headers):
+    """`Sec-Fetch-Site: same-origin` 을 다른 헤더가 부정하는가.
+
+    브라우저는 이 조합을 만들지 않는다 — 진짜 동일출처 요청이면 Origin·Referer 의
+    호스트가 요청 Host 와 같다. 그런데 이 헤더는 브라우저 밖에서 아무나 적을 수
+    있어서, 예전에는 `Sec-Fetch-Site: same-origin` 한 줄이면 **허용 오리진 목록을
+    통째로 건너뛰고** 통과했다(`Origin: https://evil.example` 를 같이 보내도 통과).
+    서로 어긋나는 신호는 믿지 않는다.
+
+    Host 를 모르면(테스트 대역·HTTP/1.0) 판단을 보류한다 — 확실하지 않은 근거로
+    정상 요청을 끊지 않는다. 미리보기 배포처럼 허용목록에 없는 호스트라도 Origin 과
+    Host 가 같으면 동일출처이므로 그대로 통과한다.
+    """
+    host = _host_of(headers.get("host"))
+    if not host:
+        return False
+    for name in ("origin", "referer"):
+        v = _host_of(headers.get(name))
+        if v and v != host:
+            return True
+    return False
+
+
 def _origin_ok(headers):
-    # 브라우저 동일출처 신호(위조 난이도는 Origin과 동급, 동일출처 GET에서 Origin 부재 보완)
+    # 브라우저 동일출처 신호(동일출처 GET에서 Origin 부재 보완). 위조 가능하므로
+    # 함께 온 Origin·Referer 와 모순되지 않을 때만 인정한다.
     sfs = (headers.get("sec-fetch-site") or "").strip().lower()
     if sfs == "same-origin":
-        return True
+        return True  # MUTANT: 구동작(무조건 신뢰)
     o = (headers.get("origin") or "").strip().rstrip("/")
     if o:
         return o in ALLOWED

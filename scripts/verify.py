@@ -11,6 +11,8 @@
   3. dup_id       — 같은 문서 안 중복 id (getElementById 가 조용히 틀린 요소를 잡는다)
   4. banned_words — 허위 도입사례·타사명 잔재 (§13-1)
   5. welfare_terms— 복지 사업 잔재 표기 (§13-5, B2B 브랜드와 충돌)
+  6. outbound     — 외부로 나가는 호출이 등록부에 있는가 + 요청 유래 URL 은 가드 경유
+  7. request_log  — 모든 라우트가 요청 1건당 구조화 로그 1줄을 남기는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -36,6 +38,30 @@ BANNED = ["농협", "라피치", "IBK", "날리지큐브", "보이스봇", "신�
 WELFARE = ["이음", "광산구", "3세대", "상생"]
 # 문안상 정당한 사용까지 잡지 않도록, 검사 대상은 라이브 페이지로 한정한다.
 HTML_DIR = os.path.join(REPO, "public")
+API_DIR = os.path.join(REPO, "api")
+
+# --------------------------------------------------------------------------
+# 아웃바운드 호출 등록부 — "이 서버가 어디로 나가는가"를 목록으로 관리한다.
+#
+# 20차에서 통화 웹훅이 넘겨준 녹음 URL 을 검증 없이 그대로 열고 있었다(사설망·
+# 클라우드 메타데이터 열람 가능). 그런 코드는 리뷰에서 눈에 띄지 않는다 —
+# 한 줄 추가로 끝나기 때문이다. 그래서 게이트가 센다: api 의 어떤 파일이든
+# 새로 외부 호출을 추가하면, 사유를 여기에 적기 전에는 통과하지 못한다.
+# 값은 "어디로·URL 이 어디서 오는가"를 한 줄로 적는다.
+# --------------------------------------------------------------------------
+OUTBOUND = {
+    "_engine.py":        "Gemini 생성 API — URL 고정 상수(모델명만 환경변수)",
+    "_stt.py":           "Gemini 전사 API — URL 고정 상수",
+    "_vstudio.py":       "보이스 스튜디오 엔진 — VOICE_ENGINE_URL(환경변수)",
+    "_monitoring.py":    "Sentry envelope — SENTRY_DSN(환경변수)",
+    "_order_backend.py": "주문 백엔드 — ORDER_BACKEND(환경변수)",
+    "health.py":         "deep 점검 TCP 도달성 — HEALTH_DEEP=1 일 때만",
+    "voice.py":          "녹음 다운로드 — 요청 본문의 URL(_urlguard 필수)",
+    "wellbeing.py":      "안부 결과 웹훅 — 요청 본문의 URL(_urlguard 필수)",
+}
+# 요청에서 받은 URL 로 나가는 파일. 공용 가드(api/_urlguard.py)를 반드시 거친다.
+URLGUARD_REQUIRED = {"voice.py", "wellbeing.py"}
+OUTBOUND_CALLS = ("urlopen(", "socket.create_connection(")
 
 
 class _Ids(HTMLParser):
@@ -122,6 +148,75 @@ def _scan(words, label, targets):
                       else " / ".join(hits))
 
 
+def api_sources():
+    """{파일명: 소스} — api/*.py 만. 읽기 실패는 조용히 넘기지 않고 비운다."""
+    out = {}
+    if not os.path.isdir(API_DIR):
+        return out
+    for f in sorted(os.listdir(API_DIR)):
+        if not f.endswith(".py"):
+            continue
+        try:
+            out[f] = io.open(os.path.join(API_DIR, f), encoding="utf-8").read()
+        except Exception as e:                     # noqa: BLE001
+            out[f] = "# UNREADABLE %s" % type(e).__name__
+    return out
+
+
+def _calls_out(text):
+    """줄 주석을 뺀 코드에서 외부 호출이 보이는가."""
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("#"):
+            continue                               # 주석 속 언급은 호출이 아니다
+        if any(c in s for c in OUTBOUND_CALLS):
+            return True
+    return False
+
+
+def check_outbound(sources):
+    """등록부와 실제가 일치하는가 + 요청 유래 URL 은 가드를 거치는가."""
+    unregistered, no_guard, stale = [], [], []
+    for name, text in sorted(sources.items()):
+        out = _calls_out(text)
+        if out and name not in OUTBOUND:
+            unregistered.append(name)
+        elif (not out) and name in OUTBOUND:
+            stale.append(name)                     # 등록부가 현실과 다르면 등록부가 아니다
+        if out and name in URLGUARD_REQUIRED and "_urlguard" not in text:
+            no_guard.append(name)
+    msgs = []
+    if unregistered:
+        msgs.append("미등록 외부 호출: %s (scripts/verify.py OUTBOUND 에 사유를 적을 것)"
+                    % ", ".join(unregistered))
+    if no_guard:
+        msgs.append("가드 미경유: %s (_urlguard 로 검증할 것)" % ", ".join(no_guard))
+    if stale:
+        msgs.append("등록부 잔재(호출 없음): %s" % ", ".join(stale))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "등록 %d개 · 요청 유래 %d개 가드 경유"
+                             % (len(OUTBOUND), len(URLGUARD_REQUIRED)))
+
+
+def check_request_log(sources):
+    """라우트(`_` 없는 api/*.py)는 요청 1건당 구조화 로그 1줄을 남긴다.
+
+    로그가 없는 라우트는 장애가 나도 되짚을 기록이 없다 — 거부·오류가 흔적 없이
+    사라진다. `_` 로 시작하는 파일은 공용 모듈(함수로 배포되지 않는다)이라 제외.
+    """
+    bad, n = [], 0
+    for name, text in sorted(sources.items()):
+        if name.startswith("_") or "class handler" not in text:
+            continue
+        n += 1
+        if "_log.begin(" not in text:
+            bad.append(name)
+    if not n:
+        return False, "검사할 라우트 없음"
+    return (not bad), ("%d개 라우트 배선" % n if not bad
+                       else "로그 미배선: %s" % ", ".join(bad))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -134,6 +229,9 @@ def main():
     # 복지 표기는 '제품 화면의 브랜드 일관성' 문제다. 내부 운영 문서가 형제
     # 프로젝트(이음)를 이름으로 언급하는 것은 정상이므로 화면만 검사한다.
     w_ok, w_msg = _scan(WELFARE, "복지 잔재", _html_files())
+    srcs = api_sources()
+    o_ok, o_msg = check_outbound(srcs)
+    l_ok, l_msg = check_request_log(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -141,6 +239,8 @@ def main():
         {"step": "dup_id", "ok": d_ok, "detail": d_msg},
         {"step": "banned_words", "ok": b_ok, "detail": b_msg},
         {"step": "welfare_terms", "ok": w_ok, "detail": w_msg},
+        {"step": "outbound", "ok": o_ok, "detail": o_msg},
+        {"step": "request_log", "ok": l_ok, "detail": l_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

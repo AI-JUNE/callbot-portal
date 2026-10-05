@@ -152,6 +152,71 @@ class TestOrigin(Base):
     def test_malformed_referer_is_denied_not_crashed(self):
         self.assertFalse(_guard._origin_ok(FakeHeaders({"referer": "::::"})))
 
+    # ----------------------------------------------------------------------
+    # same-origin 신호 교차검증 (21차)
+    #   헤더는 브라우저 밖에서 누구나 적을 수 있다. 예전에는
+    #   `Sec-Fetch-Site: same-origin` 한 줄이면 허용 오리진 목록을 통째로
+    #   건너뛰고 과금 경로(LLM·STT)에 들어왔다 — Origin 이 남의 사이트여도.
+    # ----------------------------------------------------------------------
+    def test_forged_same_origin_with_foreign_origin_is_denied(self):
+        h = FakeHeaders({"sec-fetch-site": "same-origin",
+                         "origin": "https://evil.example",
+                         "host": "callbot-portal.vercel.app"})
+        self.assertFalse(_guard._origin_ok(h))
+
+    def test_forged_same_origin_with_foreign_referer_is_denied(self):
+        h = FakeHeaders({"sec-fetch-site": "same-origin",
+                         "referer": "https://evil.example/pay",
+                         "host": "callbot-portal.vercel.app"})
+        self.assertFalse(_guard._origin_ok(h))
+
+    def test_real_same_origin_request_still_passes(self):
+        """브라우저가 실제로 보내는 조합 — Origin 호스트 = Host."""
+        h = FakeHeaders({"sec-fetch-site": "same-origin",
+                         "origin": "https://callbot-portal.vercel.app",
+                         "host": "callbot-portal.vercel.app"})
+        self.assertTrue(_guard._origin_ok(h))
+
+    def test_preview_deployment_passes_without_allowlist_entry(self):
+        """미리보기 배포는 허용목록에 없다. 동일출처면 그대로 동작해야 한다."""
+        h = FakeHeaders({"sec-fetch-site": "same-origin",
+                         "origin": "https://callbot-portal-git-x.vercel.app",
+                         "host": "callbot-portal-git-x.vercel.app"})
+        self.assertTrue(_guard._origin_ok(h))
+
+    def test_same_origin_without_host_keeps_old_behaviour(self):
+        """Host 를 모르면 판단 보류 — 불확실한 근거로 정상 요청을 끊지 않는다."""
+        self.assertTrue(_guard._origin_ok(
+            FakeHeaders({"sec-fetch-site": "same-origin", "origin": "https://evil.example"})))
+
+    def test_port_and_case_differences_are_compared_correctly(self):
+        same = FakeHeaders({"sec-fetch-site": "same-origin",
+                            "origin": "HTTP://LocalHost:3000", "host": "localhost:3000"})
+        self.assertTrue(_guard._origin_ok(same))
+        other_port = FakeHeaders({"sec-fetch-site": "same-origin",
+                                  "origin": "http://localhost:9999", "host": "localhost:3000"})
+        self.assertFalse(_guard._origin_ok(other_port))
+
+    def test_unparseable_origin_does_not_crash_the_check(self):
+        """깨진 Origin 은 '호스트를 모름'으로 떨어뜨린다 — 500 으로 터지지 않는다."""
+        self.assertEqual(_guard._host_of("http://["), "")
+        h = FakeHeaders({"sec-fetch-site": "same-origin", "origin": "http://[",
+                         "host": "callbot-portal.vercel.app"})
+        self.assertTrue(_guard._origin_ok(h))
+
+    def test_null_origin_sandboxed_frame_is_denied(self):
+        h = FakeHeaders({"sec-fetch-site": "same-origin", "origin": "null",
+                         "host": "callbot-portal.vercel.app"})
+        self.assertFalse(_guard._origin_ok(h))
+
+    def test_forged_same_origin_is_rejected_end_to_end(self):
+        ok, code, _msg = _guard.check(
+            FakeHeaders({"sec-fetch-site": "same-origin", "origin": "https://evil.example",
+                         "host": "callbot-portal.vercel.app", "x-forwarded-for": "10.0.0.2"}),
+            "/api/stt")
+        self.assertFalse(ok)
+        self.assertEqual(code, 403)
+
     def test_no_browser_signal_is_denied(self):
         """오리진·리퍼러 없는 호출(curl)은 브라우저가 아니다 — 과금 경로 방어."""
         self.assertFalse(_guard._origin_ok(FakeHeaders({})))

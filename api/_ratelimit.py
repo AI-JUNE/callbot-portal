@@ -12,6 +12,11 @@
 #       2) 전역 한도      — IP 를 바꿔가며 오는 분산 호출의 **총량**을 막는다
 #                           (과금 상한선. 이 층이 없으면 1)은 우회된다)
 #
+#   **거부된 요청은 어느 버킷도 소모하지 않는다.** 두 층을 모두 통과한 요청만
+#   계상한다. 그러지 않으면 한 층에서 막힌 호출이 다른 층의 예산을 갉아먹어,
+#   한 명의 폭주가 전체 사용자를 막거나(전역 고갈) 정상 사용자가 이중 벌점을
+#   받는다. 어느 쪽이든 "막는 장치"가 피해를 퍼뜨리는 장치가 된다.
+#
 # 비용이 다른 경로에 같은 한도를 주지 않는다. 경로를 등급으로 나눠 각각 한도를 둔다.
 #
 #   등급        경로                       기본 IP/분   기본 전역/분   근거
@@ -155,18 +160,31 @@ def _prune(now):
             _HITS.pop(k, None)
 
 
-def _take(key, limit, now):
-    """(허용?, 남은 횟수, 재시도까지 초). limit<=0 이면 무제한."""
+def _peek(key, limit, now):
+    """(허용?, 허용시 남을 횟수, 재시도까지 초, 예약분). **소비하지 않는다.**
+
+    거부되는 요청은 어떤 버킷도 소모하지 않아야 한다. 소비는 두 층(전역·IP)이
+    모두 통과한 뒤 `_commit` 으로 한 번에 한다 — 한쪽에서 막힌 요청이 다른 쪽
+    예산을 갉아먹으면, 막는 것이 목적이던 층이 거꾸로 피해를 퍼뜨린다.
+    반환된 리스트(예약분)는 만료분을 걸러낸 뒤의 큐이며 `_HITS` 에 반영해 둔다.
+    limit<=0 이면 무제한(예약분 None).
+    """
     if limit <= 0:
-        return (True, -1, 0)
+        return (True, -1, 0, None)
     q = [t for t in _HITS.get(key, ()) if now - t < WINDOW]
-    if len(q) >= limit:
-        _HITS[key] = q
-        retry = max(1, int(WINDOW - (now - q[0])) + 1)
-        return (False, 0, retry)
-    q.append(now)
     _HITS[key] = q
-    return (True, max(0, limit - len(q)), 0)
+    if len(q) >= limit:
+        retry = max(1, int(WINDOW - (now - q[0])) + 1)
+        return (False, 0, retry, None)
+    return (True, max(0, limit - len(q) - 1), 0, q)
+
+
+def _commit(key, reserved, now):
+    """`_peek` 가 통과시킨 요청을 실제로 계상한다. _LOCK 보유 상태에서 호출."""
+    if reserved is None:
+        return
+    reserved.append(now)
+    _HITS[key] = reserved
 
 
 class Decision(object):
@@ -209,17 +227,23 @@ def check(headers, path="", key=None):
         return d
     ip_limit, gl_limit = limits(cls)
     k = key or client_ip(headers)
+    gkey, ikey = "@global:" + cls, cls + ":" + k
     now = time.monotonic()
     with _LOCK:
         _prune(now)
-        # 전역 먼저 본다: 전역이 막혔는데 IP 카운터를 올리면
-        # 정상 사용자가 이중으로 벌점을 받는다.
-        g_ok, _g_rem, g_retry = _take("@global:" + cls, gl_limit, now)
+        # 두 층을 **먼저 보고 나중에 소비**한다. 한쪽에서 거부되는 요청은
+        # 양쪽 어디에도 계상되지 않는다.
+        #  · 전역 초과인데 IP 를 올리면 → 정상 사용자가 이중 벌점을 받는다.
+        #  · IP 초과인데 전역을 올리면 → 한 명의 폭주가 전역 과금 상한을 통째로
+        #    먹어, 429 로 돌려보낸 그 요청들이 **다른 모든 사용자를 막는다.**
+        g_ok, _g_rem, g_retry, g_res = _peek(gkey, gl_limit, now)
         if not g_ok:
             return _remember(Decision(False, cls, gl_limit, 0, g_retry, "global"))
-        ok, rem, retry = _take(cls + ":" + k, ip_limit, now)
+        ok, rem, retry, i_res = _peek(ikey, ip_limit, now)
         if not ok:
             return _remember(Decision(False, cls, ip_limit, 0, retry, "ip"))
+        _commit(gkey, g_res, now)
+        _commit(ikey, i_res, now)
         return _remember(Decision(True, cls, ip_limit, rem, 0, ""))
 
 
