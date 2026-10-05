@@ -131,7 +131,7 @@ def _origin_ok(headers):
     # 함께 온 Origin·Referer 와 모순되지 않을 때만 인정한다.
     sfs = (headers.get("sec-fetch-site") or "").strip().lower()
     if sfs == "same-origin":
-        return True  # MUTANT: 구동작(무조건 신뢰)
+        return not _same_origin_contradicted(headers)
     o = (headers.get("origin") or "").strip().rstrip("/")
     if o:
         return o in ALLOWED
