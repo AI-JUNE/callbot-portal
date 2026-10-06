@@ -636,6 +636,23 @@ class TestKeyMaterial(Base):
         os.environ["PII_MASTER_KEY"] = STRONG
         self.assertFalse(pii_vault.status()["material"]["weak"])
 
+    def test_entropy_of_empty_material(self):
+        self.assertEqual(pii_vault._entropy_bits_upper(b""), 0)
+
+    def test_kid_cache_is_bounded(self):
+        """캐시가 무한히 자라지 않는다 — 회전 유예로도 32개를 넘지 않는다."""
+        pii_vault._KID_CACHE.clear()
+        for i in range(32):
+            pii_vault._KID_CACHE[b"stub-%02d" % i] = "deadbeef"
+        kid = pii_vault.key_id(b"Z" * 32)
+        self.assertEqual(len(pii_vault._KID_CACHE), 1)      # 비운 뒤 새로 담았다
+        self.assertEqual(pii_vault.key_id(b"Z" * 32), kid)  # 캐시 적중도 같은 값
+
+    def test_envelope_helpers_reject_non_envelopes(self):
+        self.assertFalse(pii_vault.is_shredded("010-1234-5678"))
+        with self.assertRaises(pii_vault.VaultError):
+            pii_vault.envelope_kid("010-1234-5678")
+
     def test_weak_key_is_reported_not_refused(self):
         """약한 키를 거부하면 '키 미설정'과 같아져 보관을 포기하게 된다 —
         그쪽이 더 나쁘다. 그래서 막지 않고 드러낸다."""
