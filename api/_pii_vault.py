@@ -17,6 +17,10 @@
      봉투를 복사해 넣어도 복호되지 않는다 — 봉투 교체 공격과 기록 뒤섞임을 함께 막는다.
   4. **키 회전.** `PII_MASTER_KEY` 가 현행 키, `PII_MASTER_KEY_OLD`(쉼표 구분)는 복호 전용.
      `rewrap()` 으로 현행 키로 다시 봉인한다. 봉투의 `kid` 는 키 지문 앞 8자리(원문 아님).
+     지문은 **느리게**(PBKDF2) 유도한다 — 밖으로 나가는 값이 키 후보 검증기가 되지
+     않도록. 구 지문(sha256 1회)으로 봉인된 봉투는 계속 복호된다(`legacy_key_id`).
+  6. **봉인할 수 없으면 지문만.** 평문을 들고 있을 이유가 "같은 값인지 비교"뿐이라면
+     `fingerprint()` 로 비가역 지문만 남긴다 — 평문은 어디에도 두지 않는다.
   5. **암호 파기(crypto-shredding).** 백업까지 지우는 것은 불가능에 가깝다. `shred()` 는
      봉투에서 복호에 필요한 조각(nonce)을 지운 묘비(tombstone)를 돌려준다. 백업에 남은
      사본이 있어도 되돌릴 수 없고, "파기했다"는 사실은 기록으로 남는다.
@@ -36,6 +40,7 @@ from __future__ import annotations
 
 import os
 import hmac
+import math
 import base64
 import hashlib
 import secrets
@@ -47,6 +52,8 @@ NONCE_LEN = 16
 TAG_LEN = 32
 MAX_PLAINTEXT = 8 * 1024        # 통화 참조·짧은 메모용. 오디오 원문을 넣는 자리가 아니다
 _SHRED_MARK = "-"
+KID_ITERS = 200_000             # 지문 유도 비용 — key_id() 주석 참조(약 50ms, 프로세스당 1회)
+MIN_ENTROPY_BITS = 128          # 재료 품질 경고선. 이 아래면 status() 가 weak 로 알린다
 
 
 class VaultError(Exception):
@@ -99,9 +106,34 @@ def _old_keys():
     return out
 
 
-def key_id(key: bytes) -> str:
-    """키 지문 앞 8자리. 키 원문이 복원되지 않는다(로그·봉투에 실어도 안전)."""
+_KID_CACHE: dict = {}
+
+
+def legacy_key_id(key: bytes) -> str:
+    """pv1 초기 지문(sha256 1회). **복호 호환**을 위해서만 남는다 — 새 봉투에 쓰지 않는다."""
     return hashlib.sha256(b"pii-vault/kid/v1" + key).hexdigest()[:8]
+
+
+def key_id(key: bytes) -> str:
+    """키 지문 앞 8자리. 키 원문이 복원되지 않는다(로그·봉투에 실어도 안전).
+
+    **느리게 유도한다.** 지문은 봉투·로그·미리보기(`safe_preview`)에 실려 모듈 밖으로
+    나간다. sha256 한 번으로 만들면 그 8자리가 "이 후보가 진짜 키인가"를 암호문 없이
+    확인해 주는 **공짜 검증기**가 된다 — 사전 공격이 초당 수백만 후보로 돌아간다.
+    `_decode_key` 가 긴 문자열 암호도 재료로 받아주므로(아래) 그 위험은 이론이 아니다.
+    PBKDF2 로 후보 1개당 비용을 20만 배 올린다.
+
+    같은 키의 지문은 프로세스 안에서 한 번만 계산한다(캐시). 캐시는 키 바이트를
+    들고 있지만 키는 이미 `os.environ` 에 있으므로 노출면이 늘지 않는다.
+    """
+    cached = _KID_CACHE.get(key)
+    if cached:
+        return cached
+    kid = hashlib.pbkdf2_hmac("sha256", key, b"pii-vault/kid/v2", KID_ITERS).hex()[:8]
+    if len(_KID_CACHE) >= 32:        # 회전 유예로도 32개를 넘지 않는다 — 넘으면 비운다
+        _KID_CACHE.clear()
+    _KID_CACHE[key] = kid
+    return kid
 
 
 def available() -> bool:
@@ -109,15 +141,88 @@ def available() -> bool:
     return _primary() is not None
 
 
+# ── 비가역 지문(같음 판정 전용) ────────────────────────────────────────────
+_FP_SALT = secrets.token_bytes(32)      # 프로세스 1회 생성. fingerprint() 주석 참조
+
+
+def fingerprint(value, context: str = "") -> str:
+    """같음·다름만 판정하는 비가역 지문 — **평문을 들고 있지 않기 위한** 장치.
+
+    전화번호처럼 후보가 10^9 수준인 값은 평범한 해시로 가려도 초 단위에 역산된다.
+    그래서 프로세스마다 새로 만든 비밀 소금으로 HMAC 한다. 지문이 밖으로 새도 원문을
+    되돌릴 수 없고, 소금은 어디에도 저장되지 않는다.
+
+    **프로세스 안에서만 안정적이다.** 재시작하면 같은 값의 지문이 달라진다. 지금
+    이 지문을 쓰는 대장(`caller_id`)이 인스턴스 메모리에만 있으므로 수명이 같다 —
+    영속 저장소를 붙이는 날(별도 [승인 필요]) 소금도 함께 보관해야 한다.
+    봉투의 `kid` 와는 무관하다(키가 없어도 동작한다).
+    """
+    data = value.encode("utf-8") if isinstance(value, str) else bytes(value or b"")
+    msg = (context or "").encode("utf-8") + b"\x00" + data
+    return hmac.new(_FP_SALT, msg, hashlib.sha256).hexdigest()[:32]
+
+
+# ── 키 재료 품질 ───────────────────────────────────────────────────────────
+# 32바이트만 넘으면 무엇이든 받던 자리. HKDF 는 재료를 늘려 주지만 **엔트로피를
+# 만들어 주지는 않는다** — 반복 문자열·흔한 암구호는 길어도 약하다. 거부하지는
+# 않는다(거부는 키 미설정과 같아져 보관을 포기하게 만든다). 대신 드러낸다.
+_PLACEHOLDERS = ("changeme", "change-me", "password", "passwd", "secret",
+                 "example", "test", "dummy", "placeholder", "yourkey")
+
+
+def _entropy_bits_upper(b: bytes) -> int:
+    """관측 바이트 분포의 섀넌 엔트로피 × 길이. **상한**이다.
+
+    문장·반복 같은 구조는 실제를 이 값보다 낮춘다. 그래서 낮으면 확실히 약하지만
+    높다고 안전이 증명되지는 않는다 — 이 함수는 '강함'을 말하지 않는다.
+    """
+    if not b:
+        return 0
+    n = len(b)
+    h = 0.0
+    for c in set(b):
+        p = b.count(c) / n
+        h -= p * math.log2(p)
+    return int(h * n)
+
+
+def material_quality(raw: str) -> dict:
+    """키 재료가 **약한지** 판정. 원문·전체 길이는 담지 않는다."""
+    b = _decode_key(raw)
+    if b is None:
+        return {"present": False, "weak": None, "reasons": []}
+    distinct = len(set(b))
+    bits = _entropy_bits_upper(b)
+    reasons = []
+    if distinct < 8:
+        reasons.append("서로 다른 바이트가 %d개뿐 — 반복 재료" % distinct)
+    if bits < MIN_ENTROPY_BITS:
+        reasons.append("엔트로피 상한 %d비트 < 권장 %d비트" % (bits, MIN_ENTROPY_BITS))
+    low = (raw or "").strip().lower()
+    if any(w in low for w in _PLACEHOLDERS):
+        reasons.append("흔한 자리표시자 낱말 포함")
+    return {"present": True, "weak": bool(reasons), "entropy_bits_upper": bits,
+            "distinct_bytes": distinct, "reasons": reasons,
+            "advice": "" if not reasons
+                      else "`openssl rand -base64 32` 로 만든 값으로 교체 권장"}
+
+
 def status() -> dict:
-    """운영 점검용 요약. 키 원문·길이는 노출하지 않는다."""
+    """운영 점검용 요약. 키 원문·길이는 노출하지 않는다.
+
+    **미인증 공개 경로에 그대로 싣지 말 것.** `kid` 와 재료 품질은 키 후보를 좁혀
+    주는 단서다 — 발신번호 요약(`caller_id.summary()`)이 `kid` 를 공개 응답에
+    싣고 있던 것이 이번 회차에 제거한 결함이다. 공개면에는 `available()` 만 쓴다.
+    """
     p = _primary()
     olds = _old_keys()
     return {
         "available": p is not None,
         "kid": key_id(p) if p else None,
         "retired_kids": [key_id(k) for k in olds],
+        "material": material_quality(os.environ.get(KEY_ENV) or ""),
         "alg": "HKDF-SHA256 + HMAC-SHA256-CTR + HMAC-SHA256 (encrypt-then-MAC)",
+        "kid_alg": "PBKDF2-HMAC-SHA256 %d회 (구 봉투의 sha256 지문도 복호 허용)" % KID_ITERS,
         "env": KEY_ENV,
         "note": "키 등록은 [승인 필요] — 미설정 시 봉인 대상은 저장되지 않는다(평문 폴백 없음)",
     }
@@ -230,8 +335,11 @@ def unseal(envelope: str, context: str = "") -> str:
     if not candidates:
         raise VaultUnavailable("복호 키(%s) 미설정" % KEY_ENV)
     for key in candidates:
-        if key_id(key) != kid:
-            continue                     # 지문이 다른 키로는 시도하지 않는다(무의미한 연산 회피)
+        # 지문이 다른 키로는 시도하지 않는다(무의미한 연산 회피).
+        # 구 지문(sha256 1회)으로 봉인된 봉투도 계속 복호한다 — 지문 유도를 느리게
+        # 바꾼 것이 이미 보관된 기록을 못 읽게 만들면 안 된다.
+        if kid not in (key_id(key), legacy_key_id(key)):
+            continue
         plain = _decrypt(key, nonce, context, ct, tag)
         if plain is not None:
             return plain.decode("utf-8", "replace")

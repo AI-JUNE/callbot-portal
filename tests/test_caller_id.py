@@ -508,5 +508,105 @@ class TestHttp(Base):
         call("GET", query="op=list")
 
 
+# ==========================================================================
+# 8) 번호 평문 미보관 (2026-10-06 결함 회귀)
+#
+# 대장이 중복 판정용으로 `number_digits_masked_key` 에 **번호 원문**을 들고 있었다.
+# 이름만 masked 였다. 그 옆칸 때문에 ① 봉인(number_sealed) ② 중지 시 암호 파기
+# ③ 키 미설정 시 "원문 미보관" 이 모두 장식이었다 — 파기해야 할 원문이 같은
+# 레코드에 평문으로 남아 있었기 때문이다. 이제 비가역 지문만 남는다.
+# ==========================================================================
+NUM = "010-1234-5678"
+DIGITS = "01012345678"
+
+
+def everything(cid):
+    """레코드·조회·요약·이력·HTTP 응답을 한 덩어리로 — 원문이 한 곳이라도 남으면 걸린다."""
+    rec = caller_id._NUMBERS[cid]
+    return " ".join((
+        repr(rec),
+        json.dumps(caller_id.view(rec), ensure_ascii=False),
+        json.dumps(caller_id.list_numbers(), ensure_ascii=False),
+        json.dumps(caller_id.summary(), ensure_ascii=False),
+        json.dumps(caller_id.history(), ensure_ascii=False),
+        call("GET").wfile.data.decode("utf-8"),
+        call("GET", query="op=list").wfile.data.decode("utf-8"),
+        call("GET", query="op=history").wfile.data.decode("utf-8"),
+    ))
+
+
+class TestNumberPlaintextNotRetained(Base):
+    def test_no_plaintext_without_key(self):
+        r = self.reg(NUM)
+        blob = everything(r["id"])
+        self.assertNotIn(DIGITS, blob)
+        self.assertNotIn("12345678", blob)        # 마스킹은 앞 3·뒤 4자리까지만
+        self.assertNotIn("number_digits", blob)
+
+    def test_no_plaintext_with_key(self):
+        os.environ["PII_MASTER_KEY"] = KEY
+        r = self.reg(NUM)
+        blob = everything(r["id"])
+        self.assertNotIn(DIGITS, blob)
+        self.assertNotIn("12345678", blob)
+        # 원문은 봉투 안에만 있고, 봉투를 열려면 키가 필요하다.
+        self.assertEqual(caller_id.reveal_number(r["id"], actor="t"), DIGITS)
+
+    def test_shred_leaves_nothing_recoverable(self):
+        """중지 = 암호 파기. 파기 뒤에는 복호도 평문 잔재도 없다."""
+        os.environ["PII_MASTER_KEY"] = KEY
+        r = self.reg(NUM)
+        caller_id.revoke(r["id"], actor="t")
+        self.assertIsNone(caller_id.reveal_number(r["id"], actor="t"))
+        self.assertNotIn(DIGITS, everything(r["id"]))
+
+    def test_fingerprint_still_dedupes(self):
+        self.reg(NUM)
+        with self.assertRaises(ValueError):
+            self.reg(NUM)
+
+    def test_dedupe_survives_number_formatting(self):
+        """표기가 달라도 정규화 후 같은 번호다 — 지문 대조가 평문 대조와 같게 동작."""
+        self.reg(NUM)
+        for same in ("+82 10-1234-5678", DIGITS, "010 1234 5678"):
+            with self.assertRaises(ValueError):
+                self.reg(same)
+
+    def test_fingerprint_separates_numbers_and_tenants(self):
+        a = self.reg(NUM, tenant="demo")
+        b = self.reg(NUM, tenant="other")             # 다른 테넌트는 중복이 아니다
+        c = self.reg("010-9999-8888", tenant="demo")
+        self.assertEqual(len({a["id"], b["id"], c["id"]}), 3)
+        self.assertNotEqual(caller_id._NUMBERS[a["id"]]["number_fp"],
+                            caller_id._NUMBERS[c["id"]]["number_fp"])
+        self.assertEqual(caller_id._NUMBERS[a["id"]]["number_fp"],
+                         caller_id._NUMBERS[b["id"]]["number_fp"])   # 같은 번호
+
+    def test_fingerprint_is_not_a_bare_hash(self):
+        """번호 후보는 10^9 개뿐 — 소금 없는 해시는 역산된다."""
+        import hashlib
+        r = self.reg(NUM)
+        fp = caller_id._NUMBERS[r["id"]]["number_fp"]
+        self.assertNotIn(DIGITS, fp)
+        self.assertNotEqual(fp, hashlib.sha256(DIGITS.encode()).hexdigest()[:32])
+        self.assertEqual(fp, pii_vault.fingerprint(DIGITS, caller_id.FP_CONTEXT))
+
+    def test_summary_does_not_publish_key_fingerprint(self):
+        """미인증 경로(GET /api/caller_id)로 키 지문·재료 품질이 나가지 않는다.
+
+        지문을 공개하면 "이 후보가 진짜 키인가"를 오프라인으로 맞춰볼 단서를 준다.
+        화면이 필요한 것은 '봉인이 되는가' 뿐이다.
+        """
+        os.environ["PII_MASTER_KEY"] = KEY
+        self.reg(NUM)
+        body = call("GET").body()
+        self.assertTrue(body["vault"]["available"])
+        self.assertNotIn("kid", body["vault"])
+        blob = json.dumps(body, ensure_ascii=False)
+        self.assertNotIn(pii_vault.status()["kid"], blob)
+        for word in ("retired_kids", "material", "entropy", "distinct_bytes"):
+            self.assertNotIn(word, blob)
+
+
 if __name__ == "__main__":
     unittest.main()

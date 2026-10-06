@@ -16,6 +16,8 @@
     `expired` 다. 대장이 실제보다 좋아 보이는 일이 없다.
   - **번호 원문은 남기지 않는다.** 화면·목록·이력에는 마스킹 번호만 나간다.
     원문이 필요하면 `pii_vault` 로 봉인해 보관하고, 키가 없으면 아예 보관하지 않는다.
+    중복 판정은 평문 대조가 아니라 `pii_vault.fingerprint()` 비가역 지문으로 한다 —
+    평문을 "내부 키"로 끼워 두면 봉인·암호 파기가 전부 장식이 된다.
   - 저장은 인스턴스 메모리(휘발). 영속 저장소·관리자 인증 배선은 [승인 필요].
 
 HTTP
@@ -46,6 +48,7 @@ HISTORY_MAX = 100
 EVIDENCE_MAX_AGE_DAYS = 90      # 증빙서류 발급 후 유효 기간(관행: 3개월). 확정은 [승인 필요]
 DEFAULT_VALID_DAYS = 365        # 등록 유효기간(제안). 통신사 정책에 맞춰 조정
 EXPIRY_WARN_DAYS = 30           # 만료 임박 경고 시작일
+FP_CONTEXT = "caller_id/number"  # 번호 지문 문맥 — 다른 용도의 지문과 섞이지 않게
 TENANT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
 # 상태 — 저장되는 값. `expired` 는 저장하지 않고 조회 시 계산한다.
@@ -208,8 +211,10 @@ def validate_tenant_id(v) -> str:
 
 
 def _find(tenant_id, number) -> str:
+    """같은 테넌트의 같은 번호 찾기 — 평문 대조가 아니라 비가역 지문 대조다."""
+    fp = pii_vault.fingerprint(number, FP_CONTEXT)
     for cid, rec in _NUMBERS.items():
-        if rec["tenant_id"] == tenant_id and rec["number_digits_masked_key"] == number:
+        if rec["tenant_id"] == tenant_id and rec["number_fp"] == fp:
             return cid
     return ""
 
@@ -234,7 +239,10 @@ def register(tenant_id, number, label="", actor=None, now=None) -> dict:
         sealed, protection = _seal_number(cid, num)
         _NUMBERS[cid] = {
             "id": cid, "tenant_id": tid,
-            "number_digits_masked_key": num,   # 중복 판정용 내부 키(외부로 나가지 않음)
+            # 중복 판정용 비가역 지문. 여기에 평문을 두면 봉인(number_sealed)과
+            # 중지 시 암호 파기가 모두 무의미해진다 — 파기해야 할 원문이 옆칸에
+            # 그대로 남기 때문이다. 지문은 되돌릴 수 없고 같음 판정만 된다.
+            "number_fp": pii_vault.fingerprint(num, FP_CONTEXT),
             "number_sealed": sealed,
             "number_masked": mask_number(num),
             "label": str(label or "")[:60],
@@ -394,7 +402,11 @@ def summary(now=None) -> dict:
         "expired": [v for v in rows if v["status"] == "expired"],
         "outbound_ready_count": sum(1 for v in rows if v["outbound_ready"]),
         "cpaas_live": cpaas_live(),
-        "vault": {"available": pii_vault.available(), "kid": pii_vault.status()["kid"]},
+        # 키 **지문은 싣지 않는다**. 이 요약은 `GET /api/caller_id` 로 나가고 그
+        # 경로는 미인증(비엄격 모드)이다 — 지문을 공개하면 "이 후보가 진짜 키인가"를
+        # 오프라인으로 맞춰볼 수 있는 단서를 주는 셈이다. 화면이 필요한 것은
+        # "봉인이 되는가" 뿐이다(public/admin.html 은 available 만 읽는다).
+        "vault": {"available": pii_vault.available()},
         "persistence": "memory (영속 저장소 [승인 필요])",
         "activation_note": "등록 요건 충족과 실발신 허용은 다른 문제다 — 실발신은 [승인 필요]",
     }

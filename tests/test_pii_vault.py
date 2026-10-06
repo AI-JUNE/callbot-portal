@@ -14,12 +14,16 @@
 """
 import os
 import sys
+import hmac
 import time
 import base64
+import hashlib
+import subprocess
 import unittest
 import urllib.request
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "api"))
+API_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "api")
+sys.path.insert(0, API_DIR)
 
 import _pii_vault as pii_vault           # noqa: E402
 import _recording_audit as recording_audit     # noqa: E402
@@ -470,6 +474,175 @@ class TestWiring(Base):
         blob = repr(st.audit_log())
         self.assertNotIn("s3://", blob)
         self.assertNotIn("secret", blob)
+
+
+# ==========================================================================
+# 8) 지문 유도 비용 (2026-10-06 결함 회귀)
+#
+# 봉투의 `kid` 는 로그·미리보기·응답으로 모듈 밖에 나간다. 그 8자리가 sha256
+# 한 번이면 "이 후보가 진짜 키인가"를 암호문 없이 확인해 주는 공짜 검증기가
+# 된다 — `_decode_key` 가 문자열 암호도 받아주므로 사전 공격이 성립한다.
+# ==========================================================================
+class TestKidDerivation(Base):
+    def test_kid_is_not_a_single_sha256(self):
+        k = b"A" * 32
+        cheap = hashlib.sha256(b"pii-vault/kid/v1" + k).hexdigest()[:8]
+        self.assertEqual(pii_vault.legacy_key_id(k), cheap)
+        self.assertNotEqual(pii_vault.key_id(k), cheap)
+
+    def test_kid_cost_floor(self):
+        """비용이 보안성이다 — 반복 횟수를 낮추면 이 테스트가 막는다."""
+        self.assertGreaterEqual(pii_vault.KID_ITERS, 100_000)
+
+    def test_kid_still_stable_and_distinct(self):
+        self.assertEqual(pii_vault.key_id(b"A" * 32), pii_vault.key_id(b"A" * 32))
+        self.assertNotEqual(pii_vault.key_id(b"A" * 32), pii_vault.key_id(b"B" * 32))
+        self.assertEqual(len(pii_vault.key_id(b"A" * 32)), 8)
+
+    def test_new_envelopes_use_slow_kid(self):
+        self.use(KEY_A)
+        master = pii_vault._decode_key(KEY_A)
+        env = pii_vault.seal("x", "c")
+        self.assertEqual(pii_vault.envelope_kid(env), pii_vault.key_id(master))
+        self.assertNotEqual(pii_vault.envelope_kid(env), pii_vault.legacy_key_id(master))
+
+    def test_legacy_envelope_still_unseals(self):
+        """유도 방식을 바꿨다고 이미 보관된 봉투를 못 읽게 되면 안 된다."""
+        self.use(KEY_A)
+        master = pii_vault._decode_key(KEY_A)
+        nonce = b"\x07" * pii_vault.NONCE_LEN
+        ct, tag = pii_vault._encrypt(master, nonce, "REC-1/audio", b"s3://old/rec.wav")
+        legacy = ".".join(("pv1", pii_vault.legacy_key_id(master),
+                           pii_vault._b64e(nonce), pii_vault._b64e(ct),
+                           pii_vault._b64e(tag)))
+        self.assertEqual(pii_vault.envelope_kid(legacy), pii_vault.legacy_key_id(master))
+        self.assertEqual(pii_vault.unseal(legacy, "REC-1/audio"), "s3://old/rec.wav")
+        with self.assertRaises(pii_vault.VaultTamper):
+            pii_vault.unseal(legacy, "REC-2/audio")        # 문맥 결속은 그대로
+        fresh = pii_vault.rewrap(legacy, "REC-1/audio")     # 재봉인은 새 지문으로
+        self.assertEqual(pii_vault.envelope_kid(fresh), pii_vault.key_id(master))
+
+    def test_wrong_key_still_rejected(self):
+        """구 지문 허용이 '아무 키나 통과'로 번지지 않는다."""
+        self.use(KEY_A)
+        env = pii_vault.seal("x", "c")
+        os.environ["PII_MASTER_KEY"] = KEY_B
+        os.environ.pop("PII_MASTER_KEY_OLD", None)
+        with self.assertRaises(pii_vault.VaultError):
+            pii_vault.unseal(env, "c")
+
+
+# ==========================================================================
+# 9) 비가역 지문 — 평문을 들고 있지 않기 위한 장치
+# ==========================================================================
+class TestFingerprint(Base):
+    def test_stable_within_process(self):
+        a = pii_vault.fingerprint("01012345678", "caller_id/number")
+        self.assertEqual(a, pii_vault.fingerprint("01012345678", "caller_id/number"))
+        self.assertEqual(len(a), 32)
+
+    def test_distinct_values_and_contexts(self):
+        n = "01012345678"
+        self.assertNotEqual(pii_vault.fingerprint(n, "a"), pii_vault.fingerprint(n, "b"))
+        self.assertNotEqual(pii_vault.fingerprint(n, "a"),
+                            pii_vault.fingerprint("01012345679", "a"))
+
+    def test_not_a_bare_hash(self):
+        """번호 후보는 10^9 개뿐 — 공개 입력만으로 계산되는 해시는 초 단위에 역산된다."""
+        n, ctx = "01012345678", "caller_id/number"
+        fp = pii_vault.fingerprint(n, ctx)
+        self.assertNotIn(n, fp)
+        self.assertEqual(len(pii_vault._FP_SALT), 32)
+        public = (n.encode(), ctx.encode() + b"\x00" + n.encode(),
+                  ctx.encode() + n.encode(), n.encode() + ctx.encode())
+        for msg in public:                       # 소금 없이 만들 수 있는 조립법들
+            self.assertNotEqual(fp, hashlib.sha256(msg).hexdigest()[:32])
+            self.assertNotEqual(fp, hmac.new(b"", msg, hashlib.sha256).hexdigest()[:32])
+
+    def test_salt_is_secret_not_derivable(self):
+        """결정적 판정: 소금이 비밀이면 **다른 프로세스에서 지문이 달라진다**.
+
+        같게 나온다면 공개 입력만으로 계산된다는 뜻이고(조립법을 하나하나 맞혀 볼
+        필요도 없다), 그러면 번호 전수 대입으로 원문이 복원된다.
+        영속 저장소를 붙여 소금을 보관하게 되는 날 이 테스트는 **의도적으로**
+        고쳐야 한다(fingerprint() 주석 참조) — 조용히 깨지는 것이 아니다.
+        """
+        code = ("import sys; sys.path.insert(0, %r); import _pii_vault as v; "
+                "print(v.fingerprint('01012345678', 'caller_id/number'))"
+                % os.path.abspath(API_DIR))
+        other = subprocess.check_output([sys.executable, "-c", code]).decode().strip()
+        self.assertEqual(len(other), 32, other)
+        self.assertNotEqual(other, pii_vault.fingerprint("01012345678", "caller_id/number"),
+                            "프로세스 간 지문이 같다 — 비밀 소금이 없다")
+
+    def test_works_without_key(self):
+        """봉인 키가 없어도 지문은 만들어진다 — 평문 보관의 대체 수단이니까."""
+        self.assertFalse(pii_vault.available())
+        self.assertEqual(len(pii_vault.fingerprint("x", "c")), 32)
+
+    def test_accepts_bytes_and_empty(self):
+        self.assertEqual(pii_vault.fingerprint(b"ab", "c"),
+                         pii_vault.fingerprint("ab", "c"))
+        self.assertEqual(len(pii_vault.fingerprint("", "")), 32)
+        self.assertEqual(len(pii_vault.fingerprint(None, "c")), 32)
+
+
+# ==========================================================================
+# 10) 키 재료 품질 — 32바이트만 넘으면 무엇이든 받던 자리
+# ==========================================================================
+STRONG = base64.b64encode(bytes(range(32))).decode()    # 서로 다른 32바이트 = 160비트
+
+
+class TestKeyMaterial(Base):
+    def test_repeated_material_is_flagged(self):
+        q = pii_vault.material_quality(base64.b64encode(b"K" * 32).decode())
+        self.assertTrue(q["present"])
+        self.assertTrue(q["weak"])
+        self.assertTrue(any("반복" in r for r in q["reasons"]), q["reasons"])
+        self.assertEqual(q["distinct_bytes"], 1)
+        self.assertEqual(q["entropy_bits_upper"], 0)
+
+    def test_strong_material_is_not_flagged(self):
+        q = pii_vault.material_quality(STRONG)
+        self.assertFalse(q["weak"], q["reasons"])
+        self.assertGreaterEqual(q["entropy_bits_upper"], pii_vault.MIN_ENTROPY_BITS)
+        self.assertEqual(q["advice"], "")
+
+    def test_placeholder_passphrase_is_flagged(self):
+        q = pii_vault.material_quality("changeme-changeme-changeme-changeme")
+        self.assertTrue(q["weak"])
+        self.assertTrue(any("자리표시자" in r for r in q["reasons"]), q["reasons"])
+        self.assertIn("openssl", q["advice"])
+
+    def test_low_entropy_passphrase_is_flagged(self):
+        q = pii_vault.material_quality("aaaabbbbccccddddaaaabbbbccccdddd")
+        self.assertTrue(q["weak"])
+        self.assertLess(q["entropy_bits_upper"], pii_vault.MIN_ENTROPY_BITS)
+
+    def test_absent_material(self):
+        for raw in ("", "   ", "short"):
+            q = pii_vault.material_quality(raw)
+            self.assertFalse(q["present"], repr(raw))
+            self.assertIsNone(q["weak"])
+            self.assertEqual(q["reasons"], [])
+
+    def test_status_reports_material_without_leaking_it(self):
+        self.use(KEY_A)                       # base64("A"*32) — 반복 재료
+        st = pii_vault.status()
+        self.assertTrue(st["material"]["weak"])
+        self.assertNotIn(KEY_A, repr(st))
+        self.assertNotIn("A" * 32, repr(st))
+        self.assertIn("PBKDF2", st["kid_alg"])
+        os.environ["PII_MASTER_KEY"] = STRONG
+        self.assertFalse(pii_vault.status()["material"]["weak"])
+
+    def test_weak_key_is_reported_not_refused(self):
+        """약한 키를 거부하면 '키 미설정'과 같아져 보관을 포기하게 된다 —
+        그쪽이 더 나쁘다. 그래서 막지 않고 드러낸다."""
+        self.use(KEY_A)
+        self.assertTrue(pii_vault.available())
+        env = pii_vault.seal("s3://a", "c")
+        self.assertEqual(pii_vault.unseal(env, "c"), "s3://a")
 
 
 if __name__ == "__main__":
