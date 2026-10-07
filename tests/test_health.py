@@ -195,9 +195,9 @@ class TestSecrecy(unittest.TestCase):
         self.assertNotIn("SECRET", body)
 
     def test_host_extraction_drops_credentials(self):
-        self.assertEqual(health._host_of("https://user:pw@orders.example.com:8443/v1"),
-                         "orders.example.com")
-        self.assertIsNone(health._host_of(""))
+        self.assertEqual(health._hostport_of("https://user:pw@orders.example.com:8443/v1"),
+                         ("orders.example.com", 8443))
+        self.assertEqual(health._hostport_of(""), (None, None))
 
 
 class TestNoSideEffects(unittest.TestCase):

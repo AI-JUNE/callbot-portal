@@ -4,7 +4,7 @@
   _guard     : 리퍼러 URL 파싱 실패(IPv6 괄호 깨짐) → 거부 · 웹훅 `?t=` 경로 파싱 실패 → 401
   _ratelimit : x-real-ip 폴백 · `_LAST`(thread-local) 쓰기 실패를 삼킨다(_remember·reset)
   _errors    : 추가 헤더·X-Request-Id 전송 실패를 삼키고 나머지 헤더는 그대로 나간다
-  health     : `_host_of` 비문자열 → None · 함수 안 sys.path 가드(api 가 경로에 없을 때) ·
+  health     : `_hostport_of` 비문자열 → (None, None) · 함수 안 sys.path 가드(api 가 경로에 없을 때) ·
                `_close` 의 rq 없음/finish 장애 흡수
 네트워크 미사용(소켓·urlopen 모두 안 쓴다). 실행: python3 -m pytest tests/test_coverage_leftovers.py -q
 """
@@ -128,9 +128,11 @@ class Errors(unittest.TestCase):
 
 
 class Health(unittest.TestCase):
-    def test_host_of_non_string_is_none(self):
-        self.assertIsNone(health._host_of(12345))
-        self.assertEqual(health._host_of("https://u:p@h.example:8443/x?y"), "h.example")
+    def test_hostport_of_non_string_is_none(self):
+        self.assertEqual(health._hostport_of(12345), (None, None))
+        # 자격증명·경로·쿼리는 떨어지고 포트 표기는 살아남는다(예전엔 버리고 443 고정)
+        self.assertEqual(health._hostport_of("https://u:p@h.example:8443/x?y"),
+                         ("h.example", 8443))
 
     def test_sub_module_lookups_restore_sys_path(self):
         """함수 안의 sys.path 가드 — api 폴더가 경로에서 빠져도 스스로 넣고 답한다."""

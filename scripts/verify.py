@@ -54,13 +54,16 @@ OUTBOUND = {
     "_stt.py":           "Gemini 전사 API — URL 고정 상수",
     "_vstudio.py":       "보이스 스튜디오 엔진 — VOICE_ENGINE_URL(환경변수)",
     "_monitoring.py":    "Sentry envelope — SENTRY_DSN(환경변수)",
-    "_order_backend.py": "주문 백엔드 — ORDER_BACKEND(환경변수)",
+    "_order_backend.py": "주문 백엔드 — ORDER_API_BASE(환경변수, _urlguard 필수)",
     "health.py":         "deep 점검 TCP 도달성 — HEALTH_DEEP=1 일 때만",
     "voice.py":          "녹음 다운로드 — 요청 본문의 URL(_urlguard 필수)",
     "wellbeing.py":      "안부 결과 웹훅 — 요청 본문의 URL(_urlguard 필수)",
 }
-# 요청에서 받은 URL 로 나가는 파일. 공용 가드(api/_urlguard.py)를 반드시 거친다.
-URLGUARD_REQUIRED = {"voice.py", "wellbeing.py"}
+# 주소가 **고정 상수가 아닌** 파일. 공용 가드(api/_urlguard.py)를 반드시 거친다.
+# 요청 본문에서 오는 것(voice·wellbeing)과 설정에서 오는 것(_order_backend)을 같이 둔다 —
+# 환경변수라고 검증을 빼면 오타·잘못 복사한 값으로 주문 정보와 Bearer 키가
+# 평문 http·사설망으로 나간다(쓰기 승인 뒤에는 환불 접수가 엉뚱한 주소로 간다).
+URLGUARD_REQUIRED = {"voice.py", "wellbeing.py", "_order_backend.py"}
 OUTBOUND_CALLS = ("urlopen(", "socket.create_connection(")
 
 

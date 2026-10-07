@@ -22,6 +22,7 @@
 # ==========================================================================
 import os, sys, json, time, socket, platform
 from http.server import BaseHTTPRequestHandler
+from urllib.parse import urlparse as _urlparse
 
 _d = os.path.dirname(__file__)
 if _d not in sys.path:
@@ -103,18 +104,41 @@ def _tcp_reachable(host, port=443, timeout=1.5):
         return False, int((time.time() - t0) * 1000), type(e).__name__
 
 
-def _host_of(url):
-    """URL에서 호스트명만 추출(사용자·비밀번호·경로·쿼리 제거)."""
+def _hostport_of(url):
+    """URL -> (host, port). 포트 표기를 존중하고 없으면 스킴 기본값(https 443·http 80).
+
+    예전에는 포트를 버리고 **항상 443** 으로 찔렀다 — `:8443` 이나 평문 http(80)로
+    붙인 백엔드는 멀쩡해도 deep 점검이 「TCP 도달 실패」로 보고한다. 헬스가 거짓
+    경보를 내면 아무도 헬스를 보지 않게 되므로 가짜 장애는 장애와 같다.
+    판단이 불가능하면(호스트 없음·포트 표기 깨짐) `(None, None)` — 모르는 것을
+    찔러 보지 않는다.
+    """
     try:
         u = (url or "").strip()
-        if "://" in u:
-            u = u.split("://", 1)[1]
-        u = u.split("/", 1)[0]
-        if "@" in u:            # user:pass@host 형태의 자격증명 제거
-            u = u.rsplit("@", 1)[1]
-        return u.split(":", 1)[0] or None
+        if not u:
+            return None, None
+        p = _urlparse(u if "://" in u else "https://" + u)
+        host = (p.hostname or "").strip()      # 자격증명·대괄호(IPv6)는 여기서 떨어진다
+        if not host:
+            return None, None
+        return host, (p.port or (80 if p.scheme == "http" else 443))
     except Exception:
-        return None
+        # 포트가 숫자가 아니거나 범위를 벗어나면 `p.port` 가 ValueError 를 낸다.
+        return None, None
+
+
+def _order_base_ok(base):
+    """주문 백엔드 base URL 이 아웃바운드 가드를 통과하는가 — (ok, reason).
+
+    판정은 `_order_backend.check_api_base` 한 곳이다. 헬스가 따로 판정하면
+    「헬스는 정상인데 실제 호출만 막힌다」는 엇갈림이 생긴다(15차 음성 게이트와
+    같은 결함 계열). 모듈을 못 불러오면 헬스를 죽이지 않고 판단을 보류한다.
+    """
+    try:
+        import _order_backend
+        return _order_backend.check_api_base(base)
+    except Exception:                          # pragma: no cover - 엔진이 이미 못 뜬 상태
+        return True, ""
 
 
 def _dep(name, kind, required, status, detail, checked=False, latency_ms=None):
@@ -156,14 +180,22 @@ def _dep_order(deep):
     if not base:
         return _dep("order_backend", "backend", True, MISCONFIGURED,
                     "ORDER_BACKEND=http 이나 ORDER_API_BASE 미설정")
+    # 주소가 아웃바운드 가드에서 거부되는 설정이면 실제 호출은 전부 실패한다 —
+    # 그걸 OK 로 보고하면 헬스가 상태를 꾸미는 것이다. 사유에는 호스트 판정
+    # 결과만 담기므로 자격증명·토큰이 섞이지 않는다(가드가 URL 을 되비추지 않는다).
+    ok_url, why = _order_base_ok(base)
+    if not ok_url:
+        return _dep("order_backend", "backend", True, MISCONFIGURED,
+                    "ORDER_API_BASE 거부: %s" % (why or "허용되지 않은 주소"))
     write = _env_str("ORDER_API_ALLOW_WRITE") == "1"
     detail = "http 연동(쓰기 %s)" % ("허용" if write else "dry-run")
     if deep:
-        host = _host_of(base)
-        if host:
-            okc, ms, err = _tcp_reachable(host)
+        host, port = _hostport_of(base)
+        if host and port:
+            okc, ms, err = _tcp_reachable(host, port)
             return _dep("order_backend", "backend", True, OK if okc else ERROR,
-                        detail + (", TCP 도달성 확인" if okc else ", TCP 도달 실패: %s" % err),
+                        detail + (", TCP 도달성 확인(:%d)" % port if okc
+                                  else ", TCP 도달 실패(:%d): %s" % (port, err)),
                         checked=True, latency_ms=ms)
     return _dep("order_backend", "backend", True, OK, detail)
 

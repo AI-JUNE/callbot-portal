@@ -171,11 +171,16 @@ class TestDemo(Base):
 # 3) HttpOrderBackend — urlopen 대역
 # --------------------------------------------------------------------------
 class FakeResp(object):
-    def __init__(self, body):
+    def __init__(self, body, url="https://api.example.test/cs/v1"):
         self._b = body
+        self._url = url
 
-    def read(self):
-        return self._b
+    # 실제 응답 객체처럼 상한(amt)을 받는다 — `_req` 는 본문을 무제한으로 읽지 않는다.
+    def read(self, amt=None):
+        return self._b if amt is None else self._b[:amt]
+
+    def geturl(self):
+        return self._url
 
     def __enter__(self):
         return self

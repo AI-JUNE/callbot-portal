@@ -283,14 +283,18 @@ class TestDependencyBranches(Base):
         self.assertEqual(d["status"], health.ERROR)
         self.assertEqual(p["status"], "unhealthy")     # required 의존성 error
 
-    def test_order_http_deep_unparseable_base_skips_probe(self):
-        """호스트를 못 뽑으면 도달성 점검을 건너뛰되 상태를 꾸미지 않는다."""
+    def test_order_http_unparseable_base_is_misconfigured(self):
+        """호스트를 못 뽑는 base 는 탐침하지 않고 **설정 오류**로 보고한다.
+
+        예전에는 탐침만 건너뛰고 status=OK 로 답했다 — 호스트가 없는 주소로는
+        어떤 호출도 성립하지 않으니 「정상」은 상태를 꾸미는 것이다.
+        """
         os.environ.update(HEALTH_DEEP="1", GOOGLE_API_KEY="k", ORDER_BACKEND="http",
                           ORDER_API_BASE="https:///v1")    # 호스트 없음
         p = health._payload("deep=1")                      # 소켓 열면 setUp 이 터뜨린다
         d = [x for x in p["dependencies"] if x["name"] == "order_backend"][0]
         self.assertFalse(d["checked"])
-        self.assertEqual(d["status"], health.OK)
+        self.assertEqual(d["status"], health.MISCONFIGURED)
 
     def test_order_write_gate_is_reported_as_dry_run_by_default(self):
         os.environ.update(ORDER_BACKEND="http", ORDER_API_BASE="https://o.example.com")
