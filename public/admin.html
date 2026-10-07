@@ -515,6 +515,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
       <a data-v="disclosure"><span class="ic">📣</span> AI 고지 문구</a>
       <a data-v="callerid"><span class="ic">📇</span> 발신번호 등록</a>
       <a data-v="settle"><span class="ic">💴</span> 정산 리포트</a>
+      <a data-v="settlelines"><span class="ic">₩</span> 정산 리포트(테넌트)</a>
       <a data-v="basis"><span class="ic">🗓️</span> 기준 관리</a>
       <a data-v="syslog"><span class="ic">📜</span> 접속·녹취 로그</a>
       <a data-v="code"><span class="ic">🧷</span> 공통코드·메뉴</a>
@@ -791,6 +792,32 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
         <div class="card"><h3>🔎 산출 결과 <span class="r"><span class="tag neu">서버 응답 그대로</span></span></h3>
           <div id="slOut" style="padding:14px 18px" aria-live="polite">
             <div class="summary">아직 불러온 내용이 없습니다. 정산월을 비워 두면 <b>지난달</b>을 조회합니다. <b>📊 리포트 조회</b>를 눌러 시작하세요.</div>
+          </div></div>
+      </section>
+      <section id="view-settlelines" class="hidden">
+        <div class="card" style="margin-bottom:16px"><h3>정산 리포트 · 테넌트 과금 라인 <span class="r"><span class="tag neu" id="scSourceTag">출처 확인 중</span></span></h3>
+          <div style="padding:14px 18px">
+            <div class="hint" style="margin-bottom:14px">정산월 단위로 <b>기간·테넌트·건수·과금 단위·금액</b>을 한 줄씩 놓습니다. 과금 단위는 AICC-Core 의 과금 단위 이름(통화 과금 단위·세션 수·토큰 등)과 같습니다. 금액은 <b>아는 값만</b> 적고 모르면 빈 칸으로 둡니다(0원으로 만들지 않습니다). 출처(<code>SETTLEMENT_SOURCE</code>)가 설정되지 않으면 <b>데모 데이터</b>가 표시되며 모든 줄에 표식이 붙습니다. 확정·청구·지급은 <b>[승인 필요]</b>.</div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+              <div style="min-width:160px">
+                <label for="scMonth" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">정산월 <span style="color:var(--mut);font-weight:400">(YYYY-MM · 비우면 지난달)</span></label>
+                <input id="scMonth" type="text" placeholder="예) 2026-08" maxlength="7" autocomplete="off" aria-describedby="scMonthErr" onkeydown="if(event.key==='Enter'){event.preventDefault();scRun();}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="scMonthErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+              <div style="min-width:200px">
+                <label for="scTenant" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">테넌트 ID <span style="color:var(--mut);font-weight:400">(선택 · 비우면 전체)</span></label>
+                <input id="scTenant" type="text" placeholder="영문 소문자·숫자·-·_" maxlength="40" autocomplete="off" aria-describedby="scTenantErr" onkeydown="if(event.key==='Enter'){event.preventDefault();scRun();}" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+                <div id="scTenantErr" class="hint" role="alert" style="color:var(--red);min-height:16px;margin-top:4px"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="primary" id="scRunBtn" onclick="scRun()">라인 조회</button>
+              <button id="scCsvBtn" onclick="scCsv()" disabled>CSV 내려받기</button>
+            </div>
+          </div></div>
+        <div class="card"><h3>과금 라인 <span class="r"><span class="tag neu" id="scCountTag">0줄</span></span></h3>
+          <div id="scOut" style="padding:14px 18px" aria-live="polite">
+            <div class="summary">아직 불러온 내용이 없습니다. 정산월을 비워 두면 <b>지난달</b>을 조회합니다. <b>라인 조회</b>를 눌러 시작하세요.</div>
           </div></div>
       </section>
       <section id="view-cpaas" class="hidden">
@@ -1467,7 +1494,7 @@ var MENU=[['상담',[['voice','음성 상담'],['chat','텍스트 상담']]],
  ['상담지원 AI',[['assistdesk','상담 Assist'],['ta','TA 텍스트분석'],['qamgmt','QA 품질관리'],['kms','KMS 지식관리'],['nlu','NLU 엔진'],['sllm','sLLM']]],
  ['운영',[['home','에이전트 홈'],['monitor','실시간 모니터링'],['hist','대화 이력'],['report','운영 통계'],['alerts','알림 센터'],['builder','시나리오 빌더'],['qa','품질성능평가'],['abtest','A/B 테스트'],['agents','상담사 현황'],['cpaas','CPaaS 연계 테스트']]],
  ['통합통계',[['board','전광판'],['statin','콜봇 이용통계'],['statout','아웃바운드 통계'],['statsvc','상세서비스 통계'],['chan','채널 점유현황'],['sysresp','시스템 응답현황'],['calls','고객 통화 이력']]],
- ['관리',[['svccfg','서비스 설정'],['disclosure','AI 고지 문구'],['callerid','발신번호 등록'],['settle','정산 리포트'],['basis','기준 관리'],['syslog','접속·녹취 로그'],['code','공통코드·메뉴'],['accounts','계정 · 권한']]],
+ ['관리',[['svccfg','서비스 설정'],['disclosure','AI 고지 문구'],['callerid','발신번호 등록'],['settle','정산 리포트'],['settlelines','정산 리포트(테넌트)'],['basis','기준 관리'],['syslog','접속·녹취 로그'],['code','공통코드·메뉴'],['accounts','계정 · 권한']]],
  ['멀티모달',[['mm','멀티모달 현황'],['mmhist','멀티모달 이력'],['docs','필요서류 관리']]],
  ['음성 제작',[['vstudio','보이스 스튜디오']]]];
 function syncTopmenu(){var tb=document.querySelector('.topbar'),tm=document.getElementById('topmenu');if(tb&&tm)tm.style.top=Math.max(0,tb.offsetHeight-1)+'px';}
@@ -1541,7 +1568,7 @@ function _doSearch(){var q=(document.getElementById('gsearch').value||'').trim()
  pop.innerHTML=top.length?('<div class="hd">검색 결과 '+res.length+'건</div>'+top.map(function(r,i){return '<div class="it" id="gsopt-'+i+'" role="option" aria-selected="false" onmousemove="_gsIdx='+i+';_gsAD()" onclick="show(\''+r.v+'\');closePops();document.getElementById(\'gsearch\').value=\'\'">'+hl(r.t)+'<span class="c">'+r.c+'</span></div>';}).join('')):'<div class="it" style="color:var(--dim)">\''+esc(q)+'\' 검색 결과 없음</div>';
  pop.classList.add('show');var _gi=document.getElementById('gsearch');if(_gi)_gi.setAttribute('aria-expanded','true');_gsAD();}
 
-const titles={vstudio:['보이스 스튜디오','IVR·안내 멘트 음성 제작 · 표준 음성 / 동의 받은 복제 목소리'],voice:['음성 상담','실시간 음성 상담 콘솔'],wellbeing:['안부 전화 연동','안부 콜봇 연동 검증 · 전화망 미경유 시연'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],disclosure:['AI 고지 문구','테넌트별 통화 시작 고지 · 법정 요건 검사'],callerid:['발신번호 등록','번호별 등록 상태 · 증빙 · 만료 관리'],settle:['정산 리포트','파트너별 귀속·실적·수수료 산출 근거 · 초안'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
+const titles={vstudio:['보이스 스튜디오','IVR·안내 멘트 음성 제작 · 표준 음성 / 동의 받은 복제 목소리'],voice:['음성 상담','실시간 음성 상담 콘솔'],wellbeing:['안부 전화 연동','안부 콜봇 연동 검증 · 전화망 미경유 시연'],cpaas:['CPaaS 연계 테스트','콜 시스템 연계 · 웹에서 바로 무료 테스트'],chat:['텍스트 상담','채팅 테스트'],home:['에이전트 홈','운영 현황·주요 지표 대시보드'],agentmgmt:['에이전트 관리','봇 생성·유형·TTS·워크플로우'],builder:['시나리오 빌더','대화 흐름·대본 설계'],qa:['품질성능평가','시나리오·지표 평가'],abtest:['A/B 테스트','시나리오 실험·전환 비교'],envvar:['환경 변수','커스텀 변수 관리'],monitor:['실시간 모니터링','대화 세션 추적'],hist:['대화 이력','대화 목록·메트릭'],report:['운영 통계','일/주/월 분석'],alerts:['알림 센터','운영 이벤트 이력'],kb:['지식 관리','KMS · FAQ · 지식베이스'],rag:['AI · 검색(RAG)','검색 품질 관리'],agents:['상담사 현황','에이전트 모니터링'],accounts:['계정 · 권한','RBAC 관리'],exportc:['데이터 내보내기','전 화면 일괄 export'],assistdesk:['상담 Assist','실시간 상담 지원'],ta:['TA 텍스트분석','감성·키워드·VoC'],qamgmt:['QA 품질관리','평가·자동채점·코칭'],kms:['KMS 지식관리','지식 검색·문서·감수'],nlu:['NLU 엔진','의도·엔티티·성능'],sllm:['sLLM','요약·생성·RAG·LLMOps'],board:['전광판','대형 상황판'],statin:['콜봇 이용통계','인바운드 현황/비교'],statout:['아웃바운드 통계','캠페인 단계별'],statsvc:['상세서비스 통계','시나리오별'],chan:['채널 점유현황','회선 점유율'],sysresp:['시스템 응답현황','STT/SOE/TTS'],calls:['고객 통화 이력','콜 세션·녹취'],svccfg:['서비스 설정','시나리오 운영'],disclosure:['AI 고지 문구','테넌트별 통화 시작 고지 · 법정 요건 검사'],callerid:['발신번호 등록','번호별 등록 상태 · 증빙 · 만료 관리'],settle:['정산 리포트','파트너별 귀속·실적·수수료 산출 근거 · 초안'],settlelines:['정산 리포트(테넌트)','기간·테넌트·건수·과금 단위·금액 · 초안'],basis:['기준 관리','휴일·채널·상담그룹'],syslog:['접속·녹취 로그','감사 로그'],code:['공통코드·메뉴','시스템 기준정보'],reason:['상담 사유코드','콜 리즌 코드 관리'],mm:['멀티모달 현황','접속 종합'],mmhist:['멀티모달 이력','세션 이력'],docs:['필요서류 관리','TOP10']};
 var curView='home';
 function show(v){if(!titles[v]||!document.getElementById('view-'+v))return;curView=v;try{if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);}catch(e){}document.querySelectorAll('section[id^=view-]').forEach(s=>s.classList.add('hidden'));var _el=$('#view-'+v);_el.classList.remove('hidden');_el.classList.remove('anim');void _el.offsetWidth;_el.classList.add('anim');
   $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='AICC Portal · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
@@ -2880,6 +2907,59 @@ function dcHistory(){dcBtns(true);dcBusy('변경 이력 조회 중…');
     dcSet('<div class="hint" style="margin-bottom:8px">최근 '+hs.length+'건 · append-only</div><table><thead><tr><th>시각(UTC)</th><th>테넌트</th><th>동작</th><th>버전</th><th>주체</th><th>문구</th></tr></thead><tbody>'+rows+'</tbody></table>');
   }).catch(function(e){dcFail('요청 실패: '+dcEsc(e));}).then(function(){dcBtns(false);},function(){dcBtns(false);});}
 (function(){var s=document.getElementById('view-disclosure');if(!s||!window.MutationObserver)return;var done=false;new MutationObserver(function(){if(done||s.classList.contains('hidden'))return;done=true;dcCounter();dcLoad();}).observe(s,{attributes:true,attributeFilter:['class']});})();
+/* ---- 정산 리포트(테넌트 과금 라인) — /api/settlement?op=lines. 서버 응답만 그린다. 데모면 모든 줄에 표식, 모르는 금액은 빈 칸 ---- */
+var SC={d:null,busy:false};
+function scEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+function scSet(h){var o=document.getElementById('scOut');if(o)o.innerHTML=h;}
+function scBusy(m){scSet('<div class="summary" role="status">'+scEsc(m)+'</div>');}
+function scFail(m){scSet('<div class="summary" style="color:var(--red)" role="alert"><b>요청을 처리하지 못했습니다</b><br>'+m+'</div>');}
+function scBtns(dis){SC.busy=!!dis;var b=document.getElementById('scRunBtn');if(b)b.disabled=!!dis;var c=document.getElementById('scCsvBtn');if(c)c.disabled=!!dis||!(SC.d&&SC.d.lines&&SC.d.lines.length);}
+function scJson(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t);}catch(e){}return {s:r.status,d:d};});}
+function scClearErr(){['scMonthErr','scTenantErr'].forEach(function(i){var e=document.getElementById(i);if(e)e.textContent='';});['scMonth','scTenant'].forEach(function(i){var e=document.getElementById(i);if(e)e.removeAttribute('aria-invalid');});}
+function scFieldErr(field,msg){var map={month:['scMonth','scMonthErr'],tenant:['scTenant','scTenantErr']},m=map[field];if(!m)return false;
+  var i=document.getElementById(m[0]),e=document.getElementById(m[1]);if(e)e.textContent=msg||'';if(i){i.setAttribute('aria-invalid','true');try{i.focus();}catch(err){}}return true;}
+function scHttpErr(x){if(!x.d){scFail('서버가 예상과 다른 응답을 보냈습니다 (HTTP '+x.s+'). 잠시 뒤 다시 시도해 주세요.');return;}
+  var det=(x.d.details||[]);var li=det.map(function(f){return '<li><b>'+scEsc(f.key||f.field)+'</b> — '+scEsc(f.reason)+'</li>';}).join('');
+  scFail(scEsc(x.d.error||x.d.message||'요청이 거부되었습니다')+' (HTTP '+x.s+(x.d.code?' · '+scEsc(x.d.code):'')+')'
+    +(li?'<ul style="margin:8px 0 0 18px">'+li+'</ul>':'')
+    +(x.s===401||x.s===403?'<br>콘솔 세션이 만료되었을 수 있습니다. 페이지를 새로고침한 뒤 다시 시도하세요.':'')
+    +(x.s===429?'<br>요청이 잦습니다. 잠시 뒤 다시 시도해 주세요.':''));
+  var f0=det[0];if(f0&&f0.field)scFieldErr(f0.field,f0.reason);}
+function scNum(v){return (v===null||v===undefined)?'—':String(v).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function scQuery(){scClearErr();
+  var m=((document.getElementById('scMonth')||{}).value||'').trim();
+  var t=((document.getElementById('scTenant')||{}).value||'').trim().toLowerCase();
+  if(m&&!/^20\d\d-(0[1-9]|1[0-2])$/.test(m)){scFieldErr('month','YYYY-MM 형식으로 입력하세요(예: 2026-08).');return null;}
+  if(t&&!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(t)){scFieldErr('tenant','영문 소문자·숫자·-·_ 로 1~40자여야 합니다.');return null;}
+  var q=[];if(m)q.push('month='+encodeURIComponent(m));if(t)q.push('tenant='+encodeURIComponent(t));return q.join('&');}
+function scStatusTag(st,demo){if(demo)return '<span class="tag bad">데모 데이터</span>';var m={ok:['ok','산출완료'],amount_missing:['neu','금액 미확정']},v=m[st]||['neu',st||'-'];return '<span class="tag '+v[0]+'">'+scEsc(v[1])+'</span>';}
+function scRows(lines){
+  if(!lines||!lines.length)return '<div class="summary">아직 집계된 과금 라인이 없습니다. 이 달에 관측된 실적이 없거나 테넌트 필터에 맞는 줄이 없습니다 — 다른 정산월을 고르거나 테넌트 ID 를 비우고 다시 조회하세요(없는 수치를 만들지 않습니다).</div>';
+  return '<table><caption class="sr-only">테넌트 과금 라인</caption><thead><tr><th scope="col">기간</th><th scope="col">테넌트</th><th scope="col">건수</th><th scope="col">과금 단위</th><th scope="col">금액(원)</th><th scope="col">상태</th><th scope="col">비고</th></tr></thead><tbody>'
+    +lines.map(function(l){return '<tr><td>'+scEsc(l.period)+'</td><td><code>'+scEsc(l.tenant_id)+'</code></td><td style="text-align:right">'+scNum(l.count)+'</td><td>'+scEsc(l.unit_label||l.unit)+'</td><td style="text-align:right"><b>'+scNum(l.amount_krw)+'</b></td><td>'+scStatusTag(l.status,l.demo)+'</td><td class="hint">'+scEsc(l.note||'')+'</td></tr>';}).join('')+'</tbody></table>';}
+function scRender(d){SC.d=d;var t=d.totals||{};
+  document.getElementById('scSourceTag').textContent=d.demo?'데모 데이터':'출처 '+(d.source||'-');document.getElementById('scCountTag').textContent=scNum(t.lines||0)+'줄';
+  var chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span class="tag neu">'+scEsc(d.month)+' 정산</span><span class="tag neu">초안(draft)</span>'
+    +(d.demo?'<span class="tag bad">데모 데이터 — 실측 아님</span>':'<span class="tag ok">출처 '+scEsc(d.source)+'</span>')
+    +'<span class="tag neu">테넌트 '+scNum(t.tenants)+'</span><span class="tag neu">건수 '+scNum(t.count)+'</span>'
+    +'<span class="tag '+(t.amount_complete?'ok':'neu')+'">금액 합계 '+scNum(t.amount_krw)+'원'+(t.amount_complete?'':' · 일부 미확정')+'</span></div>';
+  var warn=d.demo?'<div class="summary" style="margin-bottom:10px"><b>데모 데이터입니다.</b> 아래 수치는 실측이 아니며 화면 확인용입니다. 실제 집계는 <code>SETTLEMENT_SOURCE</code> 설정 후 표시됩니다. <b>[승인 필요]</b></div>':'';
+  if(d.source_note)warn+='<div class="summary" style="color:var(--red);margin-bottom:6px">'+scEsc(d.source_note)+'</div>';
+  scSet(chips+warn+scRows(d.lines)+'<div class="hint" style="margin-top:8px">'+scEsc(d.note||'')+'</div>');}
+function scRun(){if(SC.busy)return;var q=scQuery();if(q===null)return;scBtns(true);scBusy('과금 라인을 모으는 중…');
+  fetch('/api/settlement?op=lines'+(q?'&'+q:''),{cache:'no-store'}).then(scJson).then(function(x){
+    if(x.s!==200||!x.d||!x.d.ok){SC.d=null;scHttpErr(x);return;}scRender(x.d);
+  }).catch(function(e){SC.d=null;scFail('네트워크 요청에 실패했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요. ('+scEsc(e&&e.message||e)+')');}).then(function(){scBtns(false);},function(){scBtns(false);});}
+/* CSV 는 화면에서 조립한다 — 규칙은 서버(_settle_lines.csv_cell)와 같다: 수식 주입 무력화 + 구분자·따옴표·개행 감싸기, 모르는 금액은 빈 칸, 데모 표식 유지 */
+function scCsvCell(v){var s=(v==null?'':String(v)).replace(/\u0000/g,'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function scCsv(){var d=SC.d;if(!d||!d.lines||!d.lines.length){scFail('내려받을 줄이 없습니다. 먼저 <b>라인 조회</b>를 눌러 주세요.');return;}
+  var head=['기간','테넌트','건수','과금 단위','금액(원)','상태','비고'];
+  var rows=[head.join(',')].concat(d.lines.map(function(l){return [l.period,l.tenant_id,l.count,l.unit_label||l.unit,l.amount_krw==null?'':l.amount_krw,l.status,d.demo?'데모 데이터':(l.note||'')].map(scCsvCell).join(',');}));
+  var text='\uFEFF'+rows.join('\r\n')+'\r\n',name='settlement_lines_'+(d.month||'unknown')+(d.demo?'_demo':'_draft')+'.csv';
+  try{var u=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(u);},2000);}
+  catch(e){scFail('내려받기를 시작하지 못했습니다: '+scEsc(e));return;}
+  toast(name+' 를 내려받았습니다. 엑셀에서 바로 열립니다(UTF-8 BOM).');}
+(function(){var s=document.getElementById('view-settlelines');if(!s||!window.MutationObserver)return;var done=false;new MutationObserver(function(){if(done||s.classList.contains('hidden'))return;done=true;scRun();}).observe(s,{attributes:true,attributeFilter:['class']});})();
 /* ---- 정산 리포트(파트너) — 서버 응답만 그린다. 값이 없으면 0 이 아니라 — 로 둔다 ---- */
 function slEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
 function slSet(h){var o=document.getElementById('slOut');if(o)o.innerHTML=h;}

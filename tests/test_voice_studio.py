@@ -303,6 +303,19 @@ class Wiring(unittest.TestCase):
         for fid in ("vsVoice", "vsRate", "vsFormat", "vsScript", "vsNotice"):
             self.assertIn('for="%s"' % fid, sec, "라벨 연결: " + fid)
         self.assertIn("'/api/voice-studio?op=synth'", h)
+
+    def test_console_shows_pending_voices_and_source(self):
+        """준비 중(unavailable) 목소리는 고를 수 없는 「준비 중」으로, 목록 출처는 태그로 드러낸다."""
+        h = io.open(os.path.join(ROOT, "public", "admin.html"), encoding="utf-8").read()
+        i = h.find("var VS={st:null")
+        js = h[i:h.find("</script>", i)]
+        self.assertIn("j.clone_pending", js)
+        self.assertIn("준비 중", js)
+        self.assertIn('<option value="" disabled>', js, "준비 중 목소리는 선택 불가")
+        self.assertIn("j.clone_source", js)
+        self.assertIn("v.kind==='builtin'", js, "엔진 기본 목소리는 복제가 아니라 AI 안내 음성 기본값이 다르다")
+        self.assertIn("다시 불러오기", js, "목록 조회 실패 시 다음 행동")
+        self.assertIn("VS.loading", js, "상태 조회 중복 호출 방지")
         self.assertIn("AI 생성 음성", h, "WAV 메타데이터에 AI 생성 표시")
         self.assertIn("vsIsClone()", h, "복제 목소리는 AI 안내 음성이 기본으로 켜진다")
 

@@ -37,6 +37,9 @@ HTTP (읽기 전용)
   GET /api/settlement?op=export&month=YYYY-MM   → CSV 내보내기
   GET /api/settlement?op=ratecard          → 요율표(검증 결과 포함, 값은 설정값)
   GET /api/settlement?op=usage&month=       → 실적 집계 커버리지
+  GET /api/settlement?op=lines&month=&tenant=&format=json|csv
+                                           → 테넌트 과금 라인(기간·테넌트·건수·과금 단위·금액, `_settle_lines`).
+                                             SETTLEMENT_SOURCE 미설정이면 「데모 데이터」 표식이 붙은 데모 줄.
   POST                                     → 405 (요율·실적은 API 로 바꾸지 않는다)
 
 셀프테스트: python3 api/settlement.py
@@ -59,6 +62,7 @@ from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import partners   # noqa: E402  (귀속 장부 — 정산의 단일 진실원)
+import _settle_lines   # noqa: E402  (테넌트 과금 라인 — op=lines, 저장소 모듈을 import 하지 않는다)
 
 KST_OFFSET = 9 * 3600          # 월·일 경계는 한국 시각으로 끊는다
 DAY = 86400
@@ -364,6 +368,21 @@ def usage_coverage(month=None, now=None):
             "scope": "instance",   # 인스턴스 메모리 — 클러스터 합산이 아니다
         },
     }
+
+
+def month_buckets(month):
+    """그 달(KST 경계)에 속한 (고객사×일) 버킷 사본 — `_settle_lines.ledger_lines` 입력."""
+    start, end = month_range(month)
+    with _LOCK:
+        return [dict(b) for b in _USAGE.values() if start <= day_start(b["day"]) < end]
+
+
+def settlement_lines(month, tenant_id=None, env=None):
+    """테넌트 과금 라인 응답(`op=lines`). 출처는 SETTLEMENT_SOURCE — 기본은 데모 데이터(표식 포함)."""
+    env = os.environ if env is None else env
+    src, _ = _settle_lines.source(env)
+    buckets = month_buckets(month) if src == "ledger" else None
+    return _settle_lines.build(month, env, buckets=buckets, tenant_id=tenant_id)
 
 
 def reset_usage():
@@ -729,7 +748,8 @@ try:
 except Exception:          # pragma: no cover
     _audit = None
 
-GET_OPS = ("summary", "report", "export", "ratecard", "usage")
+GET_OPS = ("summary", "report", "export", "ratecard", "usage", "lines")
+LINES_FORMATS = ("json", "csv")
 
 
 def _audit_safe(headers, path, method, result, status, rid):
@@ -807,6 +827,15 @@ class handler(BaseHTTPRequestHandler):
         except ValueError as e:
             raise _errors.ValidationError.field("partner", str(e))
 
+    def _tenant(self, q):
+        tid = _errors.query_str(q, "tenant", default="", max_len=40)
+        if not tid:
+            return None
+        try:
+            return partners.validate_tenant_id(tid)
+        except ValueError as e:
+            raise _errors.ValidationError.field("tenant", str(e))
+
     def do_GET(self):
         rq = _log.begin(self.headers, "/api/settlement", "GET", self.path)
         if not self._gate(rq, "GET"):
@@ -834,6 +863,15 @@ class handler(BaseHTTPRequestHandler):
                        "editable_via_api": False}
             elif op == "usage":
                 out = {"ok": True, **usage_coverage(self._month(q))}
+            elif op == "lines":
+                fmt = _errors.query_choice(q, "format", LINES_FORMATS, default="json")
+                out = settlement_lines(self._month(q), self._tenant(q))
+                if fmt == "csv":
+                    rq.set(op=op, lines=len(out["lines"]), demo=out["demo"])
+                    self._send_csv(_settle_lines.to_csv(out), _settle_lines.csv_filename(out), rq)
+                    _audit_safe(self.headers, self.path, "GET", "allow", 200, rq.request_id)
+                    rq.finish(200)
+                    return
             else:
                 out = summary()
             rq.set(op=op)
