@@ -70,6 +70,12 @@ class RateLimit(unittest.TestCase):
             self.assertEqual(_ratelimit.client_ip(FakeHeaders({"x-real-ip": " 10.0.0.9 "})), "10.0.0.9")
             self.assertEqual(_ratelimit.client_ip(FakeHeaders({"x-forwarded-for": " , "})), "unknown")
 
+    def test_broken_header_store_is_unknown(self):
+        class Boom(object):
+            def get(self, *a):
+                raise RuntimeError("headers gone")
+        self.assertEqual(_ratelimit.client_ip(Boom()), "unknown")
+
     def test_last_store_failure_is_swallowed(self):
         class Broken(object):
             def __setattr__(self, k, v):
@@ -128,22 +134,21 @@ class Health(unittest.TestCase):
 
     def test_sub_module_lookups_restore_sys_path(self):
         """함수 안의 sys.path 가드 — api 폴더가 경로에서 빠져도 스스로 넣고 답한다."""
-        removed = [p for p in sys.path if os.path.abspath(p) == os.path.abspath(API)]
-        for p in removed:
-            sys.path.remove(p)
+        def strip_api():
+            gone = [p for p in sys.path if os.path.abspath(p) == os.path.abspath(API)]
+            for p in gone:
+                sys.path.remove(p)
+            return gone
+        saved = list(sys.path)
         try:
-            self.assertNotIn(API, [os.path.abspath(p) for p in sys.path])
             with Env(SPEECH_LIVE=None):
-                sp = health._speech() if hasattr(health, "_speech") else {}
-            self.assertIsInstance(health._monitoring(), dict)
-            self.assertIsInstance(health._ratelimit_status(), dict)
-            self.assertIsInstance(health._audit_status(), dict)
-            self.assertIsInstance(sp, dict)
-            self.assertIn(os.path.abspath(API), [os.path.abspath(p) for p in sys.path])
+                for fn in (health._monitoring, health._ratelimit_status, health._audit_status):
+                    strip_api()      # 앞 함수가 다시 넣은 경로를 매번 뺀다 — 각 함수의 가드가 실제로 돈다
+                    self.assertNotIn(os.path.abspath(API), [os.path.abspath(p) for p in sys.path])
+                    self.assertIsInstance(fn(), dict, fn.__name__)
+                    self.assertIn(os.path.abspath(API), [os.path.abspath(p) for p in sys.path], fn.__name__)
         finally:
-            for p in removed:
-                if p not in sys.path:
-                    sys.path.insert(0, p)
+            sys.path[:] = saved
 
     def test_close_without_rq_and_with_broken_rq(self):
         health._close(None, 200)                       # rq 없음 → 조용히 반환
