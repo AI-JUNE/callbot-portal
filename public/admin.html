@@ -3317,14 +3317,26 @@ console.log('%cCallBot BUILD B149 · 2026-09-01','color:#be5535;font-weight:800'
 <script>
 /* 보이스 스튜디오(09-29) — 서버는 한 줄씩 소리만 준다(/api/voice-studio). 형식 변환·AI 안내 음성 이어 붙이기·ZIP 은 브라우저에서.
    AI 생성 표시: 모든 WAV 의 LIST/INFO 에 「AI 생성」 기록(ISFT·ICMT). 복제 목소리는 AI 안내 음성 붙이기가 기본으로 켜진다. */
-var VS={st:null,rows:[],out:{},stop:false,busy:false,notice:null,wait:0};
+var VS={st:null,rows:[],out:{},stop:false,busy:false,notice:null,wait:0,loading:false};
 function vsEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-async function vsInit(){if(VS.st)return;try{var r=await fetch('/api/voice-studio?op=status');var j=await r.json();if(!r.ok||!j.ok)throw 0;VS.st=j;
+/* 목소리 목록: 표준(edge-tts) + 엔진이 준 목록(동의 확인됨). 동의는 끝났지만 아직 쓸 수 없는 목소리(clone_pending)는
+   고를 수 없는 「준비 중」으로 보여 준다 — 골랐다가 409·501 을 보지 않게. 목록 출처(clone_source)는 화면에 드러낸다. */
+async function vsInit(){if(VS.st||VS.loading)return;VS.loading=true;var tag=document.getElementById('vsEngineTag'),note=document.getElementById('vsCloneNote');
+  tag.textContent='엔진 확인 중…';note.innerHTML='<span role="status">목소리 목록을 불러오는 중입니다…</span>';
+  try{var r=await fetch('/api/voice-studio?op=status',{cache:'no-store'});var j=await r.json();if(!r.ok||!j.ok)throw 0;VS.st=j;
   var sel=document.getElementById('vsVoice');var h='<optgroup label="표준 음성">'+j.standard.map(function(v){return '<option value="'+vsEsc(v.id)+'">'+vsEsc(v.name)+'</option>';}).join('')+'</optgroup>';
-  h+=j.clone.length?'<optgroup label="복제 목소리 (동의 확인됨)">'+j.clone.map(function(v){return '<option value="'+vsEsc(v.id)+'" data-clone="1">'+vsEsc(v.name)+'</option>';}).join('')+'</optgroup>':'';
-  sel.innerHTML=h;document.getElementById('vsEngineTag').textContent=j.clone_ready?'복제 목소리 엔진 연결됨':'표준 음성 사용 가능 · 복제 엔진 연결 전';
-  document.getElementById('vsCloneNote').textContent=j.clone_note||'';vsVoiceChanged();vsParse();}
- catch(e){document.getElementById('vsEngineTag').textContent='엔진 상태를 불러오지 못했습니다';toast('보이스 스튜디오 상태를 불러오지 못했습니다. 잠시 뒤 다시 열어 주세요.');}}
+  var cl=(j.clone||[]).filter(function(v){return v.kind!=='builtin';}),bi=(j.clone||[]).filter(function(v){return v.kind==='builtin';}),pd=j.clone_pending||[];
+  h+=cl.length?'<optgroup label="복제 목소리 (동의 확인됨)">'+cl.map(function(v){return '<option value="'+vsEsc(v.id)+'" data-clone="1">'+vsEsc(v.name)+'</option>';}).join('')+'</optgroup>':'';
+  h+=bi.length?'<optgroup label="엔진 기본 목소리">'+bi.map(function(v){return '<option value="'+vsEsc(v.id)+'">'+vsEsc(v.name)+'</option>';}).join('')+'</optgroup>':'';
+  h+=pd.length?'<optgroup label="준비 중 (아직 쓸 수 없음)">'+pd.map(function(v){return '<option value="" disabled>'+vsEsc(v.name)+' — 준비 중</option>';}).join('')+'</optgroup>':'';
+  sel.innerHTML=h;var src={engine:'목록: 엔진 조회',env:'목록: 설정값',env_fallback:'목록: 설정값(엔진 응답 없음)'}[j.clone_source]||'';
+  tag.textContent=(j.clone_ready?'복제 목소리 엔진 연결됨':'표준 음성 사용 가능 · 복제 엔진 연결 전')+(src?' · '+src:'');
+  var pdNote=pd.length?'<div style="margin-top:4px">준비 중인 목소리 '+pd.length+'건: '+pd.map(function(v){return '<b>'+vsEsc(v.name)+'</b>'+(v.reason?' ('+vsEsc(v.reason)+')':'');}).join(', ')+'</div>':'';
+  note.innerHTML=vsEsc(j.clone_note||'')+pdNote;vsVoiceChanged();vsParse();}
+ catch(e){tag.textContent='엔진 상태를 불러오지 못했습니다';
+  note.innerHTML='<span role="alert" style="color:var(--red)">목소리 목록을 불러오지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.</span> <button type="button" onclick="vsInit()">다시 불러오기</button>';
+  document.getElementById('vsVoice').innerHTML='<option value="">목록을 불러오지 못했습니다</option>';}
+ finally{VS.loading=false;}}
 function vsIsClone(){var o=document.getElementById('vsVoice').selectedOptions[0];return !!(o&&o.dataset.clone);}
 function vsVoiceChanged(){document.getElementById('vsNotice').checked=vsIsClone();}
 function vsParse(){var t=document.getElementById('vsScript').value,rows=[],seen={},err='';var max=(VS.st&&VS.st.max_chars)||300;
@@ -3363,13 +3375,16 @@ function vsWav(pcm,rate,fmt){var codec=fmt==='ulaw8k'?7:fmt==='alaw8k'?6:1,bps=c
   str('LIST');v.setUint32(o,infoLen,true);o+=4;str('INFO');info.forEach(function(x){str(x.id);v.setUint32(o,x.b.length,true);o+=4;new Uint8Array(buf,o,x.b.length).set(x.b);o+=x.b.length+x.pad;});
   str('data');v.setUint32(o,data,true);o+=4;for(var i=0;i<n;i++){var s=pcm[i];if(codec===1){v.setInt16(o,Math.max(-32768,Math.min(32767,Math.round(s*32767))),true);o+=2;}else{v.setUint8(o++,codec===7?vsMuLaw(s):vsALaw(s));}}
   return new Blob([buf],{type:'audio/wav'});}
-async function vsOne(i){var r=VS.rows[i];if(!r)return;var voice=document.getElementById('vsVoice').value,fmt=document.getElementById('vsFormat').value,rate=fmt==='wav24k'?24000:8000;
+async function vsOne(i){var r=VS.rows[i];if(!r)return;if(VS.out[r.name]&&VS.out[r.name].busy)return;/* 같은 줄 두 번 클릭 = 요청 1건만 */
+  var voice=document.getElementById('vsVoice').value,fmt=document.getElementById('vsFormat').value,rate=fmt==='wav24k'?24000:8000;
+  if(!voice){document.getElementById('vsScriptErr').textContent='목소리를 골라 주세요. 목록이 비어 있으면 「다시 불러오기」를 눌러 주세요.';return;}
   VS.out[r.name]={busy:true};vsRender();
   try{var parts=[{gap:0.1}];if(document.getElementById('vsNotice').checked){if(!VS.notice)VS.notice=await vsSynth(VS.st.notice_text,VS.st.standard[0].id);parts.push({buf:VS.notice},{gap:0.35});}
     parts.push({buf:await vsSynth(r.text,voice)},{gap:0.45});var pcm=await vsRender1(parts,rate);var blob=vsWav(pcm,rate,fmt);
     var old=VS.out[r.name];if(old&&old.url)URL.revokeObjectURL(old.url);VS.out[r.name]={blob:blob,url:URL.createObjectURL(blob),sec:pcm.length/rate};}
   catch(e){VS.out[r.name]={err:(e&&e.rate)?('요청 한도 · '+VS.wait+'초 대기'):((e&&e.message)||'실패')};if(e&&e.rate)VS.stop=true;}vsRender();}
-async function vsRunAll(){if(VS.busy)return;if(!VS.st){await vsInit();if(!VS.st)return;}if(!vsParse())return;if(!VS.rows.length){document.getElementById('vsScriptErr').textContent='대본에 만들 문장이 없습니다. 「파일이름 | 문장」 형식으로 한 줄씩 넣어 주세요.';return;}
+async function vsRunAll(){if(VS.busy)return;if(!VS.st){await vsInit();if(!VS.st){document.getElementById('vsScriptErr').textContent='목소리 목록을 아직 불러오지 못했습니다. 「다시 불러오기」를 누른 뒤 다시 시도해 주세요.';return;}}if(!vsParse())return;if(!VS.rows.length){document.getElementById('vsScriptErr').textContent='대본에 만들 문장이 없습니다. 「파일이름 | 문장」 형식으로 한 줄씩 넣어 주세요.';return;}
+  if(!document.getElementById('vsVoice').value){document.getElementById('vsScriptErr').textContent='목소리를 골라 주세요.';return;}
   VS.busy=true;VS.stop=false;VS.wait=0;document.getElementById('vsRunBtn').disabled=true;document.getElementById('vsStopBtn').disabled=false;var bar=document.getElementById('vsProgBar'),pg=document.getElementById('vsProg');
   for(var i=0;i<VS.rows.length&&!VS.stop;i++){await vsOne(i);var p=Math.round((i+1)/VS.rows.length*100);bar.style.width=p+'%';pg.setAttribute('aria-valuenow',p);}
   VS.busy=false;document.getElementById('vsRunBtn').disabled=false;document.getElementById('vsStopBtn').disabled=true;vsRender();

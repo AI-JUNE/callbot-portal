@@ -10,6 +10,15 @@ URL: /api/voice-studio?op=status (GET) · /api/voice-studio?op=synth (POST)  —
                VOICE_ENGINE_URL · VOICE_ENGINE_SECRET(HMAC) · VOICE_STUDIO_VOICES(JSON 목록)
                목록에는 **동의 확인을 마친** 목소리만 넣는다(consent="ok" 가 아니면 거절한다).
 
+목소리 목록의 출처 (10-07, Voice-SaaS 백로그 P2 「AICC 포털 보이스 스튜디오 연동」)
+  - VOICE_STUDIO_VOICE_SOURCE=engine 이면 워커의 `GET /v1/voices`(서명 필수, 본문 없는 GET 이라
+    `ts + "\n" + ""` 에 서명)를 불러 **동의 확인된 목록을 워커가 준 대로** 쓴다 — 사람이 적어 넣는
+    환경변수 목록은 동의 기록과 어긋날 수 있다. 호출 실패(타임아웃·401·500·깨진 JSON)는 빈 결과로
+    삼고 VOICE_STUDIO_VOICES 를 **대체 수단**으로 쓴다. 매 status 마다 GPU 서버를 두드리지 않도록
+    짧게 캐시한다(VOICES_CACHE_TTL). 동의는 통과했지만 아직 쓸 수 없는 목소리(`unavailable`)는
+    `clone_pending` 으로 내보내 화면이 「준비 중」으로 그린다(골랐다가 409·501 을 보지 않게).
+  - 기본값(미설정)은 종전과 같다(환경변수 목록만) — build now, activate on approval.
+
 원칙
   - 형식 변환(8kHz PCM·μ-law·A-law)과 AI 안내 음성 이어 붙이기, 파일 묶음(ZIP)은 브라우저가 한다 — 서버는 한 줄씩 소리만 돌려준다.
   - 실호출 비용: 복제 엔진은 GPU 를 쓴다. 한 번에 한 줄(최대 MAX_CHARS 글자)만 받는다.
@@ -43,6 +52,12 @@ MAX_BODY = 8192          # 한 줄 합성 요청이라 본문은 작다(과금·
 # 복제 엔진(GPU) 대기 예산. 서버리스 응답 한도(30초)보다 넉넉히 짧아야
 # 플랫폼이 먼저 요청을 끊지 않고 우리가 표준 봉투로 답할 수 있다.
 CLONE_TIMEOUT = 25
+# 목소리 목록 조회 예산·캐시. 목록은 상태 조회(화면 진입)마다 필요하므로 GPU 워커를 오래 기다리지
+# 않고(3초), 받은 결과는 60초, 실패는 15초만 기억한다(죽은 워커를 매번 3초씩 기다리지 않게).
+VOICES_TIMEOUT = 3
+VOICES_CACHE_TTL = 60
+VOICES_FAIL_TTL = 15
+VOICE_SOURCES = ("env", "engine")
 STANDARD_VOICES = [
     {"id": "ko-KR-SunHiNeural", "name": "선희 (여성 · 안내)", "kind": "standard"},
     {"id": "ko-KR-InJoonNeural", "name": "인준 (남성 · 안내)", "kind": "standard"},
@@ -73,15 +88,99 @@ def engine_ready(env=None):
     return bool((env.get("VOICE_ENGINE_URL") or "").startswith("https://") and (env.get("VOICE_ENGINE_SECRET") or "").strip())
 
 
+def voice_source(env=None):
+    """목소리 목록 출처 스위치 — `engine` 정확 일치만 켠다(그 밖은 전부 `env`, 기본 OFF)."""
+    env = os.environ if env is None else env
+    v = (env.get("VOICE_STUDIO_VOICE_SOURCE") or "").strip().lower()
+    return v if v in VOICE_SOURCES else "env"
+
+
+def _norm_voice(v, default_kind="clone"):
+    """워커 응답 한 줄 → 포털 목소리 칸. consent="ok" 가 아니면 None(포털에서 한 번 더 거른다)."""
+    if not isinstance(v, dict) or not v.get("id") or v.get("consent") != "ok":
+        return None
+    kind = str(v.get("kind") or default_kind)
+    if kind not in ("clone", "builtin"):
+        kind = default_kind
+    out = {"id": str(v["id"])[:64], "name": str(v.get("name") or v["id"])[:40], "kind": kind,
+           "note": str(v.get("note") or "")[:80]}
+    if v.get("reason"):
+        out["reason"] = str(v["reason"])[:120]
+    return out
+
+
+# 프로세스 안 캐시: url → {"until": 만료 시각, "cat": 목록 또는 None(실패)}
+_VOICES_CACHE = {}
+
+
+def _voices_cache_clear():
+    _VOICES_CACHE.clear()
+
+
+def fetch_catalog(env=None, now=None):
+    """워커 `GET /v1/voices` → {"voices": [...], "unavailable": [...]} 또는 실패 시 None.
+
+    서명은 synth 와 같은 규약(`sign`)이고 본문이 없으므로 빈 바이트에 서명한다.
+    어떤 예외(네트워크·타임아웃·401/500·JSON 아님·`ok` 거짓)도 밖으로 내지 않는다 — 목록 조회가
+    실패해도 화면은 표준 음성으로 계속 일해야 한다. 결과는 짧게 캐시한다.
+    """
+    env = os.environ if env is None else env
+    if not engine_ready(env):
+        return None
+    url = env["VOICE_ENGINE_URL"].rstrip("/") + "/v1/voices"
+    t = time.time() if now is None else float(now)
+    hit = _VOICES_CACHE.get(url)
+    if hit is not None and hit["until"] > t:
+        return hit["cat"]
+    cat = None
+    try:
+        ts = int(t)
+        r = urllib.request.Request(url, method="GET", headers={
+            "X-Timestamp": str(ts), "X-Signature": sign(env["VOICE_ENGINE_SECRET"].strip(), ts, b"")})
+        with urllib.request.urlopen(r, timeout=VOICES_TIMEOUT) as res:
+            j = json.loads(res.read().decode("utf-8"))
+        if isinstance(j, dict) and j.get("ok") is True and isinstance(j.get("voices"), list):
+            voices = [x for x in (_norm_voice(v) for v in j["voices"]) if x]
+            pend = j.get("unavailable") if isinstance(j.get("unavailable"), list) else []
+            unavailable = [x for x in (_norm_voice(v) for v in pend) if x]
+            cat = {"voices": voices, "unavailable": unavailable}
+    except Exception:
+        cat = None
+    _VOICES_CACHE[url] = {"until": t + (VOICES_CACHE_TTL if cat is not None else VOICES_FAIL_TTL), "cat": cat}
+    return cat
+
+
+def fetch_voices(env=None, now=None):
+    """지금 워커가 실제로 합성해 주는(동의 확인된) 목소리 목록 — 어떤 실패에도 빈 목록."""
+    cat = fetch_catalog(env, now)
+    return list(cat["voices"]) if cat else []
+
+
 def status(env=None):
-    clones = clone_voices(env)
-    ready = engine_ready(env) and bool(clones)
+    env = os.environ if env is None else env
+    engine = engine_ready(env)
+    clones, pending, source = clone_voices(env), [], "env"
+    if engine and voice_source(env) == "engine":
+        cat = fetch_catalog(env)
+        if cat is not None:
+            clones, pending, source = cat["voices"], cat["unavailable"], "engine"
+        else:
+            source = "env_fallback"    # 워커 응답이 없어 환경변수 목록으로 대신한다(화면에 드러낸다)
+    ready = engine and bool(clones)
+    if ready:
+        note = ""
+    elif engine and pending:
+        note = "복제 목소리가 준비 중입니다 — 동의 확인은 끝났지만 아직 합성할 수 없습니다. 표준 음성으로 제작할 수 있습니다."
+    else:
+        note = "복제 목소리 엔진 연결 전 — 표준 음성으로 제작할 수 있습니다. 목소리 복제는 본인 동의 녹음을 마친 목소리만 등록됩니다."
     return {
         "ok": True,
         "standard": STANDARD_VOICES,
         "clone": clones if ready else [],
+        "clone_pending": pending if engine else [],
         "clone_ready": ready,
-        "clone_note": "" if ready else "복제 목소리 엔진 연결 전 — 표준 음성으로 제작할 수 있습니다. 목소리 복제는 본인 동의 녹음을 마친 목소리만 등록됩니다.",
+        "clone_source": source,
+        "clone_note": note,
         "max_chars": MAX_CHARS,
         "formats": list(FORMATS),
         "notice_text": NOTICE_TEXT,
