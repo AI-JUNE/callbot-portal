@@ -116,6 +116,12 @@ class OrderBackend:
         fn = getattr(self, tool, None)
         if fn is None or tool.startswith("_") or tool == "dispatch":
             return {"error": f"unknown {tool}"}
+        if inp and not isinstance(inp, dict):
+            # 툴 인자는 모델 출력이다 — 배열·문자열이면 구현체의 `inp.get(...)` 이
+            # AttributeError 로 터져 통화가 500 으로 끝난다. 계약(dict)을 지키고,
+            # 비어 있는 인자로 **갈아 끼워 실행하지 않는다**(모델이 뭘 의도했는지
+            # 알 수 없으므로 쓰기 툴이 빈 인자로 나가는 쪽이 더 위험하다).
+            return {"error": "invalid input"}
         return fn(inp or {})
 
 

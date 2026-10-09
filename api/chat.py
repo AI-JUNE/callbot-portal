@@ -65,6 +65,12 @@ def validate_messages(msgs):
             for j, tc in enumerate(tcs):
                 if not isinstance(tc, dict) or not isinstance(tc.get("name"), str):
                     raise bad(i, "tool_calls[%d].name" % j, "형식이 올바르지 않습니다")
+                # `input` 은 engine._to_contents 가 `tc["input"]` 으로 읽는다 —
+                # 누락·비객체면 KeyError/형식 오류가 engine 안에서 터져 **사용자
+                # 입력 오류가 500** 으로 보고됐다(모니터링 알림 노이즈).
+                # 어느 칸이 왜 틀렸는지 지목한다(engine 은 2차 방어).
+                if not isinstance(tc.get("input"), dict):
+                    raise bad(i, "tool_calls[%d].input" % j, "객체(JSON object)여야 합니다")
     return msgs
 
 class handler(BaseHTTPRequestHandler):

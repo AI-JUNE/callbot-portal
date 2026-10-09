@@ -19,6 +19,19 @@ URL: /api/voice-studio?op=status (GET) · /api/voice-studio?op=synth (POST)  —
     `clone_pending` 으로 내보내 화면이 「준비 중」으로 그린다(골랐다가 409·501 을 보지 않게).
   - 기본값(미설정)은 종전과 같다(환경변수 목록만) — build now, activate on approval.
 
+아웃바운드 주소 (10-09, 23차가 남긴 제안 「설정 유래 아웃바운드 점검」)
+  - `VOICE_ENGINE_URL` 은 환경변수지만 검증은 한다(`_urlguard` — 안부 웹훅·녹음·주문
+    백엔드와 **같은 함수**). 오타·잘못 복사한 값(평문 http·사설 IP·`169.254.169.254`)
+    으로 나가면 합성할 문장과 **HMAC 서명 헤더**가 그 주소로 흘러간다. 거부되면
+    요청 자체를 보내지 않는다(blind SSRF 미성립). 탈출구는
+    `VOICE_ENGINE_ALLOW_INSECURE=1`(로컬 개발 전용)·`VOICE_ENGINE_HOSTS`(화이트리스트).
+  - **리다이렉트를 따라가지 않는다.** urllib 은 302 를 따라갈 때 헤더를 그대로 다시
+    싣는다 — 받는 쪽이 바뀌면 `X-Signature`(그 본문에 대한 유효한 서명)를 공짜로 얻는다.
+    사후 재검증(`wellbeing`·`_order_backend` 방식)은 이미 나간 요청을 되돌리지 못하므로
+    여기서는 애초에 따라가지 않는다(우리 워커 규약에 리다이렉트는 없다).
+  - 응답 본문에 상한을 둔다 — 워커가 거대한(혹은 끝나지 않는) 본문을 주면 서버리스
+    메모리로 통화가 죽는다.
+
 원칙
   - 형식 변환(8kHz PCM·μ-law·A-law)과 AI 안내 음성 이어 붙이기, 파일 묶음(ZIP)은 브라우저가 한다 — 서버는 한 줄씩 소리만 돌려준다.
   - 실호출 비용: 복제 엔진은 GPU 를 쓴다. 한 번에 한 줄(최대 MAX_CHARS 글자)만 받는다.
@@ -46,6 +59,9 @@ if _d not in sys.path:
     sys.path.insert(0, _d)
 
 import _errors
+# 아웃바운드 주소 검증은 보안 통제라 폴백을 두지 않는다 — 모듈을 못 불러오면 검증 없이
+# 나가는 것보다 import 시점에 드러나는 편이 안전하다(`_order_backend` 와 같은 판단).
+import _urlguard
 
 MAX_CHARS = 300
 MAX_BODY = 8192          # 한 줄 합성 요청이라 본문은 작다(과금·메모리 방어)
@@ -58,6 +74,10 @@ VOICES_TIMEOUT = 3
 VOICES_CACHE_TTL = 60
 VOICES_FAIL_TTL = 15
 VOICE_SOURCES = ("env", "engine")
+# 워커 응답 상한. 목록은 작고(JSON 한 덩어리), 오디오는 한 줄(MAX_CHARS 글자)이라
+# base64 전 원본이 수 MB 를 넘을 이유가 없다 — `_errors.MAX_BODY_AUDIO` 와 같은 눈금.
+MAX_VOICES_RESPONSE = 1 << 18        # 256KiB
+MAX_AUDIO_RESPONSE = 8 << 20         # 8MiB
 STANDARD_VOICES = [
     {"id": "ko-KR-SunHiNeural", "name": "선희 (여성 · 안내)", "kind": "standard"},
     {"id": "ko-KR-InJoonNeural", "name": "인준 (남성 · 안내)", "kind": "standard"},
@@ -83,9 +103,48 @@ def clone_voices(env=None):
     return out
 
 
-def engine_ready(env=None):
+def _flag(env, name):
+    """`"1"` 정확 일치만 ON — 저장소의 다른 게이트와 같은 규약.
+
+    `_urlguard.env_flag` 는 `os.environ` 을 직접 읽는다. 이 모듈의 함수들은 호출자가
+    넘긴 `env` 로 판단해야(테스트·호출 시점 판독) 하므로 같은 규약을 여기서 다시 쓴다.
+    """
+    return ((env.get(name) or "").strip() if hasattr(env, "get") else "") == "1"
+
+
+def _hosts(env, name):
+    v = (env.get(name) or "").strip()
+    return [x.strip().lower() for x in v.split(",") if x.strip()] if v else []
+
+
+def check_engine_url(url, env=None):
+    """(ok, reason). 음성합성 워커 주소로 나가도 되는가.
+
+    판정 구현은 `_urlguard` 한 곳이다(안부 웹훅·녹음 다운로드·주문 백엔드와 공용) —
+    규칙을 여러 군데 적어 두면 한쪽만 고쳐지는 일이 반드시 생긴다.
+    """
     env = os.environ if env is None else env
-    return bool((env.get("VOICE_ENGINE_URL") or "").startswith("https://") and (env.get("VOICE_ENGINE_SECRET") or "").strip())
+    return _urlguard.check(url, label="VOICE_ENGINE_URL",
+                           allow_insecure=_flag(env, "VOICE_ENGINE_ALLOW_INSECURE"),
+                           allowlist=_hosts(env, "VOICE_ENGINE_HOSTS"))
+
+
+def engine_status(env=None):
+    """(ready, reason). 복제 엔진을 쓸 수 있는 설정인가.
+
+    `reason` 은 **설정이 거부된 경우**에만 채운다. 설정 힌트라서 공개 응답에는
+    디버그 플래그가 켜져 있을 때만 싣는다(`_guard.deny` 와 같은 규약).
+    """
+    env = os.environ if env is None else env
+    url = (env.get("VOICE_ENGINE_URL") or "").strip()
+    if not url or not (env.get("VOICE_ENGINE_SECRET") or "").strip():
+        return False, ""            # 미설정 = 연결 전(거부가 아니다)
+    ok, why = check_engine_url(url, env)
+    return (True, "") if ok else (False, why or "허용되지 않은 주소")
+
+
+def engine_ready(env=None):
+    return engine_status(env)[0]
 
 
 def voice_source(env=None):
@@ -107,6 +166,31 @@ def _norm_voice(v, default_kind="clone"):
     if v.get("reason"):
         out["reason"] = str(v["reason"])[:120]
     return out
+
+
+def _open(req, timeout, limit, env=None):
+    """워커 호출 1회 — 최종 주소 재검증 + 본문 상한. 실패는 전부 예외로 올린다.
+
+    `urlopen` 은 리다이렉트를 따라가고, 따라갈 때 원 요청의 헤더를 그대로 다시 싣는다 —
+    302 한 번으로 가드가 무력화되고 받는 쪽이 바뀌면 `X-Signature`(그 본문에 대한
+    유효한 HMAC)까지 건네진다. 최종 주소를 다시 검증해 **받은 본문을 쓰지 않는다**.
+    한계(숨기지 않고 적는다): 중간 요청 자체는 이미 나간 뒤다 — 그걸 막는 것은
+    아웃바운드 프록시·호스트 화이트리스트(`VOICE_ENGINE_HOSTS`) 몫이다.
+
+    본문 상한을 넘으면 예외 — 잘린 본문을 '정상 응답'으로 파싱하지 않는다.
+    """
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        final = ""
+        try:
+            final = res.geturl() or ""
+        except Exception:
+            final = ""                  # 최종 주소를 못 읽으면 판단 재료가 없다
+        if final and final != req.full_url and not check_engine_url(final, env)[0]:
+            raise urllib.error.URLError("voice engine redirect escape")
+        raw = res.read(limit + 1)
+    if len(raw) > limit:
+        raise urllib.error.URLError("voice engine response too large")
+    return raw
 
 
 # 프로세스 안 캐시: url → {"until": 만료 시각, "cat": 목록 또는 None(실패)}
@@ -137,8 +221,7 @@ def fetch_catalog(env=None, now=None):
         ts = int(t)
         r = urllib.request.Request(url, method="GET", headers={
             "X-Timestamp": str(ts), "X-Signature": sign(env["VOICE_ENGINE_SECRET"].strip(), ts, b"")})
-        with urllib.request.urlopen(r, timeout=VOICES_TIMEOUT) as res:
-            j = json.loads(res.read().decode("utf-8"))
+        j = json.loads(_open(r, VOICES_TIMEOUT, MAX_VOICES_RESPONSE, env).decode("utf-8"))
         if isinstance(j, dict) and j.get("ok") is True and isinstance(j.get("voices"), list):
             voices = [x for x in (_norm_voice(v) for v in j["voices"]) if x]
             pend = j.get("unavailable") if isinstance(j.get("unavailable"), list) else []
@@ -158,7 +241,7 @@ def fetch_voices(env=None, now=None):
 
 def status(env=None):
     env = os.environ if env is None else env
-    engine = engine_ready(env)
+    engine, blocked_why = engine_status(env)
     clones, pending, source = clone_voices(env), [], "env"
     if engine and voice_source(env) == "engine":
         cat = fetch_catalog(env)
@@ -169,22 +252,31 @@ def status(env=None):
     ready = engine and bool(clones)
     if ready:
         note = ""
+    elif blocked_why:
+        # 설정은 있는데 아웃바운드 가드가 거부했다. "연결 전"으로 보고하면 운영자가
+        # 엔진이 아직 안 붙은 줄 알고 기다린다 — 사실을 적는다(주소·사유는 싣지 않는다).
+        note = "복제 목소리 엔진 설정이 거부되었습니다 — VOICE_ENGINE_URL 을 확인해 주세요. 표준 음성으로 제작할 수 있습니다."
     elif engine and pending:
         note = "복제 목소리가 준비 중입니다 — 동의 확인은 끝났지만 아직 합성할 수 없습니다. 표준 음성으로 제작할 수 있습니다."
     else:
         note = "복제 목소리 엔진 연결 전 — 표준 음성으로 제작할 수 있습니다. 목소리 복제는 본인 동의 녹음을 마친 목소리만 등록됩니다."
-    return {
+    out = {
         "ok": True,
         "standard": STANDARD_VOICES,
         "clone": clones if ready else [],
         "clone_pending": pending if engine else [],
         "clone_ready": ready,
         "clone_source": source,
+        "clone_blocked": bool(blocked_why),
         "clone_note": note,
         "max_chars": MAX_CHARS,
         "formats": list(FORMATS),
         "notice_text": NOTICE_TEXT,
     }
+    if blocked_why and (os.environ.get("CALLBOT_DEBUG_ERRORS") or "").strip() in ("1", "true", "yes"):
+        # 거부 사유는 설정 힌트다 — 디버그 플래그가 켜져 있을 때만(`_guard.deny` 규약).
+        out["clone_blocked_reason"] = blocked_why
+    return out
 
 
 _NAME_RE = re.compile(r"[^0-9A-Za-z가-힣_\-]+")
@@ -268,13 +360,20 @@ def synth_standard(text, voice, rate):
 
 def synth_clone(text, voice, rate, env=None):
     env = os.environ if env is None else env
+    url = (env.get("VOICE_ENGINE_URL") or "").strip().rstrip("/") + "/v1/synthesize"
+    ok, _why = check_engine_url(url, env)
+    if not ok:
+        # 여기까지 오는 길은 `status()["clone"]` 이 비지 않아야 하므로 보통 닫혀 있다.
+        # 그래도 2차 방어를 둔다 — 합성할 문장과 서명 헤더를 거부된 주소로 보내지
+        # 않는다(요청 자체를 만들지 않으므로 blind SSRF 도 성립하지 않는다).
+        # 사유는 설정 힌트라 응답에 싣지 않는다(`_errors.handle` 가 500 으로 분류).
+        raise PermissionError("voice engine url blocked")
     body = json.dumps({"voice_id": voice, "text": text, "speed": rate, "format": "wav24k",
                        "job_id": "studio-%d" % int(time.time() * 1000)}).encode()
     ts = int(time.time())
-    r = urllib.request.Request(env["VOICE_ENGINE_URL"].rstrip("/") + "/v1/synthesize", data=body, method="POST", headers={
+    r = urllib.request.Request(url, data=body, method="POST", headers={
         "Content-Type": "application/json", "X-Timestamp": str(ts), "X-Signature": sign(env["VOICE_ENGINE_SECRET"].strip(), ts, body)})
-    with urllib.request.urlopen(r, timeout=CLONE_TIMEOUT) as res:
-        j = json.loads(res.read().decode())
+    j = json.loads(_open(r, CLONE_TIMEOUT, MAX_AUDIO_RESPONSE, env).decode())
     b64 = j.get("audio_b64") if isinstance(j, dict) else None
     if not b64:
         # 워커가 다른 형태로 답한 것은 우리 버그가 아니라 업스트림 장애다(502로 분류).

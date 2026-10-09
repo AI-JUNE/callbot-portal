@@ -113,9 +113,18 @@ class VoicesApi(unittest.TestCase):
         self.raise_exc = None
         tc = self
 
+        self.final_url = None          # None = 리다이렉트 없음(최종 주소 = 요청 주소)
+
         class Res(object):
-            def read(self):
-                return json.dumps(tc.payload).encode("utf-8")
+            def __init__(self, url):
+                self._url = url
+
+            def read(self, amt=None):
+                b = json.dumps(tc.payload).encode("utf-8")
+                return b if amt is None else b[:amt]
+
+            def geturl(self):
+                return tc.final_url or self._url
 
             def __enter__(self):
                 return self
@@ -128,7 +137,7 @@ class VoicesApi(unittest.TestCase):
                              "headers": {k.lower(): v for k, v in req.headers.items()}, "body": req.data})
             if tc.raise_exc is not None:
                 raise tc.raise_exc
-            return Res()
+            return Res(req.full_url)
         urllib.request.urlopen = fake
         _vstudio._voices_cache_clear()
 

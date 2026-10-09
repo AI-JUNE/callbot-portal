@@ -228,6 +228,13 @@ def _dep_monitoring(mon):
     if mon.get("enabled"):
         return _dep("monitoring", "observability", False, OK,
                     "Sentry 전송 활성(env=%s)" % mon.get("environment"))
+    # DSN 을 등록했는데 형식·아웃바운드 가드에서 거부된 경우를 「미설정」으로 뭉개면,
+    # 운영자는 등록해 둔 DSN 으로 수집이 안 되는 이유를 헬스에서 알 수 없다.
+    # 사유에는 호스트 판정 결과만 담긴다(가드는 DSN·키를 되비추지 않는다).
+    why = mon.get("blocked_reason") or ""
+    if mon.get("dsn_present") and why:
+        return _dep("monitoring", "observability", False, MISCONFIGURED,
+                    "SENTRY_DSN 거부: %s — 오류 수집 비활성" % why)
     return _dep("monitoring", "observability", False, NOT_CONFIGURED,
                 "SENTRY_DSN 미설정 — 오류 수집 비활성(no-op)")
 

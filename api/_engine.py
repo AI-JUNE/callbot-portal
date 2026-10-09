@@ -95,11 +95,16 @@ def _sys(phone):
 
 def _mem(messages):
     m={"order_id":None,"max_refund":None,"quoted_amount":None,"awaiting":False,"affirm":False,"transferred":False}; lu=""
-    for x in messages:
+    for x in messages if isinstance(messages,list) else []:
+        if not isinstance(x,dict): continue
         if x.get("role")=="user" and isinstance(x.get("content"),str): lu=x["content"]
         if x.get("role")=="tool":
+            # 툴 결과 본문은 **바깥 값**이다(`/api/chat` 은 대화 이력을 클라이언트가 보낸다).
+            # `"[]"`·`"3"` 처럼 객체가 아닌 JSON 이 오면 json.loads 는 예외를 내지 않으므로
+            # 아래 o.get(...) 이 AttributeError 로 터져 **사용자 입력 오류가 500** 이 됐다.
             try: o=json.loads(x.get("content","{}"))
             except: o={}
+            if not isinstance(o,dict): o={}
             n=x.get("name")
             if n=="lookup_recent_order" and o.get("found"): m["order_id"]=o.get("order_id")
             if n=="get_refund_policy" and o.get("eligible"): m["max_refund"]=o.get("max_refund")
@@ -137,6 +142,12 @@ def _amount(v):
 # 실제 접수 자체는 order_backend 구현체가 담당하며(데모=가짜 응답, HTTP=ORDER_API_ALLOW_WRITE 필요),
 # 이 가드는 그 앞단에서 "2단계 확인·금액 재확인"을 강제하는 관문이다.
 def _guard(name,inp,m):
+    # 툴 인자는 **모델 출력**이다(`functionCall.args`). dict 가 아니면(배열·문자열·숫자)
+    # 판정도 실행도 할 수 없다 — 예전에는 아래 inp.get(...) 이 AttributeError 로 터져
+    # 가드 **안에서** 요청이 500 으로 끝났고, 감사 append 는 이 함수 반환 뒤라
+    # 위험 툴 시도가 흔적 없이 사라졌다(19차 `_amount` 결함과 같은 계열).
+    # 해석 불가는 예외가 아니라 '차단' 판정으로 돌려준다(fail-safe).
+    if not isinstance(inp,dict): return False,"툴 인자 형식 오류(객체가 아님)",False
     if name=="confirm_refund":
         a=_amount(inp.get("refund_amount"))
         # (1단계) LLM 이 넘긴 명시 확정 플래그
@@ -173,7 +184,11 @@ _RISKY_TOOLS={"confirm_refund","request_redelivery"}
 
 def _audit(tool,inp,m,decision,reason):
     """환불/재배달 등 위험 동작의 시도·판정을 구조화 감사로그로 남긴다.
-    (개인정보 최소화: 발신번호·상담내용 원문은 저장하지 않고 주문ID/금액/판정만 기록)"""
+    (개인정보 최소화: 발신번호·상담내용 원문은 저장하지 않고 주문ID/금액/판정만 기록)
+
+    `inp` 이 dict 가 아닌 경우(모델이 배열·문자열을 준 경우)에도 **기록은 남는다** —
+    위험 툴 시도가 기록되지 않는 쪽이 더 나쁘다."""
+    if not isinstance(inp,dict): inp={}
     return {
         "ts": datetime.now(timezone.utc).isoformat(),
         "tool": tool,
@@ -189,7 +204,8 @@ def _audit(tool,inp,m,decision,reason):
 
 def _to_contents(messages):
     out=[]
-    for x in messages:
+    for x in messages if isinstance(messages,list) else []:
+        if not isinstance(x,dict): continue
         r=x.get("role")
         # content 누락·비문자열은 여기서 죽지 않는다(입력검증은 각 라우트 책임).
         if r=="user": out.append({"role":"user","parts":[{"text":x.get("content") or ""}]})
@@ -200,7 +216,14 @@ def _to_contents(messages):
         else:
             parts=[]
             if x.get("content"): parts.append({"text":x["content"]})
-            for tc in x.get("tool_calls",[]): parts.append({"functionCall":{"name":tc["name"],"args":tc["input"]}})
+            tcs=x.get("tool_calls")
+            for tc in (tcs if isinstance(tcs,list) else []):
+                # `tc["input"]` 은 KeyError 였다 — `/api/chat` 은 대화 이력을 클라이언트가
+                # 보내고 `input` 은 검증되지 않았으므로 **사용자 입력 오류가 500** 이 됐다.
+                # 라우트가 400 으로 지목하는 것이 1차 방어이고 여기는 2차 방어다.
+                if not isinstance(tc,dict): continue
+                a=tc.get("input")
+                parts.append({"functionCall":{"name":tc.get("name"),"args":a if isinstance(a,dict) else {}}})
             out.append({"role":"model","parts":parts or [{"text":""}]})
     return out
 
@@ -217,7 +240,13 @@ def _parse(resp):
     for p in (cand.get("content",{}) or {}).get("parts",[]) or []:
         if "text" in p: t+=p["text"]
         if "functionCall" in p:
-            fc=p["functionCall"]; calls.append({"name":fc.get("name"),"args":fc.get("args",{}) or {}})
+            fc=p["functionCall"]; a=fc.get("args")
+            # `fc.get("args",{}) or {}` 였다 — 빈 배열·빈 문자열·0 처럼 **거짓인 비객체**를
+            # 조용히 `{}` 로 갈아 끼웠다. 그러면 가드가 볼 기회조차 없이 툴이 빈 인자로
+            # 실행된다: `quote_refund([])` 는 `awaiting=True` 와 견적 **0원**을 기억시켜
+            # 뒤이은 금액 재확인을 0원 기준으로 바꾼다(가드를 여는 방향의 사고다).
+            # 인자 없음(키 부재·null)만 `{}` 이고, 그 밖은 그대로 넘겨 가드가 차단한다.
+            calls.append({"name":fc.get("name"),"args":{} if a is None else a})
     um=resp.get("usageMetadata",{}) or {}
     return t.strip(),calls,(um.get("promptTokenCount",0),um.get("candidatesTokenCount",0))
 

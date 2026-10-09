@@ -22,15 +22,21 @@ import _monitoring as monitoring  # noqa: E402
 GOOD_DSN = "https://abc123@o0.ingest.sentry.io/4507"
 
 
+ENV_KEYS = ("SENTRY_DSN", "SENTRY_ALLOW_INSECURE", "SENTRY_HOSTS")
+
+
 class EnvGuard(unittest.TestCase):
     def setUp(self):
-        self._saved = os.environ.get("SENTRY_DSN")
+        self._saved = {k: os.environ.get(k) for k in ENV_KEYS}
+        for k in ENV_KEYS:
+            os.environ.pop(k, None)
 
     def tearDown(self):
-        if self._saved is None:
-            os.environ.pop("SENTRY_DSN", None)
-        else:
-            os.environ["SENTRY_DSN"] = self._saved
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class TestNoop(EnvGuard):
@@ -99,8 +105,11 @@ class TestNoHardcodedDsn(unittest.TestCase):
 
 class TestFailureIsolation(EnvGuard):
     def test_unreachable_endpoint_does_not_raise(self):
-        # 라우팅 불가 주소 — 전송은 실패하지만 예외가 전파되면 안 된다
+        # 라우팅 불가 주소 — 전송은 실패하지만 예외가 전파되면 안 된다.
+        # 평문 http·루프백은 기본으로 아웃바운드 가드가 막으므로(10-09) 개발
+        # 플래그를 켜서 **실제로 전송을 시도하는** 경로를 지나게 한다.
         os.environ["SENTRY_DSN"] = "http://k@127.0.0.1:1/9"
+        os.environ["SENTRY_ALLOW_INSECURE"] = "1"
         monitoring.TIMEOUT = 0.3
         self.assertIsNotNone(monitoring.capture_error(RuntimeError("boom")))
 

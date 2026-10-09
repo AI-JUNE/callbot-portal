@@ -296,11 +296,16 @@ class CloneEngine(unittest.TestCase):
             return self.response
 
         class Res(object):
-            def __init__(self, payload):
+            def __init__(self, payload, url="https://gpu.example.com/v1/synthesize"):
                 self._p = payload
+                self._url = url
 
-            def read(self):
-                return json.dumps(self._p).encode("utf-8")
+            def read(self, amt=None):
+                b = json.dumps(self._p).encode("utf-8")
+                return b if amt is None else b[:amt]
+
+            def geturl(self):
+                return self._url
 
             def __enter__(self):
                 return self

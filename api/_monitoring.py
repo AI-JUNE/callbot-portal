@@ -7,6 +7,12 @@
 # 설계 원칙 (MONITORING_GUIDE.md)
 #  - SENTRY_DSN 미설정이면 완전한 no-op. 로컬·미설정 환경에서 아무 동작 없음.
 #  - DSN 하드코딩 금지 — 환경변수로만 주입(Vercel Environment Variables).
+#  - **나가는 주소는 검증한다**(10-09, 23차 제안 「설정 유래 아웃바운드 점검」).
+#    DSN 은 환경변수지만 오타·잘못 복사한 값이면 오류 봉투(라우트·request_id·파일명·
+#    마스킹된 예외 문구)와 **DSN 공개키**가 그 주소로 평문·내부로 나간다. 판정은
+#    `_urlguard` 한 곳(안부 웹훅·녹음·주문 백엔드와 공용)이고, 거부되면 전송하지
+#    않는다. 탈출구는 `SENTRY_ALLOW_INSECURE=1`(사내 Sentry·로컬 개발)·`SENTRY_HOSTS`.
+#    `/health.monitoring` 이 거부 사실과 사유를 드러낸다(「미설정」으로 뭉개지 않는다).
 #  - 전송 전 PII 마스킹(주민등록번호·카드·휴대전화·이메일·계좌).
 #  - 전송 실패가 서비스에 영향을 주지 않는다(모든 예외 흡수, 재던지기 금지).
 #  - 공식 SDK 도입 시 capture_error()만 교체하면 된다.
@@ -21,12 +27,22 @@
 # ==========================================================================
 import os
 import re
+import sys
 import json
 import time
 import uuid
 import threading
 import traceback
 from urllib.parse import urlparse
+
+# 평면 import(Vercel 서버리스는 api/ 안에서 모듈을 찾는다)를 이 모듈이 스스로 보장한다.
+_d = os.path.dirname(os.path.abspath(__file__))
+if _d not in sys.path:                        # pragma: no cover - importer 가 이미 넣어 둔다
+    sys.path.insert(0, _d)
+
+# 아웃바운드 주소 검증은 보안 통제라 폴백을 두지 않는다 — 검증 없이 나가는 것보다
+# import 시점에 드러나는 편이 안전하다(`_order_backend`·`_vstudio` 와 같은 판단).
+import _urlguard  # noqa: E402
 
 CLIENT = "gowon-lite-py/1.0"
 TIMEOUT = 3.0          # 전송 대기 상한(초)
@@ -90,10 +106,52 @@ def scrub(value):
     return s
 
 
+def check_target(url):
+    """(ok, reason). envelope 주소로 나가도 되는가.
+
+    `SENTRY_ALLOW_INSECURE=1` 은 평문 http·사내망 Sentry 용,
+    `SENTRY_HOSTS` 는 호스트 화이트리스트(가장 엄격한 운영 설정).
+    """
+    return _urlguard.check(url, label="SENTRY_DSN",
+                           allow_insecure=_urlguard.env_flag("SENTRY_ALLOW_INSECURE"),
+                           allowlist=_urlguard.env_hosts("SENTRY_HOSTS"))
+
+
+def target():
+    """(url, key) 또는 None — 형식·주소 검증을 **모두** 통과한 DSN 만.
+
+    두 번째 반환값이 필요 없는 호출부는 `enabled()`·`blocked_reason()` 를 쓴다.
+    """
+    return _resolve()[0]
+
+
+def blocked_reason():
+    """DSN 이 있는데 전송하지 않는 이유(없으면 "").
+
+    「미설정」과 「거부됨」을 구분하기 위해 있다 — 헬스가 둘을 같은 말로 보고하면
+    운영자는 DSN 을 등록해 놓고 수집이 안 되는 이유를 알 수 없다.
+    """
+    return _resolve()[1]
+
+
+def _resolve():
+    """((url, key) 또는 None, 거부 사유). 매 호출 시 환경변수를 재평가한다."""
+    d = _dsn()
+    if not d:
+        return None, ""
+    parsed = parse_dsn(d)
+    if parsed is None:
+        return None, "DSN 형식이 올바르지 않습니다"
+    ok, why = check_target(parsed[0])
+    if not ok:
+        # 사유에는 호스트 판정 결과만 담긴다 — 가드는 URL·키를 되비추지 않는다.
+        return None, why or "허용되지 않은 주소"
+    return parsed, ""
+
+
 def enabled():
     """DSN이 유효하게 설정돼 있는지. 매 호출 시 환경변수를 재평가한다."""
-    d = _dsn()
-    return bool(d) and parse_dsn(d) is not None
+    return _resolve()[0] is not None
 
 
 def status():
@@ -101,6 +159,7 @@ def status():
     return {
         "enabled": enabled(),
         "dsn_present": bool(_dsn()),
+        "blocked_reason": blocked_reason(),
         "environment": _env(),
         "release": _release(),
     }
@@ -159,6 +218,11 @@ def _post(url, key, payload):
         req.add_header("Content-Type", "application/x-sentry-envelope")
         req.add_header("X-Sentry-Auth",
                        "Sentry sentry_version=7, sentry_key=%s, sentry_client=%s" % (key, CLIENT))
+        # 한계(숨기지 않고 적는다): `urlopen` 은 302 를 따라가고 헤더를 그대로 다시
+        # 싣는다 — 등록된 주소가 리다이렉트하면 `X-Sentry-Auth`(공개키)와 오류 봉투가
+        # 다른 호스트로도 간다. 응답 본문을 쓰지 않으니 사후 재검증은 아무것도 되돌리지
+        # 못하므로(`wellbeing`·`_order_backend` 와 달리 여기선 의미가 없다) 두지 않았다.
+        # 엄격히 잠그려면 `SENTRY_HOSTS` 화이트리스트 또는 아웃바운드 프록시를 쓴다.
         with urllib.request.urlopen(req, timeout=TIMEOUT):
             pass
     except Exception:
@@ -173,12 +237,14 @@ def capture_error(exc, **ctx):
     ctx 예: route="/api/chat", method="POST", request_id="..."
     """
     try:
-        target = parse_dsn(_dsn())
-        if not target:
+        tgt = target()
+        if not tgt:
+            # 형식이 틀렸거나 아웃바운드 가드가 거부한 주소 — **보내지 않는다**.
+            # 거부된 주소로는 봉투를 만들지도 않으므로 blind 전송도 성립하지 않는다.
             return None
         event_id = uuid.uuid4().hex
         payload = _envelope(exc, ctx, event_id)
-        url, key = target
+        url, key = tgt
         # 응답을 기다리며 요청 처리를 막지 않는다
         t = threading.Thread(target=_post, args=(url, key, payload), daemon=True)
         t.start()
