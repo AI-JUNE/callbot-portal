@@ -3410,7 +3410,9 @@ async function vsInit(){if(VS.st||VS.loading)return;VS.loading=true;var tag=docu
   h+=bi.length?'<optgroup label="엔진 기본 목소리">'+bi.map(function(v){return '<option value="'+vsEsc(v.id)+'">'+vsEsc(v.name)+'</option>';}).join('')+'</optgroup>':'';
   h+=pd.length?'<optgroup label="준비 중 (아직 쓸 수 없음)">'+pd.map(function(v){return '<option value="" disabled>'+vsEsc(v.name)+' — 준비 중</option>';}).join('')+'</optgroup>':'';
   sel.innerHTML=h;var src={engine:'목록: 엔진 조회',env:'목록: 설정값',env_fallback:'목록: 설정값(엔진 응답 없음)'}[j.clone_source]||'';
-  tag.textContent=(j.clone_ready?'복제 목소리 엔진 연결됨':'표준 음성 사용 가능 · 복제 엔진 연결 전')+(src?' · '+src:'');
+  /* 설정이 아웃바운드 가드에서 거부된 경우(clone_blocked)를 「연결 전」으로 적으면
+     아래 안내문(clone_note)과 어긋난다 — 운영자가 엔진이 안 붙은 줄 알고 기다린다. */
+  tag.textContent=(j.clone_ready?'복제 목소리 엔진 연결됨':(j.clone_blocked?'표준 음성 사용 가능 · 복제 엔진 설정 거부됨':'표준 음성 사용 가능 · 복제 엔진 연결 전'))+(src?' · '+src:'');
   var pdNote=pd.length?'<div style="margin-top:4px">준비 중인 목소리 '+pd.length+'건: '+pd.map(function(v){return '<b>'+vsEsc(v.name)+'</b>'+(v.reason?' ('+vsEsc(v.reason)+')':'');}).join(', ')+'</div>':'';
   note.innerHTML=vsEsc(j.clone_note||'')+pdNote;vsVoiceChanged();vsParse();}
  catch(e){tag.textContent='엔진 상태를 불러오지 못했습니다';

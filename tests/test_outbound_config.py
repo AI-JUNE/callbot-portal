@@ -409,6 +409,29 @@ class TestHealthDoesNotFakeMonitoring(MonBase):
             self.assertEqual(ok_health, monitoring.target() is not None, dsn)
 
 
+class TestConsoleAgreesWithStatus(unittest.TestCase):
+    """화면 태그가 「연결 전」이라고 적는 동안 안내문만 「거부」라고 말하면 엇갈림이다."""
+
+    def setUp(self):
+        with open(os.path.join(ROOT, "public", "admin.html"), encoding="utf-8") as f:
+            h = f.read()
+        i = h.find("var VS={st:null")
+        self.js = h[i:h.find("</script>", i)]
+
+    def test_console_reads_the_blocked_flag(self):
+        self.assertIn("j.clone_blocked", self.js)
+        self.assertIn("설정 거부됨", self.js)
+
+    def test_console_still_distinguishes_not_connected(self):
+        self.assertIn("복제 엔진 연결 전", self.js)
+        self.assertIn("복제 목소리 엔진 연결됨", self.js)
+
+    def test_console_does_not_hardcode_the_note(self):
+        """§8 — 화면은 서버 응답만 그린다(가짜 수치·가짜 상태를 만들지 않는다)."""
+        self.assertIn("j.clone_note", self.js)
+        self.assertNotIn("VOICE_ENGINE_URL", self.js, "설정 변수명을 화면에 적지 않는다")
+
+
 # ==========================================================================
 # C) 가드 구현이 한 곳인지 — 규칙을 두 군데 적어 두면 한쪽만 고쳐진다
 # ==========================================================================

@@ -1,4 +1,47 @@
-# 야간 자율 개발 상태 (2026-10-07 · 23차 — 주문 백엔드 아웃바운드 결함 9건)
+# 야간 자율 개발 상태 (2026-10-09 · 24차 — 남은 설정 유래 아웃바운드 + 툴 인자 결함 8건)
+
+## 이번 회차 처리 — 3건
+`EUM_INTEGRATION.md` 는 실회선 발신 1건만 남았고 그건 **[승인 필요]** 라 코드로 열지 않았다. COMMERCIAL_READINESS 잔여도 약관 확정·CPaaS 활성화처럼 사람 몫뿐이라, **23차가 남긴 제안 3갈래를 그대로** 따라갔다. 23차는 `ORDER_API_BASE`(설정에서 온 URL)를 봤고, 이번엔 **남은 설정 유래 출구 둘**(`VOICE_ENGINE_URL`·`SENTRY_DSN`)과 **모델이 만든 툴 인자**를 봤다. 결함 8건이 나왔다.
+
+> 두 아웃바운드 경로는 아직 미승인이다(`VOICE_ENGINE_URL`·`SENTRY_DSN` 미설정 = 기본, 라이브 동작 변화 0). 다만 사람이 환경변수를 켜는 순간 전부 라이브다. 툴 인자 쪽은 **지금 라이브**다(`/api/chat`·`/api/voice`).
+
+### 1) [결함 3건] 서명과 공개키를 들고 나가던 두 출구 (`api/_vstudio.py`·`api/_monitoring.py`)
+- **보이스 엔진 주소 검사가 `startswith("https://")` 한 줄이었다.** `https://169.254.169.254`(클라우드 메타데이터)·`https://10.0.0.5`·`https://2130706433`(10진 표기 루프백 — `ipaddress` 가 ValueError 를 내는 고전적 우회)·`https://`(호스트 없음)이 전부 통과한다. 나가는 것은 **합성할 발화 원문**과 `X-Signature`(그 본문에 대한 유효한 HMAC)다. → `_urlguard.check` 경유(구현은 안부 웹훅·녹음·주문 백엔드와 **같은 함수** — 한쪽만 고쳐지는 일이 없다), 거부되면 **요청 자체를 만들지 않는다**. `synth_clone` 에도 2차 방어를 뒀다.
+- **Sentry DSN 이 평문·내부 주소를 받아들였다.** `parse_dsn` 은 `http://` 를 통과시킨다. 나가는 것은 오류 봉투(라우트·request_id·파일명·마스킹된 예외 문구)와 **DSN 공개키**(`X-Sentry-Auth`)다. → 같은 가드 경유. 거부된 주소로는 **봉투를 만들지도 않는다**.
+- **게이트를 호출 시점에 읽는다.** 두 판정 모두 환경변수를 매번 다시 보므로 배포 후 변경과 **비상정지가 듣는다**(8차·15차·23차의 '게이트를 import 시점에 얼려 둔' 결함 계열을 반복하지 않는다). 탈출구는 `VOICE_ENGINE_ALLOW_INSECURE=1`·`VOICE_ENGINE_HOSTS`·`SENTRY_ALLOW_INSECURE=1`·`SENTRY_HOSTS`. 릴리스 게이트 `URLGUARD_REQUIRED` 에 두 파일을 추가했다 — 가드를 떼면 통과하지 못한다.
+
+### 2) [결함 2건] 상대가 주는 것을 그대로 믿던 자리 + 거짓 보고 (`api/_vstudio.py`·`api/health.py`·`public/admin.html`)
+- **리다이렉트 이탈·무제한 본문** — 검증을 통과한 주소가 302 로 내부를 가리키면 `urlopen` 이 따라가고 헤더(서명)를 다시 싣는다 → 최종 주소를 다시 검증해 **받은 본문을 쓰지 않는다**. 목록 256KiB·오디오 8MiB 상한(거대한 본문은 통화를 서버리스 메모리로 죽인다). 한계(중간 요청은 이미 나갔다)는 주석에 적었다. `_monitoring` 은 본문을 쓰지 않아 사후 재검증이 **아무것도 되돌리지 못하므로** 죽은 코드를 두지 않고 한계만 적었다 — 엄격히 잠그려면 `SENTRY_HOSTS` 다.
+- **헬스·화면이 거짓을 말했다** — DSN 을 등록했는데 거부돼도 `/api/health` 는 「SENTRY_DSN **미설정**」이라고 답했다(등록해 놓고 수집이 안 되는 이유를 알 수 없다) → `misconfigured` + 사유. 보이스 스튜디오도 거부를 「엔진 **연결 전**」으로 뭉갰다 → `clone_blocked`. 콘솔 태그까지 함께 고쳤다 — 안내문만 「거부」이고 태그는 「연결 전」이면 같은 화면이 서로 다른 말을 한다. 사유에 주소·공개키·비밀값은 싣지 않고, 설정 힌트인 상세 사유는 `CALLBOT_DEBUG_ERRORS=1` 에서만 붙는다(`_guard.deny` 규약).
+
+### 3) [결함 3건] 툴 인자가 dict 가 아니면 가드 안에서 요청이 죽었다 (`api/_engine.py`·`api/_order_backend.py`·`api/chat.py`)
+- `functionCall.args` 는 **모델 출력**이고 대화 이력(`tool_calls[].input`·`tool` 본문)은 **클라이언트 입력**인데 `inp.get(...)`·`tc["input"]`·`json.loads(...).get(...)` 로 바로 읽었다. 모델이 배열을 주거나 클라이언트가 `input` 을 빼면 AttributeError/KeyError 로 **500**(사용자 입력 오류가 내부 오류로 보고 = 모니터링 알림 노이즈)이 되고, 감사 append 는 가드 반환 **뒤**라 **위험 툴 시도가 흔적 없이 사라졌다**. → 해석 불가는 예외가 아니라 **차단 판정**으로 돌려준다(19차 `_amount` 와 같은 방향). 감사기록은 남는다.
+- **더 나쁜 쪽은 `_parse` 였다.** `fc.get("args",{}) or {}` 가 **거짓인 비객체**(`[]`·`""`·`0`)를 조용히 `{}` 로 갈아 끼워, 가드가 볼 기회조차 없이 툴이 빈 인자로 실행됐다. `quote_refund([])` 가 그대로 돌면 `awaiting=True` 와 견적 **0원**이 기억되어 뒤이은 금액 재확인이 **0원 기준**으로 바뀐다 — 가드를 여는 방향의 사고다. → 인자 없음(키 부재·null)만 `{}` 로 보고, 그 밖은 그대로 넘겨 가드가 차단한다.
+- `dispatch` 도 계약(dict) 위반을 빈 인자로 갈아 끼우지 않고 거부한다(모델이 뭘 의도했는지 모르는데 쓰기 툴이 빈 인자로 나가는 쪽이 더 위험하다). 1차 방어는 라우트다 — `chat.validate_messages` 가 `messages[i].tool_calls[j].input` 을 **400 으로 지목**한다.
+
+## 검증
+- `python -m pytest -q tests` **1887건 통과**(1823 → +64, 신규 `tests/test_outbound_config.py` 42건 · `tests/test_engine_tool_args.py` 22건). 커버리지 **99%** 유지(CI 하한선 97) — `_monitoring` **100%**, `chat` 99→**100%**, `_vstudio` **99%**(남은 1줄은 import 시점 sys.path 가드).
+- **변이 검증 13건 전부 잡힘**(고치기 전 동작으로 되돌려 재실행, 평균 2.5건 실패): 엔진 주소 검사 되돌림 7 · 리다이렉트 재검증 제거 2 · 응답 상한 제거 1 · synth 2차 가드 제거 1 · status 거부 보고 제거 1 · DSN 주소 가드 제거 7 · 헬스 거짓 보고 1 · 툴 인자 차단 제거 4 · `_parse` 의 `or {}` 복원 2 · `_mem` dict 강제 제거 1 · `_to_contents` 의 `tc["input"]` 복원 1 · dispatch 계약 검사 제거 1 · chat 입력검증 제거 3.
+  - 21차 사고 재발 방지대로 **변이는 저장소 안에서 하지 않는다** — `api/`·`tests/`·`scripts/` 를 임시 폴더로 복사해 거기서 되돌린다(스크립트도 저장소 밖 `%TEMP%`).
+- **로컬 E2E 17/17**(실제 소켓, 외부망 미접속): 루프백에 가짜 '음성합성 워커'·가짜 'Sentry' 를 띄워 ① 기본값에서 양쪽 모두 차단(**받은 요청 0건**) ② 상태가 거부를 사실대로 말하고 주소·비밀값은 안 샌다 ③ 개발 플래그 ON 시 도달·**서명 일치**·목록 반영 ④ 302 로 메타데이터를 가리키면 본문 미사용 ⑤ 화이트리스트 밖이면 0건 ⑥ 봉투가 envelope 경로·공개키 헤더로 도달하되 **번호 원문 없음**(마스킹 경유) ⑦ 헬스가 `misconfigured` + 사유(공개키·주소 미포함) ⑧ `/api/voice-studio?op=status` 200 + 거부 표기 + 추적키 ⑨ `/api/chat` 의 `input` 누락이 500 이 아니라 **400 + `details[].field`**(응답 `request_id` = 로그 `request_id`).
+- `python scripts/verify.py` **7/7 PASS** · `python scripts/restore_drill.py` **7/7 성공(2.5s)** · `_urlguard`·`_pii_vault` 셀프테스트 OK. 네트워크 미사용(urlopen 감시 유지).
+- 콘솔은 태그 한 줄만 부분 치환(HTML 파싱 오류 0·중복 id 0). 가짜 수치 추가 없음. 라이브 동작 변화 없음.
+
+## 사람이 할 일
+- **[확인 필요]** 보이스 엔진을 붙이는 날: `VOICE_ENGINE_URL` 은 **https** 여야 한다(평문·사설·메타데이터 주소는 이제 거부된다). 사내 테스트로 평문·localhost 를 쓰려면 `VOICE_ENGINE_ALLOW_INSECURE=1`, 가장 엄격하게 잠그려면 `VOICE_ENGINE_HOSTS=voice.gowon.co.kr`. 거부되면 콘솔 「보이스 스튜디오」가 「복제 엔진 설정 거부됨」으로 알려 준다.
+- **[확인 필요]** `SENTRY_DSN` 을 등록하는 날: Sentry SaaS DSN 은 https 라 그대로 동작한다. 사내 Sentry(평문·내부망)를 쓰려면 `SENTRY_ALLOW_INSECURE=1` 이 필요하고, 잠그려면 `SENTRY_HOSTS`. 거부되면 `/api/health` 의 `monitoring` 이 `misconfigured` 와 사유를 보여준다.
+- **[확인 필요 · 배포]** 23차 항목이 그대로 유효하다(푸시는 사람/AutoPush 몫). 이번 회차도 커밋까지만 했다.
+- 리뷰만. 미승인 대기(변동 없음): 실회선 발신(CPAAS_LIVE)·실과금·실개인정보, `ORDER_BACKEND=http`, SPEECH_LIVE, RECORDING_LIVE, `VOICE_STUDIO_VOICE_SOURCE=engine`, proposals/*, 영속 저장소, 약관·개인정보 처리방침 확정 문안. **[승인 필요]**
+- 한계(숨기지 않고 적는다): 리다이렉트는 **중간 요청 자체를 막지 못한다**(응답을 쓰지 않을 뿐). `_monitoring` 은 본문을 아예 쓰지 않아 사후 재검증이 의미가 없으므로 두지 않았다 — 두 경로 모두 완전한 차단은 아웃바운드 프록시·호스트 화이트리스트 몫이다. `_urlguard` 는 DNS 를 조회하지 않아 rebinding 도 막지 못한다(기존 한계, 변동 없음).
+
+## 다음 실행 후보
+- `_audit`(98%)·`_speech_providers`(91%) 잔여 방어 분기 — 21·22차부터 세 회차째 밀려 있다.
+- **로그와 응답의 에러 코드가 다른 값이다.** 응답 봉투는 `code: "INVALID_REQUEST"`(상태코드 기반)인데 구조화 로그의 `error_code` 는 예외 **타입명**(`VALIDATION_ERROR`)이다. 사용자가 신고한 코드로 로그를 grep 하면 아무것도 안 나온다 — 추적키(`request_id`)로는 찾히지만 코드로 집계하는 쪽이 어긋난다. 표기를 맞출지, 두 값을 모두 남길지 정해야 한다.
+- `_engine._amount` 남은 1줄(`int(float(s))` 예외 분기)과 `_engine`·`health` 의 import 가드.
+
+---
+
+# 이전 회차 (2026-10-07 · 23차 — 주문 백엔드 아웃바운드 결함 9건)
 
 ## 이번 회차 처리 — 3건
 `EUM_INTEGRATION.md` 는 실회선 발신 1건만 남았고 그건 **[승인 필요]** 라 코드로 열지 않았다. COMMERCIAL_READINESS 잔여도 약관 확정·CPaaS 활성화처럼 사람 몫뿐이라, **20차가 남긴 제안**(「`_urlguard` 를 쓰지 않는 나머지 아웃바운드 경로 점검 — `health` deep 탐침·`order_backend` HTTP」)을 따라갔다. 20차는 *요청 본문*에서 온 URL 에 가드를 붙였고, 이번엔 **설정에서 온 URL** 을 봤다 — 환경변수라서 안전하다고 보던 쪽이다. 결함 9건이 나왔다.
