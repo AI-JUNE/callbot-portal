@@ -32,7 +32,7 @@
 ## 구조화 로깅 (`api/_log.py`)
 오류 모니터링과 **같은 request_id** 를 사용하므로 로그 ↔ Sentry 이벤트를 상호 추적할 수 있다.
 
-- 출력: 요청당 JSON 1줄(stdout) — `request_id·route·method·path·status·duration_ms·error_code`.
+- 출력: 요청당 JSON 1줄(stdout) — `request_id·route·method·path·status·duration_ms·error_code·code`.
 - 요청 ID: 인바운드 `x-request-id`/`x-vercel-id` 승계, 없으면 생성. 응답 헤더 `X-Request-Id` 로 반환. 교차출처에서도 읽히도록 **실제 응답**에 `Access-Control-Expose-Headers: X-Request-Id, Retry-After, X-RateLimit-*`(`_errors.EXPOSE_HEADERS`)를 함께 내보낸다 — 프리플라이트(OPTIONS)의 `Access-Control-Allow-Headers` 는 *요청* 헤더용이라 이 역할을 하지 못한다(2026-10-01 정정).
 - **PII 미기록**: 경로에서 쿼리스트링 제거, 예외 *메시지*는 남기지 않고 에러코드만(`ValueError`→`VALUE_ERROR`), 보조 필드는 `monitoring.scrub()` 통과.
 - **기본 접근로그 침묵**: `BaseHTTPRequestHandler` 기본 로그는 쿼리스트링을 그대로 stderr 에 찍어 `?phone=010-…`·`?text=<발화 원문>`·`?t=<웹훅 토큰>` 이 유출된다. 핸들러에 `log_message = _log.suppress_access_log` 배선으로 차단. **신규 핸들러 추가 시 반드시 동일 배선할 것** — 이제 말로만 있는 규칙이 아니라 `tests/test_logging.py::test_every_handler_silences_default_access_log` 가 `api/` 의 모든 핸들러 파일을 훑어 강제한다(2026-10-01: `speech`·`voice`·`wellbeing`·`health` 4개가 빠져 있던 것을 이 회귀로 잡았다).
@@ -41,6 +41,11 @@
 - **`/api/health` 는 shallow 성공을 남기지 않는다**: 업타임 모니터·로드밸런서가 수십 초마다 치는 경로라 요청 1건=1줄이면 실제 트래픽이 그 줄들에 묻힌다(감사 스트림이 deep 점검만 기록하는 것과 같은 판단). **실패(4xx·5xx)와 deep 점검은 항상** 남고, 추적용 `X-Request-Id` 는 shallow 응답에도 붙는다. 전량 기록이 필요하면 `HEALTH_REQUEST_LOG=1`.
 - **보조 필드는 아는 값만**: `rq.set()` 에 외부 입력을 그대로 담지 않는다. `voice` 의 `?op=`·이벤트 `type`, `wellbeing` 의 `?op=` 은 화이트리스트 밖이면 `other` 로 접는다 — 임의 문자열이 로그에 섞이면 집계 카디널리티가 터지고 PII 유입 경로가 된다.
 - **응답 쓰기를 위임하는 핸들러**: `_errors.send/handle` 는 `rq` 를 넘기지 않아도 핸들러의 `self._rq` 를 승계한다. `speech.py` 처럼 응답을 다른 모듈(`_stt._send`·`_tts._respond`·`_vstudio._send`)에 맡기는 경우 `self._rq` 만 걸어 두면 `request_id` 헤더와 로그 한 줄이 따라온다.
+- **코드가 두 칸이다**(2026-10-10 정리). 한 요청의 '코드'는 성질이 다른 둘이고, 겹쳐 쓰면 한쪽 집계가 반드시 틀어진다.
+  - `code` — **응답 봉투(`_errors`)가 내려준 값과 같은 문자열**. 사용자·심사관이 신고하는 것은 이쪽이다("INVALID_REQUEST 가 떴어요"). 장애 조사는 이 값으로 로그를 찾는다.
+  - `error_code` — 예외 **타입명** 유래(`ValueError`→`VALUE_ERROR`). 5xx 분류는 전부 `INTERNAL_ERROR` 라서, 이 칸이 없으면 무엇이 터졌는지 알 수 없다. **원인별** 집계용.
+  - 예전에는 로그에 `error_code` 만 있었고 그 값이 봉투와 **달랐다**(봉투 `INVALID_REQUEST` ↔ 로그 `VALIDATION_ERROR`). 신고받은 코드로 grep 하면 아무것도 안 나왔고, 더 나쁜 쪽은 **거부(401/403/429)·404·413·405** — 예외 없이 `_errors.send` 로만 끝나는 경로라 **코드가 한 칸도 없었다**(거부 사유별 집계 불가). 호출부가 `rq.finish(_c, denied=True)` 로 먼저 닫아 버렸기 때문에 뒤따르는 `send` 가 코드를 실을 자리도 없었다.
+  - 규약: **거부 응답의 로그는 `_errors.send` 가 닫는다**. 호출부는 `_guard.deny(...)` 만 부르고 미리 `rq.finish()` 하지 않는다(거부 표식 `extra.denied` 는 `deny` 가 단다). 2xx 에는 두 칸 모두 없다 — 성공이 오류 집계를 오염시키지 않는다. 회귀는 `tests/test_error_code_correlation.py` 가 **라우트 12개를 실제로 태워** 봉투 `code` == 로그 `code` 를 확인하고, 미리 닫는 구동작이 돌아오면 드리프트 검사가 잡는다.
 - 끄기: `CALLBOT_LOG=off` (로컬·테스트용, 기본은 켜짐).
 - 오류 응답에는 `request_id`(+DSN 설정 시 `event_id`)를 함께 반환해 사용자 문의를 로그와 대조할 수 있다.
 
