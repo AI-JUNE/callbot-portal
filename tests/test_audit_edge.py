@@ -124,6 +124,53 @@ class TestLogFallback(EdgeBase):
                          path="/api/ops_stats/" + ("a" * 500))
         self.assertLessEqual(len(rec["path"]), 200)
 
+    def test_fallback_emit_gives_up_quietly_on_unserialisable_record(self):
+        """폴백 출력도 '조용히 포기'한다 — 감사 기록 하나가 직렬화 불가라고
+        요청을 죽이면, 로깅 모듈이 빠진 환경에서 서비스 전체가 멈춘다.
+        (`_log.emit` 과 같은 규약. 이 분기는 폴백이 설치된 상태에서만 돈다.)"""
+        import io as _io
+        mod, _ = self._load_without_log()
+        self.assertEqual(mod._emit.__module__, mod.__name__)   # 폴백이 맞다
+        cap = _io.StringIO()
+        saved = sys.stdout
+        try:
+            sys.stdout = cap
+            mod._emit({"ts": object()})        # json.dumps 실패
+        finally:
+            sys.stdout = saved
+        self.assertEqual(cap.getvalue(), "")
+
+    def test_module_puts_its_own_directory_on_sys_path(self):
+        """`api/` 가 경로에 없어도 스스로 넣어 `_log` 를 찾는다.
+
+        부트스트랩이 없으면 import 는 성공하지만 **조용히 폴백으로 떨어진다** —
+        `_log.safe_path` 의 scrub 을 거치지 않게 되므로 감사 경로에 PII 가 남을
+        수 있다. 조용한 강등은 눈치채기 어렵다(19차 `_engine` 과 같은 판단).
+        """
+        import importlib.util
+        api = os.path.join(ROOT, "api")
+        saved_path = list(sys.path)
+        saved_log = sys.modules.get("_log")
+        try:
+            sys.modules.pop("_log", None)      # 캐시도 비운다 — 경로로만 찾게 한다
+            sys.path[:] = [p for p in sys.path if os.path.abspath(p) != api]
+            spec = importlib.util.spec_from_file_location(
+                "_audit_bootstrap_probe", os.path.join(api, "_audit.py"))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            # 복원 전에 본다 — 복원 후에는 원래 경로가 돌아와 항상 참이 된다
+            path_after_load = [os.path.abspath(p) for p in sys.path]
+        finally:
+            sys.path[:] = saved_path
+            if saved_log is None:
+                sys.modules.pop("_log", None)
+            else:
+                sys.modules["_log"] = saved_log
+        self.assertIn(api, path_after_load)
+        # 폴백이 아니라 실제 _log 를 집었다
+        self.assertEqual(mod._emit.__module__, "_log")
+        self.assertEqual(mod._safe_path.__module__, "_log")
+
 
 # --------------------------------------------------------------------------
 # 2) 솔트

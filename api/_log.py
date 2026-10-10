@@ -12,6 +12,17 @@
 #    없으면 새로 만든다. 응답 헤더 X-Request-Id 로 되돌려준다.
 #  - **에러코드 안정성**: 예외 타입명을 상위 스네이크 코드로 정규화해
 #    (예: ValueError -> VALUE_ERROR) 메시지 문구가 바뀌어도 집계가 깨지지 않는다.
+#  - **코드 두 칸을 구분한다**(2026-10-10): 한 요청에는 성질이 다른 '코드'가 둘 있다.
+#      error_code : 예외 타입명 유래. **원인**별 집계용(5xx 분류는 전부
+#                   INTERNAL_ERROR 라 타입명이 없으면 무엇이 터졌는지 알 수 없다).
+#      code       : 응답 봉투(_errors)가 클라이언트에 내려준 값과 **같은 문자열**.
+#                   사용자가 신고하는 것은 이쪽이다.
+#    예전에는 로그에 error_code 만 있었고 그 값이 봉투의 code 와 달랐다
+#    (봉투 INVALID_REQUEST ↔ 로그 VALUE_ERROR/VALIDATION_ERROR). 신고받은 코드로
+#    로그를 찾으면 아무것도 안 나오고, **거부(401/403/429)·404·413 은 _errors.send
+#    로 끝나므로 로그에 코드가 한 칸도 없었다** — 거부 사유별 집계가 불가능했다.
+#    이제 두 칸을 함께 남긴다(같은 값이면 code 는 생략하지 않는다 — 집계 쿼리가
+#    필드 유무로 갈리면 안 된다).
 #  - **로깅 실패가 서비스에 영향 없음**: 모든 예외 흡수.
 #  - 모니터링(api/monitoring.py)과 같은 request_id 를 쓰므로 로그 <-> 이벤트 상호 추적 가능.
 #
@@ -163,7 +174,13 @@ class Request(object):
             pass
         return self
 
-    def _record(self, level, status, code=None):
+    def _record(self, level, status, error_code=None, api_code=None):
+        """로그 레코드 1건.
+
+        error_code : 예외 타입명 유래(원인 집계) · api_code : 응답 봉투의 `code`
+        (사용자가 신고하는 값). 둘은 같은 요청에서 서로 다른 값일 수 있으므로
+        한 칸에 겹쳐 쓰지 않는다 — 겹쳐 쓰면 한쪽 집계가 반드시 틀어진다.
+        """
         rec = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "level": level,
@@ -177,21 +194,28 @@ class Request(object):
             "status": status,
             "duration_ms": self.duration_ms(),
         }
-        if code:
-            rec["error_code"] = code
+        if error_code:
+            rec["error_code"] = error_code
+        if api_code:
+            rec["code"] = str(api_code)[:64]
         if self.extra:
             rec["extra"] = self.extra
         return rec
 
-    def finish(self, status=200, **kv):
+    def finish(self, status=200, code=None, **kv):
+        """정상 종료. `code` 는 응답 봉투의 `code`(있을 때만 — 2xx 는 없다).
+
+        거부·404·413 처럼 예외 없이 표준 봉투로 끝나는 요청은 이 경로로 닫히므로,
+        `code` 를 받지 않으면 그 요청의 로그에는 코드가 한 칸도 남지 않는다.
+        """
         if self.done_flag:
             return self
         self.done_flag = True
         self.set(**kv)
-        emit(self._record(level_for(status), int(status)))
+        emit(self._record(level_for(status), int(status), None, code))
         return self
 
-    def fail(self, exc, status=500, **kv):
+    def fail(self, exc, status=500, code=None, **kv):
         """오류 종료 — 예외 '메시지'는 기록하지 않는다(PII 유입 차단). 코드만 남긴다.
 
         레벨은 finish() 와 같은 규칙으로 상태코드에서 뽑는다. 예전에는 무조건
@@ -199,12 +223,15 @@ class Request(object):
         보내기 때문에 **사용자 오타가 서비스 장애와 같은 레벨**로 쌓였다 —
         level=error 로 거는 알림이 그만큼 울리면 진짜 5xx 가 묻힌다.
         error_code 는 상태와 무관하게 남긴다(4xx 도 어느 검증에서 걸렸는지 집계).
+        `code` 를 함께 받으면 응답 봉투가 내려준 코드도 나란히 남는다 — 5xx 분류는
+        모두 INTERNAL_ERROR 라서 예외 타입명을 지우면 원인을 잃고, 반대로 봉투
+        코드가 없으면 사용자가 신고한 값으로 이 줄을 찾을 수 없다.
         """
         if self.done_flag:
             return self
         self.done_flag = True
         self.set(**kv)
-        emit(self._record(level_for(status), int(status), error_code(exc)))
+        emit(self._record(level_for(status), int(status), error_code(exc), code))
         return self
 
     # with 블록 지원

@@ -97,7 +97,8 @@ class handler(BaseHTTPRequestHandler):
         rq = _log.begin(self.headers, "/api/assist", "GET", self.path)
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
+            # 여기서 미리 finish 하면 그 줄에 코드가 없어 신고받은 코드로 못 찾는다.
             return _guard.deny(self, _c, _m, rq)
         self._send(200, {"ok": True, "tasks": list(TASKS)}, rq)
         rq.finish(200)
@@ -106,7 +107,8 @@ class handler(BaseHTTPRequestHandler):
         rq = _log.begin(self.headers, "/api/assist", "POST", self.path)
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
+            # 여기서 미리 finish 하면 그 줄에 코드가 없어 신고받은 코드로 못 찾는다.
             return _guard.deny(self, _c, _m, rq)
         try:
             # 입력검증: task 는 화이트리스트, 원문·지식은 길이 상한. 위반시 400.

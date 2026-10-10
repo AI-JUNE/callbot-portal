@@ -90,7 +90,7 @@ class handler(BaseHTTPRequestHandler):
         rq = _log.begin(self.headers, "/api/chat", "GET", self.path)
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
             return _guard.deny(self, _c, _m, rq)
         self._send(200,{"ok":True,"google_key_present":_key(),
                         "model":os.environ.get("CALLBOT_GEMINI_MODEL","gemini-2.5-flash"),
@@ -100,7 +100,7 @@ class handler(BaseHTTPRequestHandler):
         rq = _log.begin(self.headers, "/api/chat", "POST", self.path)
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
             return _guard.deny(self, _c, _m, rq)
         try:
             # 입력검증: 본문 상한·타입·길이. 위반은 400(details 포함)으로 즉시 거부.

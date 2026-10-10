@@ -196,7 +196,18 @@ def deny(h, code, msg, rq=None):
     msg 는 개발자용 원인 문구(설정 힌트 포함)라 기본적으로 노출하지 않는다.
     CALLBOT_DEBUG_ERRORS=1 일 때만 "debug" 키로 덧붙는다.
     _errors 가 없는 환경에서도 동작하도록 폴백을 남긴다.
+
+    구조화 로그는 **여기서 닫지 않는다** — `_errors.send` 가 봉투의 `code` 를
+    들고 닫아야 로그와 응답의 코드가 같은 값이 된다(호출부가 미리
+    `rq.finish()` 로 닫아 버리면 그 줄에는 코드가 없다). 거부 표식만 달아 둔다.
     """
+    if rq is None:
+        rq = getattr(h, "_rq", None)
+    try:
+        if rq is not None:
+            rq.set(denied=True)
+    except Exception:
+        pass
     try:
         import _errors
         return _errors.send(h, status=code, rq=rq, debug=msg,
@@ -215,3 +226,10 @@ def deny(h, code, msg, rq=None):
     h.send_header("Content-Length", str(len(body)))
     h.end_headers()
     h.wfile.write(body)
+    # _errors 가 없으니 봉투 코드 표를 쓸 수 없다. 그래도 **한 줄은 남긴다** —
+    # 거부가 로그에 전혀 남지 않는 쪽이 더 나쁘다(침해 조사에서 실패 시도가 핵심).
+    try:
+        if rq is not None:
+            rq.finish(code)
+    except Exception:
+        pass

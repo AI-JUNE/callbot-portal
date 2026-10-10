@@ -84,6 +84,37 @@ class TestAmount(NoNetwork):
         for v in (None, "", "오만원", "5만", "50000원", "1e5", {"krw": 1}, [1], object()):
             self.assertIsNone(engine._amount(v), v)
 
+    def test_absurdly_long_digit_string_is_blocked_not_crashed(self):
+        """숫자 모양이지만 float 범위를 넘는 값 — `int(float(s))` 가 터지는 자리.
+
+        `_RX_AMOUNT` 는 자릿수를 세지 않으므로 400자리 숫자도 '금액 모양'으로
+        통과한다. `float("1"*400)` 은 inf 가 되고 `int(inf)` 는 OverflowError 다.
+        금액은 LLM(확정)·주문 백엔드(견적·한도)가 주는 바깥 값이라 이 모양이
+        들어올 수 있고, 가드 **안에서** 예외가 터지면 판정도 감사기록도 남지
+        않은 채 500 으로 끝난다(19차에 고친 결함과 같은 계열). 해석 불가는
+        예외가 아니라 차단 판정이어야 한다.
+        """
+        huge = "9" * 400
+        self.assertEqual(float(huge), float("inf"))     # 전제 확인
+        self.assertIsNone(engine._amount(huge))
+        self.assertIsNone(engine._amount("-" + huge))
+        self.assertIsNone(engine._amount(huge + ".5"))
+        # 확정 금액으로 들어와도 가드는 예외 대신 '차단'으로 답한다
+        ok, reason, esc = engine._guard(
+            "confirm_refund", dict(CONFIRM, refund_amount=huge),
+            mem(awaiting=True, quoted_amount=159000, max_refund=159000))
+        self.assertFalse(ok)
+        self.assertFalse(esc)
+        self.assertIn("형식", reason)
+        # 견적·한도 쪽으로 들어오면 확인 자체가 불가능하므로 상담사 전환까지
+        for key in ("quoted_amount", "max_refund"):
+            with self.subTest(field=key):
+                ok, _r, esc = engine._guard(
+                    "confirm_refund", CONFIRM,
+                    mem(awaiting=True, **{"quoted_amount": 159000, key: huge}))
+                self.assertFalse(ok)
+                self.assertTrue(esc)
+
 
 # ==========================================================================
 # 2) 환불 가드 — 허용 경로와 한도

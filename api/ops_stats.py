@@ -233,7 +233,7 @@ class handler(BaseHTTPRequestHandler):
                                           request_id=rq.request_id)
                 except Exception:      # 감사 장애가 요청을 죽이지 않는다
                     pass
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
             return _guard.deny(self, _c, _m, rq)
         period = None
         try:

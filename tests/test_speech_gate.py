@@ -13,6 +13,11 @@
   3) 팩토리·health 리포트·`health.py` 가 **같은 순간 같은 값**을 본다(드리프트 금지).
   4) 게이트를 켜도 실연동은 열리지 않는다 — 골격은 여전히 PermissionError「[승인 필요]」.
   5) 조회·팩토리는 게이트를 켜지 않고 네트워크를 쓰지 않는다.
+  6) (2026-10-10 보강) **등록된 골격 전부**가 거부한다. 지금까지는 clova 한 곳만
+     호출해 봤는데 골격은 6개다 — 나머지 다섯 중 하나에 실호출 코드가 들어가도
+     회귀가 침묵했다. 실발신·실과금과 같은 등급의 가드라 '있는 줄만 알았지 실제로는
+     안 도는' 상태를 남기지 않는다. 기반 클래스의 인터페이스 계약도 함께 고정한다
+     (구현을 빼먹으면 조용히 None 을 돌려주는 대신 NotImplementedError 로 드러난다).
 
 실행: python3 -m pytest tests/test_speech_gate.py
 """
@@ -177,6 +182,80 @@ class TestStillPendingApproval(GateBase):
         blob = repr(sp.health_report())
         for needle in ("SECRET", "KEY", "TOKEN", "CREDENTIAL"):
             self.assertNotIn(needle, blob.upper())
+
+
+# --------------------------------------------------------------------------
+# 6) 등록된 골격 전부가 거부한다 · 기반 클래스 인터페이스 계약
+# --------------------------------------------------------------------------
+class TestEveryPendingSkeletonDenies(GateBase):
+    """승인 전 거부를 **등록부의 모든 비-sim 프로바이더**에서 확인한다."""
+
+    def test_every_registered_stt_skeleton_denies(self):
+        self.live()                      # 게이트를 켜도 열리지 않아야 한다
+        for name, cls in sorted(sp._STT.items()):
+            if name == "sim":
+                continue
+            with self.subTest(provider=name):
+                with self.assertRaises(PermissionError) as cm:
+                    cls().transcribe("QUJD", "audio/webm")
+                self.assertIn("[승인 필요]", str(cm.exception))
+                self.assertIn(name, str(cm.exception))   # 어느 골격인지 드러난다
+
+    def test_every_registered_tts_skeleton_denies(self):
+        self.live()
+        for name, cls in sorted(sp._TTS.items()):
+            if name == "sim":
+                continue
+            with self.subTest(provider=name):
+                with self.assertRaises(PermissionError) as cm:
+                    cls().synthesize("안내 문구")
+                self.assertIn("[승인 필요]", str(cm.exception))
+                self.assertIn(name, str(cm.exception))
+
+    def test_every_pending_class_in_the_module_is_registered(self):
+        """등록부를 거치지 않는 골격이 조용히 늘어나면 위 두 회귀를 비켜간다."""
+        registered = set(sp._STT.values()) | set(sp._TTS.values())
+        orphans = []
+        for attr in dir(sp):
+            obj = getattr(sp, attr)
+            if not isinstance(obj, type) or obj is sp._PendingApproval:
+                continue
+            if issubclass(obj, sp._PendingApproval) and obj not in registered:
+                orphans.append(attr)
+        self.assertEqual(orphans, [],
+                         "팩토리 등록부(_STT·_TTS)에 없는 승인대기 골격 — "
+                         "거부 회귀가 비켜간다: %s" % orphans)
+
+    def test_denied_call_leaves_no_partial_result(self):
+        """거부는 '빈 결과'가 아니라 예외다 — 빈 값을 돌려주면 호출부가
+        '합성했는데 무음'으로 오해하고 통화가 조용히 망가진다."""
+        self.live()
+        self.want("clova")
+        tts = sp.get_tts()
+        self.assertRaises(PermissionError, tts.synthesize, "안내 문구")
+
+
+class TestInterfaceContract(GateBase):
+    """기반 클래스는 인터페이스다 — 구현을 빼먹으면 드러나야 한다."""
+
+    def test_base_classes_refuse_instead_of_returning_nothing(self):
+        self.assertRaises(NotImplementedError, sp.STTProvider().transcribe, "QUJD")
+        self.assertRaises(NotImplementedError, sp.TTSProvider().synthesize, "문구")
+
+    def test_base_health_reports_not_live_and_names_itself(self):
+        for cls in (sp.STTProvider, sp.TTSProvider):
+            with self.subTest(cls=cls.__name__):
+                self.assertEqual(cls().health(),
+                                 {"provider": "base", "live": False, "ok": True})
+
+    def test_sim_inherits_the_health_shape(self):
+        """health() 는 라우트가 쓰지 않는 인터페이스 affordance 라, 이 회귀가
+        유일한 강제 장치다(모양이 틀어지면 붙이는 쪽에서 알 수 없다)."""
+        for p in (sp.SimSTT(), sp.SimTTS()):
+            h = p.health()
+            self.assertEqual(h["provider"], "sim")
+            self.assertFalse(h["live"])
+            self.assertTrue(h["ok"])
 
 
 if __name__ == "__main__":

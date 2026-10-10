@@ -803,7 +803,7 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             _audit_safe(self.headers, self.path, method, "deny", _c, rq.request_id)
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
             _guard.deny(self, _c, _m, rq)
             return False
         return True
@@ -889,7 +889,8 @@ class handler(BaseHTTPRequestHandler):
         if not self._gate(rq, "POST"):
             return
         _audit_safe(self.headers, self.path, "POST", "deny", 405, rq.request_id)
-        rq.finish(405, denied=True)
+        # 표식만 달고 로그는 _errors.send 가 닫는다(봉투 code = 로그 code).
+        rq.set(denied=True)
         _errors.send(self, status=405, code="METHOD_NOT_ALLOWED",
                      message="정산 리포트는 읽기 전용입니다. 요율은 설정값으로 등록합니다",
                      rq=rq, extra_headers=[("Allow", "GET, OPTIONS")])

@@ -339,7 +339,7 @@ class handler(BaseHTTPRequestHandler):
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
             _audit_safe(self.headers, self.path, method, "deny", _c, rq.request_id)
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
             _guard.deny(self, _c, _m, rq)
             return False
         return True

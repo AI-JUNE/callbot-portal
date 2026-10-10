@@ -198,9 +198,11 @@ def send(h, status=500, code=None, message=None, rq=None,
         pass
     # 로그는 응답을 쓴 뒤에. 이미 종료된 요청(handle 이 fail 로 먼저 기록)은
     # finish 가 무시하므로 한 요청에 두 줄이 남지 않는다.
+    # 봉투의 code 를 함께 넘긴다 — 거부(401/403/429)·404·413·405 는 예외 없이
+    # 이 경로로만 끝나므로, 넘기지 않으면 그 요청의 로그에 코드가 한 칸도 없다.
     try:
         if rq is not None:
-            rq.finish(obj["status"])
+            rq.finish(obj["status"], code=obj["code"])
     except Exception:
         pass
     return obj
@@ -242,7 +244,9 @@ def handle(h, exc, route="", method="", rq=None):
             eid = None
     try:
         if rq is not None:
-            rq.fail(exc, status, event_id=eid)
+            # error_code(예외 타입명)와 code(봉투 코드)를 나란히 남긴다 — 전자는
+            # 원인 집계용, 후자는 사용자가 신고하는 값이다(둘은 다른 문자열이다).
+            rq.fail(exc, status, code=code, event_id=eid)
     except Exception:
         pass
     details = getattr(exc, "details", None) if isinstance(exc, ValidationError) else None

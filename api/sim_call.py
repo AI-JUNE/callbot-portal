@@ -117,7 +117,7 @@ class handler(BaseHTTPRequestHandler):
         rq = _log.begin(self.headers, "/api/sim_call", "GET", self.path)
         _ok, _c, _m = _guard.check(self.headers, self.path, allow_webhook=False)
         if not _ok:
-            rq.finish(_c, denied=True)
+            # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
             return _guard.deny(self, _c, _m, rq)
         try:
             q = parse_qs(urlparse(self.path).query)
