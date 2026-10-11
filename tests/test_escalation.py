@@ -214,7 +214,9 @@ class TestQueue(unittest.TestCase):
         self.assertEqual(self.q.list(state="resolved"), [])
 
     def test_stats_counts_every_state(self):
-        self.assertEqual(self.q.stats(),
+        s0 = self.q.stats()
+        self.assertEqual({k: s0[k] for k in ("queued", "assigned", "resolved",
+                                             "abandoned", "total")},
                          {"queued": 0, "assigned": 0, "resolved": 0, "abandoned": 0, "total": 0})
         t = self.q.enqueue("s", "request")
         self.q.enqueue("s", "sensitive")
@@ -278,7 +280,9 @@ class TestEngineEscalation(EngineHarness):
         self.assertEqual(len(tickets), 1)
         self.assertEqual(tickets[0]["reason"], "request")
         self.assertEqual(tickets[0]["scenario"], "handoff")
-        self.assertIn({"turn": "escalation", "ticket": tickets[0]["id"], "reason": "request"}, r["log"])
+        # `recorded` 는 "티켓이 실제로 남았는가" — 실패 시에도 줄이 남는다(26차)
+        self.assertIn({"turn": "escalation", "ticket": tickets[0]["id"],
+                       "recorded": True, "reason": "request"}, r["log"])
 
     def test_transferred_survives_next_turn_via_history(self):
         # 전환 사실은 messages 에 남은 tool 결과로 복원돼야 한다(서버리스=무상태)

@@ -847,7 +847,7 @@ class handler(BaseHTTPRequestHandler):
                 out = report(self._month(q), self._partner(q) or None)
             elif op == "export":
                 rep = report(self._month(q), self._partner(q) or None)
-                rq.set(op=op, lines=len(rep["lines"]))
+                rq.set(op=op, line_count=len(rep["lines"]))
                 self._send_csv(to_csv(rep), csv_filename(rep), rq)
                 _audit_safe(self.headers, self.path, "GET", "allow", 200, rq.request_id)
                 rq.finish(200)
@@ -867,7 +867,7 @@ class handler(BaseHTTPRequestHandler):
                 fmt = _errors.query_choice(q, "format", LINES_FORMATS, default="json")
                 out = settlement_lines(self._month(q), self._tenant(q))
                 if fmt == "csv":
-                    rq.set(op=op, lines=len(out["lines"]), demo=out["demo"])
+                    rq.set(op=op, line_count=len(out["lines"]), demo=out["demo"])
                     self._send_csv(_settle_lines.to_csv(out), _settle_lines.csv_filename(out), rq)
                     _audit_safe(self.headers, self.path, "GET", "allow", 200, rq.request_id)
                     rq.finish(200)

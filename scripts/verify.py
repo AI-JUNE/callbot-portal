@@ -13,6 +13,7 @@
   5. welfare_terms— 복지 사업 잔재 표기 (§13-5, B2B 브랜드와 충돌)
   6. outbound     — 외부로 나가는 호출이 등록부에 있는가 + 요청 유래 URL 은 가드 경유
   7. request_log  — 모든 라우트가 요청 1건당 구조화 로그 1줄을 남기는가
+  8. log_fields   — 로그 보조 필드(extra) 이름이 `_log.FIELDS` 등록부에 있는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -222,6 +223,89 @@ def check_request_log(sources):
                        else "로그 미배선: %s" % ", ".join(bad))
 
 
+# --------------------------------------------------------------------------
+# log_fields 게이트
+#
+# 구조화 로그의 보조 필드(`rq.set(op=...)`·`rq.finish(code, kind=...)`)는 이름
+# 규약이 없으면 라우트마다 제각각이 된다(같은 '건수'를 lines·turns·msg_count 로
+# 적던 상태). 더 위험한 쪽은 **임의 칸이 한 줄로 늘어나는 것**이다 —
+# 집계 카디널리티가 터지고 PII 유입 경로가 생긴다. 등록부는 api/_log.py 의
+# FIELDS 고, 여기서는 그 밖의 칸을 쓰는 코드를 실패시킨다.
+#
+# 로그 객체를 정적으로 특정할 수는 없으므로 호출 모양으로 좁힌다:
+#   rq.set(...) / rq.finish(...) / rq.fail(...) / self._rq.* / _close(rq, ...)
+# `code`·`deep` 은 함수 자신의 인자라 보조 필드가 아니다.
+# --------------------------------------------------------------------------
+LOG_METHODS = ("set", "finish", "fail")
+LOG_RECEIVERS = ("rq", "_rq")
+LOG_CONTROL_KW = {"code", "deep"}
+
+
+def _log_fields_registry():
+    """api/_log.py 의 FIELDS 를 **실행 없이** 읽는다(ast 리터럴)."""
+    import ast
+    path = os.path.join(API_DIR, "_log.py")
+    try:
+        tree = ast.parse(io.open(path, encoding="utf-8").read())
+    except Exception:                          # noqa: BLE001
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == "FIELDS":
+                    try:
+                        return set(ast.literal_eval(node.value))
+                    except Exception:          # noqa: BLE001
+                        return None
+    return None
+
+
+def _log_kwargs(text):
+    """소스에서 (보조 필드 이름, 줄번호) 목록을 뽑는다."""
+    import ast
+    out = []
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return out                             # 문법 오류는 py_compile 게이트가 잡는다
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        hit = False
+        if isinstance(f, ast.Attribute) and f.attr in LOG_METHODS:
+            base = f.value
+            name = base.id if isinstance(base, ast.Name) else (
+                base.attr if isinstance(base, ast.Attribute) else "")
+            hit = name in LOG_RECEIVERS
+        elif isinstance(f, ast.Name) and f.id == "_close":
+            hit = True
+        if not hit:
+            continue
+        for kw in node.keywords:
+            if kw.arg and kw.arg not in LOG_CONTROL_KW:
+                out.append((kw.arg, node.lineno))
+    return out
+
+
+def check_log_fields(sources):
+    reg = _log_fields_registry()
+    if not reg:
+        return False, "api/_log.py 의 FIELDS 등록부를 읽을 수 없음"
+    bad, n = [], 0
+    for name, text in sorted(sources.items()):
+        if name == "_log.py":
+            continue                           # 등록부 본인
+        for field, line in _log_kwargs(text):
+            n += 1
+            if field not in reg:
+                bad.append("%s:%d %s" % (name, line, field))
+    if bad:
+        return False, ("미등록 로그 보조 필드: %s (api/_log.py FIELDS 에 사유를 "
+                       "적을 것)" % ", ".join(bad[:8]))
+    return True, "등록 %d개 · 사용 %d곳" % (len(reg), n)
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -237,6 +321,7 @@ def main():
     srcs = api_sources()
     o_ok, o_msg = check_outbound(srcs)
     l_ok, l_msg = check_request_log(srcs)
+    f_ok, f_msg = check_log_fields(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -246,6 +331,7 @@ def main():
         {"step": "welfare_terms", "ok": w_ok, "detail": w_msg},
         {"step": "outbound", "ok": o_ok, "detail": o_msg},
         {"step": "request_log", "ok": l_ok, "detail": l_msg},
+        {"step": "log_fields", "ok": f_ok, "detail": f_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

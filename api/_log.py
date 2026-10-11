@@ -59,6 +59,52 @@ _RX_WORD = re.compile(r"([a-z0-9])([A-Z])")
 
 SERVICE = "callbot-portal"
 MAX_FIELD = 200
+MAX_KEY = 24          # 보조 필드 이름 상한(규약: snake_case · 24자)
+
+# --------------------------------------------------------------------------
+# 보조 필드(extra) 등록부 — `rq.set(k=v)` / `rq.finish(code, k=v)` 로 붙는 칸.
+#
+# 2026-10-11(26차): 칸 이름이 라우트마다 제각각이었다(`lines`·`turns`·`msg_count`
+# 가 모두 '건수'). 횡단 집계("어떤 라우트가 어떤 입력에서 걸리는가")를 하려면
+# 같은 뜻에 같은 이름이어야 하고, 무엇보다 **임의 문자열 칸이 늘어나는 것**이
+# 위험하다 — 집계 카디널리티를 터뜨리고 PII 유입 경로가 된다(18차가 `op`·`ev`
+# 값을 화이트리스트로 접은 것과 같은 이유). 그래서 규약을 적고 게이트로 센다.
+#
+# 규약
+#  1) snake_case ASCII, 24자(MAX_KEY) 이내.
+#  2) 분류(차원) 칸에는 **라우트가 화이트리스트로 접은 라벨**만 담는다.
+#     외부가 보낸 문자열을 그대로 싣지 않는다(모르는 값은 `other` 로 접는다).
+#  3) 불리언은 사실 서술형(`denied`·`delivered`·`recorded`…). `is_` 접두 금지.
+#  4) 수량은 `_count`, 문자 길이는 `_len`(원문은 싣지 않는다).
+#  5) 새 칸은 여기에 사유와 함께 적는다 — 릴리스 게이트(`scripts/verify.py`
+#     log_fields)가 등록부 밖의 칸을 **실패시킨다**.
+# --------------------------------------------------------------------------
+FIELDS = {
+    # 차원(라벨) — 라우트가 화이트리스트로 접은 값만
+    "op": "요청한 동작(라우트별 화이트리스트 라벨, 미지는 other)",
+    "ev": "통화 이벤트 종류(voice · 화이트리스트 라벨)",
+    "kind": "응답 형식(voice: voiceml)",
+    "mode": "점검 깊이(health: shallow|deep)",
+    "period": "집계 기간(ops_stats: today|week|month)",
+    "scenario": "대화 시나리오(chat·sim_call · 화이트리스트)",
+    "task": "assist 작업 종류(화이트리스트)",
+    "risk": "안부 판정 위험도(wellbeing: low|mid|high|unknown)",
+    "health": "헬스 등급(healthy|degraded|unhealthy)",
+    # 사실(불리언)
+    "denied": "접근 가드가 거부했다(_guard.deny 가 단다)",
+    "delivered": "안부 결과 웹훅이 검증된 호스트에 실제로 들어갔다",
+    "demo": "응답 수치가 데모 기준선이다(실측 아님)",
+    "dry_run": "저장 없이 검사만 했다",
+    "transferred": "상담사 전환으로 끝났다",
+    "tenant_set": "테넌트가 지정됐다(식별자 값은 싣지 않는다)",
+    # 수량·길이
+    "msg_count": "대화 이력 건수",
+    "line_count": "정산 명세 줄 수",
+    "turn_count": "sim 통화 턴 수",
+    "text_len": "입력 문자 길이(원문은 싣지 않는다)",
+    # 추적
+    "event_id": "모니터링 이벤트 ID(로그 <-> Sentry 상호 추적)",
+}
 # 로그 레벨: CALLBOT_LOG=off 면 완전 침묵(로컬·테스트용)
 _OFF = ("off", "none", "0", "false")
 
@@ -108,6 +154,18 @@ def safe_path(path):
         return "-"
 
 
+def _value(v):
+    """보조 필드 값 1개를 안전한 스칼라로 — 타입 보존(bool/int/float) + 마스킹·상한."""
+    if isinstance(v, bool) or isinstance(v, int) or isinstance(v, float):
+        return v
+    if not isinstance(v, str):
+        try:
+            v = str(v)
+        except Exception:
+            return "<unprintable>"
+    return _scrub(v)[:MAX_FIELD]
+
+
 def error_code(exc):
     """예외 -> 안정적인 에러코드 문자열. 메시지는 포함하지 않는다."""
     try:
@@ -138,11 +196,27 @@ def level_for(status):
 
 
 def emit(record):
-    """JSON 1줄 출력. 실패해도 절대 예외를 던지지 않는다."""
+    """JSON 1줄 출력. 실패해도 절대 예외를 던지지 않는다.
+
+    직렬화가 실패하면 **보조 필드를 떼고 한 번 더** 시도한다 — 요청 1건=1줄은
+    장애 조사의 바닥이고(릴리스 게이트 request_log 가 지키는 불변식),
+    extra 한 칸 때문에 상태코드·추적키까지 잃을 이유가 없다.
+    """
     try:
         if not enabled():
             return
+    except Exception:
+        return
+    try:
         sys.stdout.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        sys.stdout.flush()
+        return
+    except Exception:
+        pass
+    try:
+        slim = {k: v for k, v in record.items() if k != "extra"}
+        slim["extra_error"] = True       # 보조 필드를 떼고 남겼다는 표시
+        sys.stdout.write(json.dumps(slim, ensure_ascii=False, sort_keys=True) + "\n")
         sys.stdout.flush()
     except Exception:
         pass
@@ -164,12 +238,18 @@ class Request(object):
         return int((time.time() - self.t0) * 1000)
 
     def set(self, **kv):
-        """PII가 아닌 보조 필드만 담는다(건수·플래그·모드 등). 문자열은 마스킹."""
+        """PII가 아닌 보조 필드만 담는다(건수·플래그·라벨 등). 문자열은 마스킹.
+
+        스칼라만 남긴다 — bool/int/float 은 타입을 지키고 그 밖(dict·list·객체)은
+        문자열로 접어 길이를 자른다(`_audit._fields` 와 같은 규약). 예전에는 비스칼라가
+        그대로 들어가 **직렬화 실패 시 그 요청의 로그 한 줄이 통째로 사라졌다** —
+        보조 필드 하나 때문에 요청 기록을 잃는 것은 교환비가 맞지 않는다.
+        """
         try:
             for k, v in kv.items():
                 if v is None:
                     continue
-                self.extra[str(k)[:40]] = _scrub(v)[:MAX_FIELD] if isinstance(v, str) else v
+                self.extra[str(k)[:MAX_KEY]] = _value(v)
         except Exception:
             pass
         return self

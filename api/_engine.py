@@ -250,14 +250,41 @@ def _parse(resp):
     um=resp.get("usageMetadata",{}) or {}
     return t.strip(),calls,(um.get("promptTokenCount",0),um.get("candidatesTokenCount",0))
 
+def _esc_note_failure(reason):
+    """티켓 기록 실패를 **센다**(통화는 계속한다).
+
+    예전에는 `except Exception: return None` 으로 끝이었다 — 고객에게는 이미
+    "상담사에게 연결하겠습니다"라고 말했는데 그 통화를 집어갈 티켓이 아무 데도
+    없고, 그 사실을 아는 사람도 없었다(오류 삼키기). 집계는 큐의
+    `stats().record_errors` → `/api/ops_stats` → 콘솔로 드러난다.
+    """
+    try:
+        _ESC_QUEUE.note_failure(reason)
+    except Exception:
+        # 큐 자체가 없거나 그마저 터진 경우. 이때는 `/api/ops_stats` 가
+        # `escalation.source="unavailable"` 로 사실을 말하고, 이 통화의 응답
+        # 로그에는 `recorded:false` 가 남는다(둘 다 조용하지 않다).
+        pass
+
 def _esc_enqueue(reason,summary,scenario=""):
     """상담사 전환 시 에스컬레이션 큐(escalation.QUEUE)에 티켓 기록 — best-effort sim.
-    큐 기록 실패는 통화 흐름에 영향 주지 않는다. 실제 상담원 배정·CTI 연동은 [승인 필요]."""
-    if _ESC_QUEUE is None: return None
+    큐 기록 실패는 통화 흐름에 영향 주지 않지만 **드러낸다**(_esc_note_failure).
+    실제 상담원 배정·CTI 연동은 [승인 필요]."""
+    if _ESC_QUEUE is None:
+        _esc_note_failure("queue_unavailable"); return None
     try:
-        return _ESC_QUEUE.enqueue(session_id="sim-%s"%(scenario or "call"),reason=reason,summary=(summary or "")[:200],scenario=scenario)
-    except Exception:
-        return None
+        return _ESC_QUEUE.enqueue(session_id="sim-%s"%(scenario or "call"),reason=reason,summary=summary,scenario=scenario)
+    except Exception as e:
+        _esc_note_failure(type(e).__name__); return None
+
+def _esc_log(tk,reason):
+    """전환 기록 1줄 — 티켓이 없을 때도 남긴다(`recorded:false`).
+
+    예전에는 `if tk:` 로 성공만 적었다. 기록되지 않은 전환이 응답 로그에서
+    **아예 보이지 않는** 것이 가장 나쁘다(화면에는 '상담사 전환'만 남는다).
+    """
+    return {"turn":"escalation","ticket":(tk or {}).get("id"),
+            "recorded":bool(tk),"reason":reason}
 
 def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
     model=os.environ.get("CALLBOT_GEMINI_MODEL","gemini-2.5-flash")
@@ -286,7 +313,7 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
                 if esc:
                     out=_dispatch("escalate_to_agent",{"reason":reason,"summary":str(c["args"])}); mem["transferred"]=True
                     tk=_esc_enqueue("guard",reason,scenario)
-                    if tk: log.append({"turn":"escalation","ticket":tk["id"],"reason":reason})
+                    log.append(_esc_log(tk,reason))
                 else: out={"blocked":True,"reason":reason}
                 log.append({"turn":"guard","tool":c["name"],"blocked":reason})
             else:
@@ -295,8 +322,9 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
                     # 전환은 이 턴에서 즉시 확정한다. (과거엔 mem 이 갱신되지 않아
                     # transferred 가 다음 턴에야 True 가 되어 봇이 한 턴 더 응대했다)
                     mem["transferred"]=True
-                    tk=_esc_enqueue(c["args"].get("reason","request"),c["args"].get("summary",""),scenario)
-                    if tk: log.append({"turn":"escalation","ticket":tk["id"],"reason":tk["reason"]})
+                    _r=c["args"].get("reason","request")
+                    tk=_esc_enqueue(_r,c["args"].get("summary",""),scenario)
+                    log.append(_esc_log(tk,(tk or {}).get("reason") or _r))
                 if c["name"]=="lookup_recent_order" and out.get("found"): mem["order_id"]=out.get("order_id")
                 if c["name"]=="get_refund_policy" and out.get("eligible"): mem["max_refund"]=out.get("max_refund")
                 if c["name"]=="quote_refund":

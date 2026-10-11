@@ -126,7 +126,7 @@ class handler(BaseHTTPRequestHandler):
             rq.set(scenario=scenario)
             out = simulate(scenario)
             self._send(200, out, rq)
-            rq.finish(200, turns=len(out["turns"]), transferred=out["transferred"])
+            rq.finish(200, turn_count=len(out["turns"]), transferred=out["transferred"])
         except Exception as e:
             _errors.handle(self, e, route="/api/sim_call", method="GET", rq=rq)
 

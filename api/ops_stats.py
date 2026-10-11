@@ -56,7 +56,13 @@ DEMO_PERIODS = {
 }
 
 # B146: 콘솔이 의존할 수 있도록 키 집합을 고정한다(소스가 죽어도 스키마 불변).
-ESCALATION_KEYS = ("queued", "assigned", "resolved", "abandoned", "total")
+# 26차: 상한으로 버린 티켓(`dropped`·그중 처리 전이던 `dropped_waiting`)과
+# 기록 실패(`record_errors`)를 함께 내보낸다 — 세어 두고 보여주지 않으면
+# 센 것이 아니다(큐는 인스턴스 메모리라 유실이 실제로 일어난다).
+ESCALATION_KEYS = ("queued", "assigned", "resolved", "abandoned", "total",
+                   "dropped", "dropped_waiting", "record_errors")
+# 숫자가 아닌 '성질' 칸 — 소스를 못 읽어도 구현의 성질은 변하지 않으므로 기본값이 있다.
+ESCALATION_META = {"scope": "instance", "volatile": True}
 RECORDING_KEYS = ("active", "purged", "total")
 GATE_FLAGS = ("RECORDING_LIVE", "CPAAS_LIVE", "SPEECH_LIVE")
 
@@ -70,10 +76,12 @@ def _safe_stats(mod_name, obj_name):
         return None
 
 
-def _norm_stats(raw, keys):
+def _norm_stats(raw, keys, meta=None):
     """B146: sim stats 를 고정 스키마·정수로 정규화.
 
     소스를 못 읽었으면 전부 0 + source="unavailable". 예외를 던지지 않는다.
+    `meta` 는 숫자가 아닌 성질 칸({키: 기본값}) — 소스가 같은 키를 주면 그 값을,
+    없거나 못 읽으면 기본값을 쓴다(성질은 소스 장애로 바뀌지 않는다).
     """
     ok = isinstance(raw, dict)
     out = {}
@@ -83,6 +91,9 @@ def _norm_stats(raw, keys):
             out[k] = int(v)
         except Exception:
             out[k] = 0
+    for k, default in (meta or {}).items():
+        v = raw.get(k) if ok else None
+        out[k] = default if v is None else v
     out["source"] = "sim" if ok else "unavailable"
     return out
 
@@ -155,7 +166,8 @@ def get_ops_summary(baseline=None, period="today"):
     total = int(p.get("calls", calls_today))     # 기간 합계(오늘=일 값)
     auto_rate = float(p.get("auto_rate", b["auto_rate"]))
     auto_done = int(round(total * auto_rate))
-    esc = _norm_stats(_safe_stats("_escalation", "QUEUE"), ESCALATION_KEYS)
+    esc = _norm_stats(_safe_stats("_escalation", "QUEUE"), ESCALATION_KEYS,
+                      ESCALATION_META)
     rec = _norm_stats(_safe_stats("_recording_audit", "STORE"), RECORDING_KEYS)
     return {
         "ok": True,
@@ -177,7 +189,9 @@ def get_ops_summary(baseline=None, period="today"):
             "target_sec": b["sla_target_sec"],
             "attain_rate": round(float(p.get("sla_attain", b["sla_attain"])), 3),
         },
-        # 프로세스 내 sim 큐/저장소 현황(서버리스에선 인스턴스 단위 참고치)
+        # 프로세스 내 sim 큐/저장소 현황(서버리스에선 인스턴스 단위 참고치).
+        # escalation 은 `scope`/`volatile` 로 **재시작 시 대기 티켓이 사라진다**는
+        # 사실을 함께 말한다 — 숫자만 보면 영속 큐로 읽힌다.
         "escalation": esc,
         "recording": rec,
         # B146: 활성화 게이트 현황(읽기 전용 · 여기서 켜지 않음)
