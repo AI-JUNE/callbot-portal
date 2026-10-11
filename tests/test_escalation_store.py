@@ -227,6 +227,30 @@ class TestHonestReporting(unittest.TestCase):
         self.assertIsNone(esc[0]["ticket"])
         self.assertTrue(r["transferred"])           # 통화 흐름은 그대로
 
+    def test_guard_path_also_logs_unrecorded_transfer(self):
+        """가드 차단 → 전환 경로도 같은 규약이어야 한다(두 자리 중 한쪽만 고치면 반쪽)."""
+        class Broken:
+            def enqueue(self, **kw):
+                raise RuntimeError("queue down")
+
+        saved_call, saved_q = engine._call, engine._ESC_QUEUE
+        engine._ESC_QUEUE = Broken()
+        resp = [call_tool("confirm_refund", {"order_id": "SSG-1",
+                                             "refund_amount": 159000,
+                                             "user_confirmed": True}),
+                say("상담사에게 연결하겠습니다.")]
+        engine._call = lambda m, p: resp.pop(0)
+        try:
+            r = engine.run_turn([{"role": "user", "content": "네 환불해 주세요"}],
+                                scenario="refund")
+        finally:
+            engine._call, engine._ESC_QUEUE = saved_call, saved_q
+        esc = [e for e in r["log"] if e["turn"] == "escalation"]
+        self.assertEqual(len(esc), 1)
+        self.assertIs(esc[0]["recorded"], False)
+        self.assertIn("견적", esc[0]["reason"])     # 차단 사유가 남는다
+        self.assertTrue(r["transferred"])
+
     def test_queue_records_failure_when_enqueue_raises(self):
         class Flaky(escalation.EscalationQueue):
             def enqueue(self, **kw):
