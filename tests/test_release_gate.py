@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""scripts/verify.py 릴리스 게이트 — 새 검사 2종의 회귀. 네트워크 미사용.
+"""scripts/verify.py 릴리스 게이트 — 검사 3종의 회귀. 네트워크 미사용.
 
 왜 이 파일이 필요한가
   게이트는 "통과했다"는 말만 남기고 조용히 아무것도 검사하지 않을 수 있다.
@@ -7,10 +7,11 @@
   그래서 **일부러 틀린 소스를 넣어 잡히는지**까지 본다.
 
 검증 대상
-  1) outbound    — 미등록 외부 호출·가드 미경유·등록부 잔재를 잡는다
-  2) request_log — 라우트에 구조화 로그 배선이 빠지면 잡는다
-  3) 현재 저장소는 두 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
-  4) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
+  1) outbound     — 미등록 외부 호출·가드 미경유·등록부 잔재를 잡는다
+  2) request_log  — 라우트에 구조화 로그 배선이 빠지면 잡는다
+  3) audit_actions— 감사를 배선했는데 `_audit.ADMIN_ACTIONS` 에 없는 라우트를 잡는다
+  4) 현재 저장소는 세 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
+  5) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
 
 실행: python3 -m pytest tests/test_release_gate.py -q
 """
@@ -95,6 +96,67 @@ class TestRequestLog(unittest.TestCase):
         self.assertTrue(ok, msg)
 
 
+class TestAuditActions(unittest.TestCase):
+    """27차: 감사를 배선했는데 등록부에 없으면 **아무것도 남지 않는다**.
+    그 상태는 코드만 봐서는 보이지 않는다(호출은 있다) — 게이트가 센다."""
+
+    WIRED = ("class handler(X):\n"
+             "    def do_POST(self):\n"
+             "        _audit.record_request(h, p, 'POST', 'allow', 200)\n")
+
+    def test_wired_route_missing_from_registry_fails(self):
+        ok, msg = verify.check_audit_actions({"newledger.py": self.WIRED})
+        self.assertFalse(ok)
+        self.assertIn("/api/newledger", msg)
+
+    def test_record_without_request_helper_also_counts(self):
+        src = "class handler(X):\n    _audit.record(h, 'x.y', 'allow', status=200)\n"
+        ok, msg = verify.check_audit_actions({"probe.py": src})
+        self.assertFalse(ok)
+        self.assertIn("/api/probe", msg)
+
+    def test_comment_mention_is_not_wiring(self):
+        """주석의 설명까지 배선으로 세면 게이트가 거짓말을 한다."""
+        src = "class handler(X):\n    # _audit.record_request( 를 붙일 예정\n    pass\n"
+        ok, msg = verify.check_audit_actions(dict(verify.api_sources(), **{"doc.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_shared_modules_are_exempt(self):
+        """`_` 로 시작하는 파일은 함수로 배포되지 않는 공용 모듈이다."""
+        srcs = dict(verify.api_sources())
+        srcs["_helper.py"] = self.WIRED
+        ok, msg = verify.check_audit_actions(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_stale_registry_entry_fails(self):
+        """배선이 사라졌는데 등록부에 남아 있으면 등록부가 아니다."""
+        srcs = {k: v for k, v in verify.api_sources().items() if k != "settlement.py"}
+        ok, msg = verify.check_audit_actions(srcs)
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+        self.assertIn("/api/settlement", msg)
+
+    def test_gate_reads_the_registry_from_source(self):
+        """게이트는 api 코드를 **실행하지 않고** 등록부를 읽는다."""
+        sys.path.insert(0, os.path.join(ROOT, "api"))
+        import _audit                            # noqa: E402
+        self.assertEqual(verify._audit_actions_registry(), dict(_audit.ADMIN_ACTIONS))
+
+    def test_gate_reports_missing_registry(self):
+        saved = verify.API_DIR
+        verify.API_DIR = os.path.join(ROOT, "scripts")   # _audit.py 가 없는 폴더
+        try:
+            ok, msg = verify.check_audit_actions(verify.api_sources())
+        finally:
+            verify.API_DIR = saved
+        self.assertFalse(ok)
+        self.assertIn("ADMIN_ACTIONS", msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_audit_actions(verify.api_sources())
+        self.assertTrue(ok, msg)
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -109,7 +171,7 @@ class TestGateRuns(unittest.TestCase):
             sys.argv = argv
         self.assertEqual(rc, 0, buf.getvalue())
         out = buf.getvalue()
-        for step in ("outbound", "request_log"):
+        for step in ("outbound", "request_log", "audit_actions"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

@@ -160,7 +160,38 @@ class DemoOrderBackend(OrderBackend):
         return {"redelivery_id": "RD-DEMO1234", "eta_minutes": 25}
 
     def escalate_to_agent(self, inp):
-        return {"transferred": True, "queue_position": 2}
+        """전환 사실만 돌려준다 — **대기 순번은 지어내지 않는다**.
+
+        예전에는 `queue_position: 2` 라는 고정 숫자가 들어 있었다. 이 값은 툴
+        결과이므로 LLM 컨텍스트로 들어가고(`/api/chat` 의 `log[].out` 으로 화면
+        까지 나간다), 모델은 툴 결과를 인용하도록 지시받았으니 고객은 **근거 없는
+        "대기 두 번째"** 를 듣는다. 순번을 아는 것은 상담 시스템(CTI)뿐이고
+        우리 큐는 인스턴스 메모리 sim 장부다 — 그 숫자를 순번이라고 부를 수도 없다.
+        모르는 것은 모른다고 말한다(§8 가짜 수치 금지 · 실연동은 [승인 필요]).
+        """
+        return {
+            "transferred": True,
+            "queue_position": None,          # 미지 — 상담 시스템 연동 전
+            "queue_position_known": False,
+            "note": "대기 순번·대기시간은 상담 시스템 미연동이라 알 수 없음(고객에게 말하지 말 것)",
+        }
+
+    def dispatch(self, tool, inp):
+        """데모 응답에 **출처 표시**를 한 칸 붙인다.
+
+        데모 백엔드의 수치(주문·금액·ETA)는 실측이 아니라 시연 데이터인데,
+        툴 결과는 LLM 컨텍스트를 거쳐 `/api/chat` 의 `log[].out` 으로 화면까지
+        나간다 — 받는 쪽이 그 사실을 알 수 있어야 한다(`ops_stats` 가
+        `data_source="demo"` 를 싣는 것과 같은 규약). 표시는 dispatch 에서만
+        붙인다: 구현 메서드의 응답 형태는 고객사 API(HttpOrderBackend)와
+        같게 두고, '이번 응답이 데모에서 왔다'는 사실만 전달한다.
+        """
+        out = super().dispatch(tool, inp)
+        if isinstance(out, dict) and "error" not in out and "data_source" not in out:
+            # 거부·미지 툴 응답(`{"error": …}`)에는 붙이지 않는다 — 데모 데이터가
+            # 아니라 계약 위반 통지이고, 그 모양은 고객사 백엔드와 같아야 한다.
+            out = dict(out, data_source="demo")
+        return out
 
 
 class HttpOrderBackend(OrderBackend):

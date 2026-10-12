@@ -14,6 +14,7 @@
   6. outbound     — 외부로 나가는 호출이 등록부에 있는가 + 요청 유래 URL 은 가드 경유
   7. request_log  — 모든 라우트가 요청 1건당 구조화 로그 1줄을 남기는가
   8. log_fields   — 로그 보조 필드(extra) 이름이 `_log.FIELDS` 등록부에 있는가
+  9. audit_actions— 감사를 배선한 라우트가 `_audit.ADMIN_ACTIONS` 등록부에 있는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -306,6 +307,69 @@ def check_log_fields(sources):
     return True, "등록 %d개 · 사용 %d곳" % (len(reg), n)
 
 
+# --------------------------------------------------------------------------
+# audit_actions 게이트
+#
+# 27차에서 드러난 결함: `caller_id`·`partners`·`settlement`·`wellbeing` 은 감사
+# 기록을 allow/deny/error 세 자리에 모두 배선했는데 `_audit.ADMIN_ACTIONS` 에
+# 경로가 없어 **아무것도 남지 않았다**(`action_for` 가 None 이면 record_request 는
+# 조용히 끝난다). 회귀는 가짜 감사 모듈을 끼워 '호출됐는가'만 봤으므로 침묵했다.
+# 그래서 게이트가 센다 — 배선과 등록부가 **양방향으로** 맞아야 통과한다.
+# --------------------------------------------------------------------------
+AUDIT_CALLS = ("_audit.record(", "_audit.record_request(")
+
+
+def _code(text):
+    """줄 주석을 뺀 코드만 — 주석 속 언급은 배선이 아니다."""
+    return "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+
+
+def _audit_actions_registry():
+    """api/_audit.py 의 ADMIN_ACTIONS 를 **실행 없이** 읽는다(ast 리터럴)."""
+    import ast
+    path = os.path.join(API_DIR, "_audit.py")
+    try:
+        tree = ast.parse(io.open(path, encoding="utf-8").read())
+    except Exception:                          # noqa: BLE001
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == "ADMIN_ACTIONS":
+                    try:
+                        return dict(ast.literal_eval(node.value))
+                    except Exception:          # noqa: BLE001
+                        return None
+    return None
+
+
+def check_audit_actions(sources):
+    reg = _audit_actions_registry()
+    if not reg:
+        return False, "api/_audit.py 의 ADMIN_ACTIONS 등록부를 읽을 수 없음"
+    wired, missing = set(), []
+    for name, text in sorted(sources.items()):
+        if name.startswith("_") or "class handler" not in text:
+            continue                           # 공용 모듈은 라우트가 아니다
+        code = _code(text)
+        if not any(c in code for c in AUDIT_CALLS):
+            continue                           # 감사를 배선하지 않은 라우트
+        route = "/api/" + name[:-3]
+        wired.add(route)
+        if route not in reg:
+            missing.append(route)
+    stale = sorted(set(reg) - wired)
+    msgs = []
+    if missing:
+        msgs.append("감사 기록이 남지 않는 라우트: %s "
+                    "(api/_audit.py ADMIN_ACTIONS 에 액션명을 적을 것)"
+                    % ", ".join(sorted(missing)))
+    if stale:
+        msgs.append("등록부 잔재(배선 없음): %s" % ", ".join(stale))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "등록 %d개 · 배선 %d개 일치" % (len(reg), len(wired)))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -322,6 +386,7 @@ def main():
     o_ok, o_msg = check_outbound(srcs)
     l_ok, l_msg = check_request_log(srcs)
     f_ok, f_msg = check_log_fields(srcs)
+    a_ok, a_msg = check_audit_actions(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -332,6 +397,7 @@ def main():
         {"step": "outbound", "ok": o_ok, "detail": o_msg},
         {"step": "request_log", "ok": l_ok, "detail": l_msg},
         {"step": "log_fields", "ok": f_ok, "detail": f_msg},
+        {"step": "audit_actions", "ok": a_ok, "detail": a_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

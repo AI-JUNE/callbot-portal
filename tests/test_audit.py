@@ -138,9 +138,11 @@ class TestPrivacy(AuditBase):
         self.assertEqual(_audit.record(H(), "x")["ua"], "none")
 
     def test_extra_fields_are_length_capped(self):
-        r = _audit.record(H(), "ops.stats.read", target="T" * 5000, note="N" * 5000)
+        # 등록부(`_audit.FIELDS`) 안의 칸으로 확인한다 — 27차부터 등록부 밖의
+        # 이름은 기록되지 않고 `extra_dropped` 로 센다(아래 TestFieldRegistry).
+        r = _audit.record(H(), "ops.stats.read", target="T" * 5000, period="P" * 5000)
         self.assertLessEqual(len(r["target"]), _audit.MAX_FIELD)
-        self.assertLessEqual(len(r["extra"]["note"]), _audit.MAX_FIELD)
+        self.assertLessEqual(len(r["extra"]["period"]), _audit.MAX_FIELD)
 
 
 class TestActor(AuditBase):

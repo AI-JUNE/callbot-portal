@@ -68,16 +68,49 @@ RESULTS = ("allow", "deny", "error")
 # 관리 기능으로 간주하는 경로 → 감사 액션명.
 # 여기에 없는 경로는 일반 트래픽으로 보고 감사 스트림에 남기지 않는다
 # (감사 로그가 일반 로그에 묻히면 조사 가치가 떨어진다).
+#
+# 2026-10-12(27차) 결함 수정 — `caller_id`·`partners`·`settlement`·`wellbeing` 은
+# `_audit.record_request(...)` 를 allow/deny/error 세 자리에 모두 배선해 두었는데
+# **등록부에 경로가 없어서 아무것도 기록되지 않았다**(`action_for` 가 None 을
+# 돌려주면 record_request 는 조용히 None 으로 끝난다). 회귀는 전부 가짜 감사
+# 모듈(`_CountingAudit`)을 끼워 호출 여부만 봤기 때문에 침묵했다 — 호출은
+# 되는데 남지 않는 상태였다. 넷 다 "누가 바꿨나"가 분쟁 근거인 장부다:
+# 발신번호 승인(실발신 근거)·파트너 귀속(정산 분쟁)·요율표(과금)·안부 실행(외부 발송).
+# 재발 방지는 릴리스 게이트 `audit_actions`(scripts/verify.py) — 감사를 배선한
+# 라우트가 등록부에 없거나, 등록부에 실재하지 않는 경로가 남아 있으면 실패한다.
 ADMIN_ACTIONS = {
     "/api/ops_stats": "ops.stats.read",       # 운영 대시보드 지표 조회
     "/api/health": "ops.health.deep",         # deep 점검(네트워크 도달성)만 기록
     "/api/voice": "call.webhook",             # 통화 웹훅(외부 시스템 연동 지점)
     "/api/disclosure": "tenant.disclosure",   # AI 고지 문구 설정(법정 고지 변경 — 조회·변경 모두)
+    "/api/caller_id": "caller_id.manage",     # 발신번호 승인 대장(실발신 승인 근거 — 조회·신청·승인·중지)
+    "/api/partners": "partner.ledger",        # 파트너 계약·담당 귀속 장부(정산 분쟁 근거)
+    "/api/settlement": "settlement.manage",   # 요율표·과금 명세(청구 근거 — 조회·변경)
+    "/api/wellbeing": "call.wellbeing",       # 안부 콜봇 실행(외부 콜백 발송 지점)
+}
+
+# --------------------------------------------------------------------------
+# 보조 필드(extra) 등록부 — `record(..., k=v)` 로 붙는 칸.
+#
+# 규약은 요청 로그(`_log.FIELDS`)와 **같다**: snake_case·짧은 이름, 분류 칸에는
+# 라우트가 화이트리스트로 접은 라벨만, 불리언은 사실 서술형(`is_` 금지).
+# 두 스트림이 같은 뜻에 다른 이름을 쓰면 상관 분석("그 요청의 감사 기록은
+# 어디냐")이 어긋나므로, 양쪽에 다 있는 칸은 **설명까지 같아야** 한다
+# (회귀 `tests/test_audit_fields.py` 가 교집합을 대조한다).
+#
+# 등록부 밖의 칸은 기록하지 않고 `extra_dropped` 로 **센다** — 감사 스트림은
+# PII 미기록이 1번 원칙이고, 임의 칸은 그 유입 경로다(조용히 통과시키는 쪽이
+# 더 나쁘고, 조용히 버리는 쪽도 나쁘므로 버린 사실을 드러낸다).
+# --------------------------------------------------------------------------
+FIELDS = {
+    "period": "집계 기간(ops_stats: today|week|month)",
+    "live": "실발신 게이트가 켜져 있었다(voice·wellbeing — 과금·실통화 여부)",
 }
 
 _LOCK = threading.Lock()
 _BUF = []
-_COUNT = {"total": 0, "allow": 0, "deny": 0, "error": 0, "evicted": 0}
+_COUNT = {"total": 0, "allow": 0, "deny": 0, "error": 0, "evicted": 0,
+          "extra_dropped": 0}
 _SALT = None
 
 
@@ -191,8 +224,21 @@ def ua_family(headers):
 
 
 def action_for(path):
-    """경로 → 감사 액션명. 관리 기능이 아니면 None."""
-    return ADMIN_ACTIONS.get(_safe_path(path))
+    """경로 → 감사 액션명. 관리 기능이 아니면 None.
+
+    등록부는 **라우트 단위**다. `/api/wellbeing/call` 처럼 하위경로로 들어오는
+    라우트가 있어서(Vercel 은 rewrite 로 `?op=` 로 넘기지만 로컬·직접 호출에서는
+    하위경로가 그대로 온다) 정확 일치에 실패하면 `/api/<route>` 까지 잘라 다시
+    찾는다. 자르는 단위는 세그먼트 경계뿐이다 — `/api/wellbeingX` 는 걸리지 않는다.
+    """
+    p = _safe_path(path)
+    act = ADMIN_ACTIONS.get(p)
+    if act:
+        return act
+    parts = [s for s in p.split("/") if s]
+    if len(parts) > 2 and parts[0] == "api":
+        return ADMIN_ACTIONS.get("/api/" + parts[1])
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -239,13 +285,34 @@ def record(headers, action, result="allow", status=200, request_id=None,
         if path:
             rec["path"] = _safe_path(path)
         if extra:
-            rec["extra"] = {str(k)[:40]: _sanitize(v) for k, v in extra.items() if v is not None}
+            keep, dropped = {}, 0
+            for k, v in extra.items():
+                if v is None:
+                    continue
+                if k in FIELDS:
+                    keep[k] = _sanitize(v)
+                else:
+                    # 등록부 밖의 칸 — 기록하지 않고 센다(FIELDS 주석 참조).
+                    dropped += 1
+            if keep:
+                rec["extra"] = keep
+            if dropped:
+                _bump("extra_dropped", dropped)
 
         _emit(rec)                       # 영속 보관은 플랫폼 로그 수집에 의존
         _store(rec)                      # 프로세스 내 최근 이력(운영 점검용)
         return rec
     except Exception:
         return None
+
+
+def _bump(name, n=1):
+    """카운터 1칸 증가 — 집계 실패가 기록·요청을 죽이지 않는다."""
+    try:
+        with _LOCK:
+            _COUNT[name] = _COUNT.get(name, 0) + n
+    except Exception:                      # pragma: no cover - 집계 장애 격리
+        pass
 
 
 def _store(rec):

@@ -116,8 +116,12 @@ class TestRegistry(unittest.TestCase):
 
     def test_verify_main_includes_the_gate(self):
         import subprocess
+        # 게이트 상세 문구는 한국어다. 파이프 출력 인코딩은 **로케일**이 정하므로
+        # (한국어 Windows 는 cp949) 자식에게 utf-8 을 명시한다 — 안 하면 게이트
+        # 결과가 아니라 테스트 하네스가 UnicodeDecodeError 로 먼저 깨진다.
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
         p = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "verify.py"),
-                            "--json"], stdout=subprocess.PIPE)
+                            "--json"], stdout=subprocess.PIPE, env=env)
         data = json.loads(p.stdout.decode("utf-8"))
         steps = {s["step"]: s["ok"] for s in data["steps"]}
         self.assertIn("log_fields", steps)

@@ -240,24 +240,27 @@ class TestUaFamily(EdgeBase):
 # 4) 보조 필드 정리
 # --------------------------------------------------------------------------
 class TestSanitize(EdgeBase):
+    """보조 필드 값 정리 — 27차부터 **등록부 안의 칸**만 기록되므로, 값 규약은
+    `_sanitize` 를 직접 태워 확인한다(이름 규약은 TestFieldRegistry)."""
+
     def test_non_scalar_extra_is_stringified_and_capped(self):
-        rec = _audit.record(H(), "ops.stats.read", "allow", status=200,
-                            rows=[1, 2, 3], meta={"k": "v"})
-        self.assertEqual(rec["extra"]["rows"], "[1, 2, 3]")
-        self.assertEqual(rec["extra"]["meta"], "{'k': 'v'}")
+        self.assertEqual(_audit._sanitize([1, 2, 3]), "[1, 2, 3]")
+        self.assertEqual(_audit._sanitize({"k": "v"}), "{'k': 'v'}")
 
     def test_long_non_scalar_is_capped(self):
-        rec = _audit.record(H(), "ops.stats.read", "allow", status=200,
-                            rows=list(range(500)))
-        self.assertLessEqual(len(rec["extra"]["rows"]), _audit.MAX_FIELD)
+        self.assertLessEqual(len(_audit._sanitize(list(range(500)))), _audit.MAX_FIELD)
 
     def test_scalar_types_are_preserved(self):
-        rec = _audit.record(H(), "ops.stats.read", "allow", status=200,
-                            ok=True, n=3, ratio=0.5, s="x")
-        self.assertIs(rec["extra"]["ok"], True)
-        self.assertEqual(rec["extra"]["n"], 3)
-        self.assertEqual(rec["extra"]["ratio"], 0.5)
-        self.assertEqual(rec["extra"]["s"], "x")
+        self.assertIs(_audit._sanitize(True), True)
+        self.assertEqual(_audit._sanitize(3), 3)
+        self.assertEqual(_audit._sanitize(0.5), 0.5)
+        self.assertEqual(_audit._sanitize("x"), "x")
+
+    def test_registered_extra_field_is_recorded_with_its_type(self):
+        rec = _audit.record(H(), "call.webhook", "allow", status=200, live=False)
+        self.assertIs(rec["extra"]["live"], False)
+        rec = _audit.record(H(), "ops.stats.read", "allow", status=200, period="week")
+        self.assertEqual(rec["extra"]["period"], "week")
 
     def test_target_uses_the_same_sanitiser(self):
         rec = _audit.record(H(), "ops.stats.read", "allow", status=200,

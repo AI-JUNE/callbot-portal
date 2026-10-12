@@ -91,7 +91,9 @@ def _sys(phone):
             f"발신번호:{phone}\n주요 업무: 주문/배송 조회, 반품·교환·환불 접수. "
             "규칙:(1)주문/정책/금액은 반드시 툴 결과만 인용, 임의로 지어내지 말 것 "
             "(2)환불·교환은 고객이 금액·조건 듣고 명시 동의한 직후에만 user_confirmed=true로 호출 "
-            "(3)한도초과/정책외/반복실패/상담원요청 시 escalate_to_agent.")
+            "(3)한도초과/정책외/반복실패/상담원요청 시 escalate_to_agent "
+            "(4)대기 순번·대기시간·소요일수처럼 툴이 알려주지 않은 수치는 말하지 않는다"
+            "(모르면 '확인되는 대로 안내드리겠습니다'로 안내).")
 
 def _mem(messages):
     m={"order_id":None,"max_refund":None,"quoted_amount":None,"awaiting":False,"affirm":False,"transferred":False}; lu=""
