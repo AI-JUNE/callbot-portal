@@ -154,10 +154,36 @@ class DemoOrderBackend(OrderBackend):
         return {"refund_amount": total, "currency": "KRW"}
 
     def confirm_refund(self, inp):
-        return {"refund_id": "RF-DEMO1234", "status": "accepted", "eta_days": 3}
+        """접수 사실만 돌려준다 — **처리 소요일수는 지어내지 않는다**.
+
+        예전에는 `eta_days: 3` 이 들어 있었다. `queue_position` 과 같은 경로다:
+        툴 결과 → LLM 컨텍스트 → 고객의 귀(그리고 `/api/chat` 의 `log[].out`).
+        환불 소요일수를 아는 것은 결제대행·정산 시스템뿐이고 데모 백엔드는
+        그 어느 것도 보지 않는다 — '3일'은 **지키겠다고 말한 적 없는 약속**이다
+        (돈에 관한 약속이라 대기 순번보다 무르기 어렵다).
+        모르는 것은 모른다고 말한다(§8 가짜 수치 금지 · 실연동은 [승인 필요]).
+        """
+        return {
+            "refund_id": "RF-DEMO1234",
+            "status": "accepted",               # 접수됐다는 사실은 그대로 보고한다
+            "eta_days": None,                   # 미지 — 결제·정산 시스템 미연동
+            "eta_days_known": False,
+            "note": "환불 처리 소요일수는 결제·정산 시스템 미연동이라 알 수 없음(고객에게 말하지 말 것)",
+        }
 
     def request_redelivery(self, inp):
-        return {"redelivery_id": "RD-DEMO1234", "eta_minutes": 25}
+        """접수 사실만 돌려준다 — **도착 예정 시각은 지어내지 않는다**.
+
+        `eta_minutes: 25` 는 배송 추적 없이 만든 숫자였다. 재배달 ETA 는
+        배송·물류 시스템만 아는 값이고, 고객은 그 '25분'을 듣고 기다린다.
+        """
+        return {
+            "redelivery_id": "RD-DEMO1234",
+            "status": "accepted",
+            "eta_minutes": None,                # 미지 — 배송 추적 미연동
+            "eta_minutes_known": False,
+            "note": "재배달 도착 예정 시각은 배송 추적 미연동이라 알 수 없음(고객에게 말하지 말 것)",
+        }
 
     def escalate_to_agent(self, inp):
         """전환 사실만 돌려준다 — **대기 순번은 지어내지 않는다**.

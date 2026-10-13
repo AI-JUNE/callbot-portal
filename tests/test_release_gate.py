@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""scripts/verify.py 릴리스 게이트 — 검사 3종의 회귀. 네트워크 미사용.
+"""scripts/verify.py 릴리스 게이트 — 검사 4종의 회귀. 네트워크 미사용.
 
 왜 이 파일이 필요한가
   게이트는 "통과했다"는 말만 남기고 조용히 아무것도 검사하지 않을 수 있다.
@@ -10,7 +10,8 @@
   1) outbound     — 미등록 외부 호출·가드 미경유·등록부 잔재를 잡는다
   2) request_log  — 라우트에 구조화 로그 배선이 빠지면 잡는다
   3) audit_actions— 감사를 배선했는데 `_audit.ADMIN_ACTIONS` 에 없는 라우트를 잡는다
-  4) 현재 저장소는 세 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
+  4) spoken_numbers— 프롬프트·데모 툴 결과에 박힌 수치(고객이 듣는 값)를 잡는다
+  5) 현재 저장소는 네 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
   5) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
 
 실행: python3 -m pytest tests/test_release_gate.py -q
@@ -157,6 +158,108 @@ class TestAuditActions(unittest.TestCase):
         self.assertTrue(ok, msg)
 
 
+class TestSpokenNumbers(unittest.TestCase):
+    """28차: 고객이 **귀로 듣는 수치**가 리터럴로 박혀 있으면 잡는다.
+
+    27차 `queue_position: 2`·28차 `eta_days: 3`·대본의 「37,000원」이 모두 한 줄
+    짜리 리터럴이었다 — 리뷰에서는 보이지 않고, 모든 통화에서 같은 거짓이 반복된다.
+    """
+
+    PROMPT = "PROMPT_X = '연체 안내입니다. 확인 후 안내드리겠습니다.'\n"
+
+    def _srcs(self, demo):
+        return {"_engine.py": self.PROMPT, "_order_backend.py": demo}
+
+    DEMO_OK = ("class DemoOrderBackend(OrderBackend):\n"
+               "    def confirm_refund(self, inp):\n"
+               "        return {'status': 'accepted', 'eta_days': None,\n"
+               "                'eta_days_known': False, 'note': '알 수 없음'}\n")
+
+    def test_prompt_with_an_amount_fails(self):
+        srcs = self._srcs(self.DEMO_OK)
+        srcs["_engine.py"] = "PROMPT_OVERDUE = '현재 미납금은 37,000원입니다.'\n"
+        ok, msg = verify.check_spoken_numbers(srcs)
+        self.assertFalse(ok)
+        self.assertIn("PROMPT_OVERDUE", msg)
+        self.assertIn("37,000원", msg)
+
+    def test_amount_hidden_in_a_concatenated_prompt_is_found(self):
+        """프롬프트는 여러 줄을 이어 붙인다 — 중간 줄도, 어떤 이어붙임이든 본다.
+
+        나란히 놓은 문자열은 파서가 한 덩어리로 합치지만 `+`·f-string 은
+        그렇지 않다 — 표현식 안쪽까지 내려가지 않으면 그 모양으로 숨는다.
+        """
+        for label, src in (
+            ("나란히", "PROMPT_A = ('첫 줄\\n'\n '미납금은 37,000원입니다\\n'\n '끝 줄')\n"),
+            ("더하기", "PROMPT_A = '첫 줄' + '미납금은 37,000원입니다' + '끝 줄'\n"),
+            ("f-string", "PROMPT_A = f'{x} 미납금은 37,000원입니다'\n"),
+        ):
+            with self.subTest(shape=label):
+                srcs = self._srcs(self.DEMO_OK)
+                srcs["_engine.py"] = src
+                ok, msg = verify.check_spoken_numbers(srcs)
+                self.assertFalse(ok)
+                self.assertIn("PROMPT_A", msg)
+
+    def test_call_duration_is_not_an_amount(self):
+        """'약 2분'·'생년월일 6자리'까지 잡으면 사람이 게이트를 끈다."""
+        srcs = self._srcs(self.DEMO_OK)
+        srcs["_engine.py"] = ("PROMPT_B = '약 2분 걸립니다. 생년월일 6자리를 "
+                              "말씀해 주세요. 3회 틀리면 종료합니다.'\n")
+        ok, msg = verify.check_spoken_numbers(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_missing_prompts_is_a_failure_not_a_pass(self):
+        """검사 대상이 0개인데 통과로 보고하면 게이트가 사라진 것을 모른다."""
+        ok, msg = verify.check_spoken_numbers({"_order_backend.py": self.DEMO_OK})
+        self.assertFalse(ok)
+        self.assertIn("PROMPT_", msg)
+
+    def test_demo_tool_result_with_a_number_fails(self):
+        demo = ("class DemoOrderBackend(OrderBackend):\n"
+                "    def confirm_refund(self, inp):\n"
+                "        return {'status': 'accepted', 'eta_days': 3}\n")
+        ok, msg = verify.check_spoken_numbers(self._srcs(demo))
+        self.assertFalse(ok)
+        self.assertIn("eta_days=3", msg)
+
+    def test_number_nested_in_the_result_is_found(self):
+        demo = ("class DemoOrderBackend(OrderBackend):\n"
+                "    def escalate_to_agent(self, inp):\n"
+                "        return {'queue': {'position': 2}}\n")
+        ok, msg = verify.check_spoken_numbers(self._srcs(demo))
+        self.assertFalse(ok)
+        self.assertIn("position=2", msg)
+
+    def test_unknown_markers_are_not_numbers(self):
+        """null + `*_known: false` 로 '모른다'를 말하는 모양은 통과해야 한다."""
+        ok, msg = verify.check_spoken_numbers(self._srcs(self.DEMO_OK))
+        self.assertTrue(ok, msg)
+
+    def test_demo_order_ledger_is_not_the_target(self):
+        """데모 주문(DEMO_ORDER)의 금액은 시연용 '장부'다 — 한도·견적이 그 값에서
+        계산돼 나오므로 서로 어긋나지 않는다(과차단하면 데모가 죽는다)."""
+        demo = ("DEMO_ORDER = {'items': [{'name': 'x', 'qty': 1, 'price': 159000}]}\n"
+                + self.DEMO_OK)
+        ok, msg = verify.check_spoken_numbers(self._srcs(demo))
+        self.assertTrue(ok, msg)
+
+    def test_missing_demo_class_fails(self):
+        ok, msg = verify.check_spoken_numbers(self._srcs("# 데모 백엔드가 사라졌다\n"))
+        self.assertFalse(ok)
+        self.assertIn("DemoOrderBackend", msg)
+
+    def test_gate_reads_sources_without_executing_them(self):
+        srcs = self._srcs(self.DEMO_OK)
+        srcs["_engine.py"] = "raise SystemExit('실행되면 안 된다')\nPROMPT_Z = 'ok'\n"
+        ok, msg = verify.check_spoken_numbers(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_spoken_numbers(verify.api_sources())
+        self.assertTrue(ok, msg)
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -171,7 +274,7 @@ class TestGateRuns(unittest.TestCase):
             sys.argv = argv
         self.assertEqual(rc, 0, buf.getvalue())
         out = buf.getvalue()
-        for step in ("outbound", "request_log", "audit_actions"):
+        for step in ("outbound", "request_log", "audit_actions", "spoken_numbers"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

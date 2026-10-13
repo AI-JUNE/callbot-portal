@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""고객에게 말해지는 수치는 **지어내지 않는다** 회귀 — 27차. 네트워크 미사용.
+"""고객에게 말해지는 수치는 **지어내지 않는다** 회귀 — 27·28차. 네트워크 미사용.
 
 26차가 남긴 후보: 데모 주문 백엔드의 `escalate_to_agent` 가
 `{"transferred": True, "queue_position": 2}` 를 돌려줬다. 이 값은 툴 결과이므로
@@ -17,8 +17,16 @@
      그 값은 `/api/ops_stats` 가 노출한다(지어낸 숫자와 섞이지 않는다).
   4) 시스템 프롬프트가 "툴이 알려주지 않은 수치는 말하지 않는다"를 지시한다.
 
+28차가 더하는 것 — 같은 경로에 남아 있던 수치 셋
+  5) 접수 툴의 ETA(`eta_days: 3`·`eta_minutes: 25`)도 지어낸 값이었다. 접수
+     **사실**은 그대로 보고하고 수치만 '모른다'로 남긴다.
+  6) `PROMPT_OVERDUE` 가 「현재 미납금은 37,000원입니다」를 봇이 말할 문장으로
+     들고 있었다(이 시나리오는 툴을 쓰지 않아 어디서도 조회되지 않는다).
+  7) 콘솔·react 의 대본표는 **봇이 하는 말의 문서**다 — 프롬프트와 어긋나면 거짓이다.
+
 실행: python3 -m pytest tests/test_no_invented_numbers.py -q
 """
+import io
 import os
 import re
 import sys
@@ -71,6 +79,123 @@ class TestEscalateResult(unittest.TestCase):
         out = self.b.escalate_to_agent({})
         self.assertIn("note", out)
         self.assertIn("알 수 없", out["note"])
+
+
+class TestWriteToolEta(unittest.TestCase):
+    """28차: 접수 툴의 ETA 도 같은 경로였다.
+
+    `confirm_refund` 는 `eta_days: 3`, `request_redelivery` 는 `eta_minutes: 25`
+    를 돌려줬다. 환불 소요일수를 아는 것은 결제·정산 시스템, 재배달 도착 시각을
+    아는 것은 배송 추적인데 데모 백엔드는 둘 중 아무것도 보지 않는다 —
+    고객은 '3일'·'25분'을 **약속으로** 듣는다(돈·기다림에 관한 약속이라
+    대기 순번보다 무르기 어렵다).
+    """
+
+    def setUp(self):
+        self.b = order_backend.DemoOrderBackend()
+
+    def test_acceptance_fact_is_still_reported(self):
+        """사실(접수됨·접수번호)은 그대로 — 수치만 뺀다."""
+        r = self.b.confirm_refund({"order_id": "x", "refund_amount": 1})
+        self.assertEqual(r["status"], "accepted")
+        self.assertEqual(r["refund_id"], "RF-DEMO1234")
+        d = self.b.request_redelivery({"order_id": "x", "items": []})
+        self.assertEqual(d["status"], "accepted")
+        self.assertEqual(d["redelivery_id"], "RD-DEMO1234")
+
+    def test_refund_eta_is_not_invented(self):
+        r = self.b.confirm_refund({"order_id": "x", "refund_amount": 1})
+        self.assertIsNone(r["eta_days"])
+        self.assertIs(r["eta_days_known"], False)
+
+    def test_redelivery_eta_is_not_invented(self):
+        d = self.b.request_redelivery({"order_id": "x", "items": []})
+        self.assertIsNone(d["eta_minutes"])
+        self.assertIs(d["eta_minutes_known"], False)
+
+    def test_unknown_state_is_stated_not_hidden(self):
+        """칸을 지우면 '모른다'가 아니라 '안 알려준다'가 된다(순번과 같은 판단)."""
+        for out in (self.b.confirm_refund({}), self.b.request_redelivery({})):
+            self.assertIn("알 수 없", out["note"])
+            self.assertIn("고객에게 말하지 말 것", out["note"])
+
+    def test_no_duration_number_survives_in_the_payload(self):
+        """접수번호 밖에 숫자가 남으면 모델이 그것을 기간으로 읽는다."""
+        for out in (self.b.confirm_refund({"order_id": "x", "refund_amount": 1}),
+                    self.b.request_redelivery({"order_id": "x", "items": []})):
+            for k, v in out.items():
+                if isinstance(v, bool):
+                    continue                   # 사실(모름 표기)은 수치가 아니다
+                self.assertNotIsInstance(v, (int, float), k)
+            text = json.dumps(out, ensure_ascii=False)
+            # 남은 숫자는 자기 자신이 데모임을 밝히는 접수번호뿐이다.
+            self.assertEqual(re.findall(r"\d+", text.replace("DEMO1234", "")), [])
+
+    def test_source_marker_still_rides_along(self):
+        for tool, args in (("confirm_refund", {"order_id": "x", "refund_amount": 1}),
+                           ("request_redelivery", {"order_id": "x", "items": []})):
+            self.assertEqual(self.b.dispatch(tool, args).get("data_source"), "demo")
+
+
+class TestOverdueScriptNumbers(unittest.TestCase):
+    """28차: 연체 안내 대본이 **고정 미납금액**을 말하게 돼 있었다.
+
+    `PROMPT_OVERDUE` 는 '현재 미납금은 37,000원입니다'를 봇이 말할 문장으로
+    들고 있었고, 이 시나리오는 툴을 쓰지 않으므로(`use_tools=False`) 그 금액은
+    어디서도 조회되지 않는다 — 누구에게 걸어도 같은 숫자를 말하고 그 말은
+    「은행이 알려 준 내 미납금」으로 들린다.
+    """
+
+    MONEY = re.compile(r"\d[\d,]*\s*원")
+
+    def test_prompt_states_no_amount(self):
+        self.assertIsNone(self.MONEY.search(engine.PROMPT_OVERDUE))
+        self.assertNotIn("37,000", engine.PROMPT_OVERDUE)
+
+    def test_prompt_tells_the_bot_what_to_say_instead(self):
+        """문장을 지우기만 하면 모델이 빈자리를 채운다 — 명시해야 닫힌다."""
+        self.assertIn("말하지 않는다", engine.PROMPT_OVERDUE)
+        self.assertIn("확인되는 대로 안내드리겠습니다", engine.PROMPT_OVERDUE)
+
+    def test_prompt_does_not_claim_a_lookup_that_never_happened(self):
+        """'오늘 오전 조회된 내용' — 조회 경로가 없다(출처를 지어내지 않는다)."""
+        self.assertNotIn("오늘 오전", engine.PROMPT_OVERDUE)
+
+    def test_no_scenario_prompt_quotes_an_amount(self):
+        for name in sorted(n for n in dir(engine) if n.startswith("PROMPT_")):
+            with self.subTest(prompt=name):
+                self.assertIsNone(self.MONEY.search(getattr(engine, name)))
+
+    def test_overdue_scenario_still_uses_this_prompt(self):
+        """대본을 고쳤어도 그 대본이 실제로 쓰이는지 확인한다."""
+        src = io.open(os.path.join(ROOT, "api", "_engine.py"), encoding="utf-8").read()
+        self.assertIn('scenario=="overdue": sysp=PROMPT_OVERDUE', src)
+
+
+class TestConsoleScriptTableAgrees(unittest.TestCase):
+    """화면의 대본표는 **봇이 하는 말의 문서**다 — 프롬프트와 어긋나면 거짓이다."""
+
+    MONEY = re.compile(r"\d[\d,]*\s*원")
+    PAGES = (("admin.html", "\n overdue:{", "\n  edge:["),
+             ("react.html", "\n overdue:{", "\n};"))
+
+    def _block(self, page, start, end):
+        text = io.open(os.path.join(ROOT, "public", page), encoding="utf-8").read()
+        self.assertIn(start, text, page)
+        seg = text.split(start, 1)[1]
+        return seg.split(end, 1)[0]
+
+    def test_overdue_table_quotes_no_amount(self):
+        for page, start, end in self.PAGES:
+            with self.subTest(page=page):
+                block = self._block(page, start, end)
+                self.assertNotIn("37,000", block)
+                self.assertIsNone(self.MONEY.search(block))
+
+    def test_overdue_table_says_the_amount_is_not_looked_up(self):
+        """숫자만 지우면 '왜 금액을 말하지 않는지'를 아무도 모른다."""
+        block = self._block(*self.PAGES[0])
+        self.assertIn("확인되는 대로 안내드리겠습니다", block)
 
 
 class TestDemoSourceMarker(unittest.TestCase):

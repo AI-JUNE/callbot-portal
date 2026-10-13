@@ -15,6 +15,7 @@
   7. request_log  — 모든 라우트가 요청 1건당 구조화 로그 1줄을 남기는가
   8. log_fields   — 로그 보조 필드(extra) 이름이 `_log.FIELDS` 등록부에 있는가
   9. audit_actions— 감사를 배선한 라우트가 `_audit.ADMIN_ACTIONS` 등록부에 있는가
+ 10. spoken_numbers— 고객이 듣게 되는 수치(프롬프트 금액·데모 툴 결과)가 박혀 있지 않은가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -28,6 +29,7 @@ import argparse
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from html.parser import HTMLParser
@@ -370,6 +372,127 @@ def check_audit_actions(sources):
                         else "등록 %d개 · 배선 %d개 일치" % (len(reg), len(wired)))
 
 
+# --------------------------------------------------------------------------
+# spoken_numbers 게이트
+#
+# 고객이 **귀로 듣는 수치**는 두 곳에서 나온다.
+#   (1) 시나리오 프롬프트(`PROMPT_*`) — 봇이 그대로 읽는 문장
+#   (2) 데모 주문 백엔드의 툴 결과 — LLM 컨텍스트로 들어가 그대로 인용되고
+#       `/api/chat` 의 `log[].out` 으로 화면까지 나간다
+# 어느 쪽이든 숫자를 박아 두면 **모든 통화에서 같은 거짓이 반복**되고, 화면의
+# 가짜 KPI 와 달리 「샘플 데이터」 워터마크를 붙일 자리가 없다(§8 가짜 수치 금지).
+# 27차 `queue_position: 2`, 28차 `eta_days: 3`·`eta_minutes: 25`·대본의
+# 「미납금 37,000원」이 전부 **한 줄짜리 리터럴**이었다 — 리뷰에서 눈에 띄지 않는다.
+# 그래서 게이트가 센다.
+#
+# 검사 범위는 일부러 좁혔다(과차단되면 사람이 게이트를 끈다):
+#   · 프롬프트는 **금액 표기**만 본다(`…원`·`%`). 통화 길이('약 2분')처럼 우리가
+#     통제하는 수치나 '생년월일 6자리' 같은 자릿수 안내는 고객 돈에 대한 거짓이 아니다.
+#   · 데모 백엔드는 **메서드 return 의 dict 리터럴**만 본다. 데모 주문(DEMO_ORDER)의
+#     금액은 시연용 주문 '장부'이고 정책 한도·견적이 그 값에서 계산돼 나오므로 서로
+#     어긋나지 않는다 — 장부와 무관하게 메서드에 박힌 숫자가 거짓이 되는 쪽이다.
+# 수치를 '모른다'로 남기는 방법은 `queue_position`·`eta_days` 를 보면 된다
+# (칸을 지우지 않고 null + `*_known: false` + 사유 — 빈자리는 모델이 채운다).
+# --------------------------------------------------------------------------
+SPOKEN_PROMPT_PREFIX = "PROMPT_"
+DEMO_BACKEND_FILE = "_order_backend.py"
+DEMO_BACKEND_CLASS = "DemoOrderBackend"
+RX_MONEY = re.compile(r"\d[\d,]*\s*(?:원|%|퍼센트)")
+
+
+def _prompt_money(text):
+    """(검사한 프롬프트 수, [(상수명, 걸린 표기)]) — 실행 없이 ast 로 읽는다."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return 0, []                           # 문법 오류는 py_compile 게이트가 잡는다
+    seen, hits = 0, []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        names = [t.id for t in node.targets
+                 if isinstance(t, ast.Name) and t.id.startswith(SPOKEN_PROMPT_PREFIX)]
+        if not names:
+            continue
+        seen += 1
+        for s in ast.walk(node.value):
+            if isinstance(s, ast.Constant) and isinstance(s.value, str):
+                m = RX_MONEY.search(s.value)
+                if m:
+                    hits.append((names[0], m.group(0).strip()))
+                    break
+    return seen, hits
+
+
+def _dict_pairs(node):
+    """return 값 안의 모든 dict 항목 (키, 값노드). 중첩 dict·리스트도 포함."""
+    import ast
+    out = []
+    for d in ast.walk(node):
+        if not isinstance(d, ast.Dict):
+            continue
+        for k, v in zip(d.keys, d.values):
+            key = (k.value if isinstance(k, ast.Constant) and isinstance(k.value, str)
+                   else "?")
+            out.append((key, v))
+    return out
+
+
+def _demo_tool_numbers(text):
+    """(검사한 메서드 수, [걸린 칸]) — 데모 백엔드 return 에 박힌 숫자.
+    클래스를 찾지 못하면 None(등록부 잔재와 같은 취급: 통과시키지 않는다)."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return None
+    cls = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == DEMO_BACKEND_CLASS:
+            cls = node
+            break
+    if cls is None:
+        return None
+    n, hits = 0, []
+    for fn in cls.body:
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        n += 1
+        for r in ast.walk(fn):
+            if not isinstance(r, ast.Return) or r.value is None:
+                continue
+            for key, val in _dict_pairs(r.value):
+                if (isinstance(val, ast.Constant)
+                        and isinstance(val.value, (int, float))
+                        and not isinstance(val.value, bool)):
+                    # bool 은 수치가 아니라 사실(transferred/known)이다.
+                    hits.append("%s:%d %s=%r" % (DEMO_BACKEND_FILE, val.lineno,
+                                                 key, val.value))
+    return n, hits
+
+
+def check_spoken_numbers(sources):
+    prompts, msgs = 0, []
+    for name, text in sorted(sources.items()):
+        seen, hits = _prompt_money(text)
+        prompts += seen
+        for const, tok in hits:
+            msgs.append("프롬프트에 박힌 금액: %s 의 %s (%s) — 조회한 값만 말하게 "
+                        "하고, 모르면 '확인 후 안내'로 둘 것" % (name, const, tok))
+    if not prompts:
+        return False, "시나리오 프롬프트(PROMPT_*)를 찾을 수 없음"
+    demo = _demo_tool_numbers(sources.get(DEMO_BACKEND_FILE, ""))
+    if demo is None:
+        return False, "%s 의 %s 를 읽을 수 없음" % (DEMO_BACKEND_FILE, DEMO_BACKEND_CLASS)
+    tools, hits = demo
+    if hits:
+        msgs.append("데모 툴 결과에 박힌 수치: %s — 장부에서 계산하거나 null + "
+                    "`*_known: false` + 사유로 둘 것" % ", ".join(hits[:8]))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "프롬프트 %d개 · 데모 툴 %d개 검사" % (prompts, tools))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -387,6 +510,7 @@ def main():
     l_ok, l_msg = check_request_log(srcs)
     f_ok, f_msg = check_log_fields(srcs)
     a_ok, a_msg = check_audit_actions(srcs)
+    n_ok, n_msg = check_spoken_numbers(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -398,6 +522,7 @@ def main():
         {"step": "request_log", "ok": l_ok, "detail": l_msg},
         {"step": "log_fields", "ok": f_ok, "detail": f_msg},
         {"step": "audit_actions", "ok": a_ok, "detail": a_msg},
+        {"step": "spoken_numbers", "ok": n_ok, "detail": n_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:
