@@ -197,6 +197,25 @@ class TestConsoleScriptTableAgrees(unittest.TestCase):
         block = self._block(*self.PAGES[0])
         self.assertIn("확인되는 대로 안내드리겠습니다", block)
 
+    def test_overdue_table_does_not_promise_a_retrieval_we_do_not_have(self):
+        """29차: 대본표가 「RAG 문서검색 후 … 생성형 답변」이라고 적고 있었다.
+
+        연체 경로는 `use_tools=False` 이고 근거 문서를 검색하는 코드가 없다 —
+        바로 아래 「배치 테스트」가 이 대본을 **실제 엔진에 보내** 검증하므로
+        이 표는 설계도가 아니라 동작 문서로 읽힌다(없는 근거를 약속한다).
+        """
+        block = self._block(*self.PAGES[0])
+        self.assertNotIn("RAG 문서검색 후", block)
+        self.assertIn("근거 문서 미연결", block)
+
+    def test_flow_diagram_marks_the_retrieval_node_as_unwired(self):
+        """같은 화면이 서로 다른 말을 하면 안 된다 — 흐름도의 RAG 노드도 미연결."""
+        for page, start, end in self.PAGES:
+            with self.subTest(page=page):
+                block = self._block(page, start, end)
+                for seg in block.split("'RAG'")[1:]:
+                    self.assertIn("미연결", seg.split("]", 1)[0], page)
+
 
 class TestDemoSourceMarker(unittest.TestCase):
 
@@ -261,6 +280,70 @@ class TestNumbersComeFromTheLedger(unittest.TestCase):
         self.assertEqual(len(esc), 1)
         self.assertIs(esc[0]["recorded"], True)
         self.assertTrue(esc[0]["ticket"].startswith("ESC-"))
+
+
+class TestGeneralQuestionNumbers(unittest.TestCase):
+    """29차: 수치가 박혀 있지 않아도 **답하라고 지시하면** 모델이 지어낸다.
+
+    `PROMPT_OVERDUE` 는 「원리금/원금균등 차이, 인지세, 만기 전 상환 비용 등:
+    간결·**정확하게** 2문장 이내로 답한다」를 들고 있었다. 28차가 세운 수치
+    규칙은 '미납 금액·연체일수·납기일·조회 시각'만 열거했으므로 이 자리를
+    덮지 못했고, 두 줄이 서로 어긋나 있었다. 인지세는 약정 금액 구간별 정액에
+    은행·고객 분담이 걸리고 만기 전 상환 비용은 상품·경과기간별 요율이다 —
+    둘 다 **고객 돈**이고, 이 경로는 툴도 근거 문서 검색도 쓰지 않는다.
+    """
+
+    RATE = re.compile(r"\d[\d,.]*\s*(?:%|퍼센트|원)")
+
+    def test_general_questions_are_answered_as_concepts_only(self):
+        self.assertIn("제도·용어의 뜻만", engine.PROMPT_OVERDUE)
+        self.assertNotIn("간결·정확하게 2문장 이내로 답한다", engine.PROMPT_OVERDUE)
+
+    def test_rates_and_taxes_are_explicitly_out_of_the_bot_mouth(self):
+        self.assertIn("요율·세액·금액·기간", engine.PROMPT_OVERDUE)
+        self.assertIn("확인 후 안내드리겠습니다", engine.PROMPT_OVERDUE)
+
+    def test_the_number_rule_is_not_a_closed_list(self):
+        """열거만 하면 목록 밖의 수치(수수료율·세액)가 그대로 빠져나간다."""
+        self.assertIn("이에 한정하지 않는다", engine.PROMPT_OVERDUE)
+        self.assertIn("수수료율", engine.PROMPT_OVERDUE)
+
+    def test_every_scenario_prompt_carries_the_rule(self):
+        """같은 공백이 세 군데였다 — 새 시나리오가 규칙 없이 늘지 않게 고정한다."""
+        names = sorted(n for n in dir(engine) if n.startswith("PROMPT_"))
+        self.assertGreaterEqual(len(names), 5)
+        for name in names + ["_sys"]:
+            text = (engine._sys("01012345678") if name == "_sys"
+                    else getattr(engine, name))
+            with self.subTest(prompt=name):
+                self.assertTrue("말하지 않는다" in text or "지어내지" in text, name)
+
+    def test_no_prompt_quotes_a_rate_or_an_amount(self):
+        for name in sorted(n for n in dir(engine) if n.startswith("PROMPT_")):
+            with self.subTest(prompt=name):
+                self.assertIsNone(self.RATE.search(getattr(engine, name)))
+
+    def test_overdue_turn_sends_the_rule_and_no_tools(self):
+        """프롬프트 상수만 보면 '실제로 그 문장이 모델에 가는가'는 모른다."""
+        seen = {}
+
+        def fake_call(model, payload):
+            seen.update(payload)
+            return say("정확한 요율과 금액은 확인 후 안내드리겠습니다.")
+
+        saved = engine._call
+        engine._call = fake_call
+        try:
+            out = engine.run_turn([{"role": "user", "content": "인지세가 얼마인가요?"}],
+                                  phone="01012345678", scenario="overdue")
+        finally:
+            engine._call = saved
+        sysp = seen["systemInstruction"]["parts"][0]["text"]
+        self.assertNotIn("tools", seen)        # 조회 경로가 아예 없다
+        self.assertIn("제도·용어의 뜻만", sysp)
+        self.assertIn("말하지 않는다", sysp)
+        self.assertIsNone(self.RATE.search(sysp))
+        self.assertTrue(out["reply"])
 
 
 class TestPromptRule(unittest.TestCase):

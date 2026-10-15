@@ -11,6 +11,7 @@
   2) request_log  — 라우트에 구조화 로그 배선이 빠지면 잡는다
   3) audit_actions— 감사를 배선했는데 `_audit.ADMIN_ACTIONS` 에 없는 라우트를 잡는다
   4) spoken_numbers— 프롬프트·데모 툴 결과에 박힌 수치(고객이 듣는 값)를 잡는다
+  5) spoken_rules  — 시나리오 프롬프트가 "조회하지 않은 값은 말하지 않는다"를 지시하는가
   5) 현재 저장소는 네 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
   5) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
 
@@ -260,6 +261,92 @@ class TestSpokenNumbers(unittest.TestCase):
         self.assertTrue(ok, msg)
 
 
+class TestSpokenRules(unittest.TestCase):
+    """29차: 숫자가 박혀 있지 않아도 **답하라고 지시하면** 모델이 지어낸다.
+
+    연체 대본의 일반 질의 자리(「인지세? 만기 전 상환 비용?」)가 그랬다 —
+    「간결·정확하게 답한다」 한 줄뿐이었고, 그 값을 조회하는 경로는 없다.
+    그래서 게이트는 반대쪽을 본다: **규칙이 프롬프트 안에 있는가**.
+    """
+
+    SYS = ("def _sys(phone):\n"
+           "    return ('너는 상담원이다.\\n'\n"
+           "            f'발신번호:{phone}\\n'\n"
+           "            '툴이 주지 않은 수치는 말하지 않는다.')\n")
+
+    def _srcs(self, prompt, sysfn=None):
+        return {"_engine.py": prompt + (self.SYS if sysfn is None else sysfn)}
+
+    def test_prompt_without_the_rule_fails(self):
+        src = "PROMPT_OVERDUE = '인지세는 간결·정확하게 답한다.'\n"
+        ok, msg = verify.check_spoken_rules(self._srcs(src))
+        self.assertFalse(ok)
+        self.assertIn("PROMPT_OVERDUE", msg)
+
+    def test_either_marker_passes(self):
+        for rule in ("조회하지 않은 값은 말하지 않는다", "모르는 금액은 지어내지 않는다"):
+            with self.subTest(rule=rule):
+                ok, msg = verify.check_spoken_rules(
+                    self._srcs("PROMPT_A = '안내입니다. %s'\n" % rule))
+                self.assertTrue(ok, msg)
+
+    def test_rule_hidden_in_a_concatenated_prompt_is_found(self):
+        for label, src in (
+            ("나란히", "PROMPT_A = ('첫 줄\\n'\n '조회하지 않은 값은 말하지 않는다\\n'\n '끝')\n"),
+            ("더하기", "PROMPT_A = '첫 줄' + '조회하지 않은 값은 말하지 않는다'\n"),
+            ("f-string", "PROMPT_A = f'{x} 조회하지 않은 값은 말하지 않는다'\n"),
+        ):
+            with self.subTest(shape=label):
+                ok, msg = verify.check_spoken_rules(self._srcs(src))
+                self.assertTrue(ok, msg)
+
+    def test_the_cs_system_prompt_is_checked_too(self):
+        """상수가 아니라 함수로 조립되는 프롬프트도 같은 규칙을 받는다."""
+        sysfn = ("def _sys(phone):\n"
+                 "    return '너는 상담원이다. 주문은 툴 결과를 인용한다.'\n")
+        ok, msg = verify.check_spoken_rules(
+            self._srcs("PROMPT_A = '조회하지 않은 값은 말하지 않는다'\n", sysfn))
+        self.assertFalse(ok)
+        self.assertIn("_sys()", msg)
+
+    def test_a_rule_in_the_docstring_does_not_count(self):
+        """주석·독스트링은 봇이 말하는 문장이 아니다(모델에게 가지 않는다)."""
+        sysfn = ("def _sys(phone):\n"
+                 "    '''모르는 수치는 말하지 않는다 — 라고 적어만 뒀다'''\n"
+                 "    return '너는 상담원이다.'\n")
+        ok, msg = verify.check_spoken_rules(
+            self._srcs("PROMPT_A = '지어내지 않는다'\n", sysfn))
+        self.assertFalse(ok)
+        self.assertIn("_sys()", msg)
+
+    def test_missing_prompt_function_is_registry_drift(self):
+        """`_sys` 가 사라지면 검사 대상이 조용히 줄어든다 — 등록부 잔재로 잡는다."""
+        ok, msg = verify.check_spoken_rules(
+            {"_engine.py": "PROMPT_A = '지어내지 않는다'\n"})
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    def test_missing_prompts_is_a_failure_not_a_pass(self):
+        ok, msg = verify.check_spoken_rules({"_order_backend.py": "X = 1\n"})
+        self.assertFalse(ok)
+        self.assertIn("PROMPT_", msg)
+
+    def test_gate_reads_sources_without_executing_them(self):
+        src = "raise SystemExit('실행되면 안 된다')\nPROMPT_Z = '지어내지 않는다'\n"
+        ok, msg = verify.check_spoken_rules(self._srcs(src))
+        self.assertTrue(ok, msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_spoken_rules(verify.api_sources())
+        self.assertTrue(ok, msg)
+
+    def test_every_live_scenario_prompt_is_covered(self):
+        """통과 메시지가 '0개 검사'를 숨기지 않는지 — 실제 개수를 본다."""
+        ok, msg = verify.check_spoken_rules(verify.api_sources())
+        self.assertTrue(ok, msg)
+        self.assertIn("6개", msg)              # PROMPT_* 5개 + _sys()
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -274,7 +361,8 @@ class TestGateRuns(unittest.TestCase):
             sys.argv = argv
         self.assertEqual(rc, 0, buf.getvalue())
         out = buf.getvalue()
-        for step in ("outbound", "request_log", "audit_actions", "spoken_numbers"):
+        for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
+                     "spoken_rules"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

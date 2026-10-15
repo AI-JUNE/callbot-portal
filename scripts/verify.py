@@ -16,6 +16,7 @@
   8. log_fields   — 로그 보조 필드(extra) 이름이 `_log.FIELDS` 등록부에 있는가
   9. audit_actions— 감사를 배선한 라우트가 `_audit.ADMIN_ACTIONS` 등록부에 있는가
  10. spoken_numbers— 고객이 듣게 되는 수치(프롬프트 금액·데모 툴 결과)가 박혀 있지 않은가
+ 11. spoken_rules  — 시나리오 프롬프트가 "조회하지 않은 값은 말하지 않는다"를 지시하는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -493,6 +494,77 @@ def check_spoken_numbers(sources):
                         else "프롬프트 %d개 · 데모 툴 %d개 검사" % (prompts, tools))
 
 
+# --------------------------------------------------------------------------
+# spoken_rules 게이트
+#
+# `spoken_numbers` 는 **박혀 있는 숫자**를 잡는다. 29차에 드러난 것은 그 반대쪽이다 —
+# 숫자가 한 글자도 없어도 「간결·정확하게 답한다」 한 줄이면 모델이 자기 사전지식으로
+# 요율·세액을 말한다(연체 대본의 일반 질의 자리: 인지세·만기 전 상환 비용). 통화
+# 시나리오 프롬프트는 전부 `use_tools=False` 이거나 "툴 결과만 인용"이라 그 값을
+# 조회하는 경로가 아예 없다 — 그러면 **모르는 값은 말하지 않는다**가 프롬프트 안에
+# 문장으로 있어야 한다. 새 시나리오가 그 규칙 없이 추가되면 통과하지 못한다.
+#
+# 한계는 숨기지 않는다: 이것은 **규칙이 있는가**를 보는 게이트이지 모델이 그 규칙을
+# 지키는가를 보는 게이트가 아니다(지시는 게이트가 아니다 — 28차 보고서의 한계 그대로).
+# --------------------------------------------------------------------------
+SPOKEN_RULE_MARKERS = ("말하지 않는다", "지어내지")
+# 상수가 아니라 함수로 조립되는 프롬프트(CS 시스템 프롬프트는 발신번호가 섞인 f-string).
+SPOKEN_PROMPT_FUNCS = ("_sys",)
+
+
+def _prompt_texts(text):
+    """[(이름, 문자열 전체)] — 시나리오 프롬프트 상수와 등록된 프롬프트 함수.
+    실행 없이 ast 로 읽는다(이어붙인 문자열·f-string 안쪽까지 본다)."""
+    import ast
+
+    def _join(node):
+        return "\n".join(s.value for s in ast.walk(node)
+                         if isinstance(s, ast.Constant) and isinstance(s.value, str))
+
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return []                              # 문법 오류는 py_compile 게이트가 잡는다
+    out = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets
+                     if isinstance(t, ast.Name)
+                     and t.id.startswith(SPOKEN_PROMPT_PREFIX)]
+            if names:
+                out.append((names[0], _join(node.value)))
+        elif (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+              and node.name in SPOKEN_PROMPT_FUNCS):
+            # 반환값만 본다 — 주석·독스트링은 봇이 말하는 문장이 아니다.
+            body = [r.value for r in ast.walk(node)
+                    if isinstance(r, ast.Return) and r.value is not None]
+            out.append((node.name + "()", "\n".join(_join(v) for v in body)))
+    return out
+
+
+def check_spoken_rules(sources):
+    seen, bad, funcs = 0, [], set()
+    for name, text in sorted(sources.items()):
+        for const, body in _prompt_texts(text):
+            seen += 1
+            if const.endswith("()"):
+                funcs.add(const[:-2])
+            if not any(m in body for m in SPOKEN_RULE_MARKERS):
+                bad.append("%s 의 %s" % (name, const))
+    if not seen:
+        return False, "시나리오 프롬프트(PROMPT_*)를 찾을 수 없음"
+    msgs = []
+    if bad:
+        msgs.append("모르는 값을 말하지 않는다는 규칙이 없는 프롬프트: %s "
+                    "(이 통화에서 조회하지 않은 수치는 말하지 않도록 한 줄 적을 것)"
+                    % ", ".join(sorted(bad)[:8]))
+    stale = sorted(set(SPOKEN_PROMPT_FUNCS) - funcs)
+    if stale:
+        msgs.append("등록부 잔재(프롬프트 함수 없음): %s" % ", ".join(stale))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "프롬프트 %d개에 수치 규칙 있음" % seen)
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -511,6 +583,7 @@ def main():
     f_ok, f_msg = check_log_fields(srcs)
     a_ok, a_msg = check_audit_actions(srcs)
     n_ok, n_msg = check_spoken_numbers(srcs)
+    r_ok, r_msg = check_spoken_rules(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -523,6 +596,7 @@ def main():
         {"step": "log_fields", "ok": f_ok, "detail": f_msg},
         {"step": "audit_actions", "ok": a_ok, "detail": a_msg},
         {"step": "spoken_numbers", "ok": n_ok, "detail": n_msg},
+        {"step": "spoken_rules", "ok": r_ok, "detail": r_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:
