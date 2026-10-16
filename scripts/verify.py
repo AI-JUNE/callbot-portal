@@ -17,6 +17,7 @@
   9. audit_actions— 감사를 배선한 라우트가 `_audit.ADMIN_ACTIONS` 등록부에 있는가
  10. spoken_numbers— 고객이 듣게 되는 수치(프롬프트 금액·데모 툴 결과)가 박혀 있지 않은가
  11. spoken_rules  — 시나리오 프롬프트가 "조회하지 않은 값은 말하지 않는다"를 지시하는가
+ 12. mem_caps     — 인스턴스 메모리 저장소에 보관 상한이 있는가(등록부 대조)
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -565,6 +566,106 @@ def check_spoken_rules(sources):
                         else "프롬프트 %d개에 수치 규칙 있음" % seen)
 
 
+# --------------------------------------------------------------------------
+# mem_caps 게이트
+#
+# 이 서비스에는 영속 저장소가 없다(승인 전) — 그래서 통화 세션·감사 버퍼·요율
+# 카운터·안부 결과가 전부 **인스턴스 메모리**에 쌓인다. 웜 인스턴스는 수 시간을
+# 살기 때문에 상한이 없는 저장소는 두 가지로 끝난다: 메모리가 자라 **진행 중인
+# 통화**가 죽고(26차 `_escalation`), 개인정보 보관 기간이 '인스턴스 수명'이
+# 된다(30차 `voice._Session`). 둘 다 리뷰에서 보이지 않는다 — 저장소 선언은
+# `X = {}` 한 줄이고, 상한이 없다는 것은 **코드에 없는 것**이라 눈에 띄지 않는다.
+#
+# 그래서 게이트가 센다: `api/` 의 모듈·클래스 본문에서 **빈** dict/list 로
+# 시작하는 이름(= import 시점에 만들어져 프로세스 수명을 사는 저장소)은
+# 등록부에 상한 기호와 함께 적혀 있어야 하고, 그 기호가 같은 파일에 실제로
+# 있어야 한다(상한을 지우고 등록부만 남기는 드리프트를 막는다).
+#
+# 검사 범위는 일부러 좁혔다 — 인스턴스 속성(`self._x = {}`)은 보지 않는다.
+# 과차단되면 사람이 게이트를 끄고, 그러면 게이트가 없는 것과 같다. 값이 든
+# 리터럴(상수·등록부·요율표)은 자라지 않으므로 대상이 아니다.
+# --------------------------------------------------------------------------
+MEM_STORES = {
+    ("_audit.py", "_BUF"):
+        ("DEFAULT_BUFFER", "감사 기록 버퍼 — 오래된 것부터 버린다(CALLBOT_AUDIT_BUFFER)"),
+    ("_ratelimit.py", "_HITS"):
+        ("MAX_KEYS", "요율 카운터 — 만료분 정리 + 하드 상한"),
+    ("_vstudio.py", "_VOICES_CACHE"):
+        ("VOICES_CACHE_TTL", "목소리 목록 캐시 — 키는 VOICE_ENGINE_URL 하나, TTL 로 만료"),
+    ("voice.py", "RECENT"):
+        ("MAX_RECENT", "인입 콜 로그 — 최근 N건(발화는 마스킹 후 보관)"),
+    ("voice.py", "_mem"):
+        ("SESSION_MAX", "통화 세션(대화 원문) — 상한 초과는 LRU 축출 + SESSION_TTL 만료"),
+    ("wellbeing.py", "FAILED"):
+        ("_MAX_FAILED", "안부 웹훅 전송 실패 보관 — 최근 N건"),
+    ("wellbeing.py", "RECENT"):
+        ("_MAX_RECENT", "안부 최근 실행 — 최근 N건"),
+    ("wellbeing.py", "RESULTS"):
+        ("_MAX_RESULTS", "안부 결과 사본(raw_ref 조회) — 최근 N건"),
+    ("wellbeing.py", "_RESULT_ORDER"):
+        ("_MAX_RESULTS", "안부 결과 보관 순서 — RESULTS 와 같은 상한"),
+}
+
+
+def _mem_targets(text):
+    """[(이름, 줄번호)] — 모듈·클래스 본문에서 빈 dict/list 로 시작하는 이름."""
+    import ast
+
+    def _empty(node):
+        if isinstance(node, ast.Dict):
+            return not node.keys
+        if isinstance(node, ast.List):
+            return not node.elts
+        # dict()/list() 도 같은 저장소다(리터럴만 보면 우회된다)
+        return (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in ("dict", "list")
+                and not node.args and not node.keywords)
+
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return []                              # 문법 오류는 py_compile 게이트가 잡는다
+    out, bodies = [], [tree.body]
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            bodies.append(node.body)
+    for body in bodies:
+        for node in body:
+            if not isinstance(node, ast.Assign) or not _empty(node.value):
+                continue
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    out.append((t.id, node.lineno))
+    return out
+
+
+def check_mem_caps(sources):
+    unregistered, missing, seen = [], [], set()
+    for name, text in sorted(sources.items()):
+        for store, line in _mem_targets(text):
+            key = (name, store)
+            if key not in MEM_STORES:
+                unregistered.append("%s:%d %s" % (name, line, store))
+                continue
+            seen.add(key)
+            symbol = MEM_STORES[key][0]
+            if not re.search(r"\b%s\b" % re.escape(symbol), text):
+                missing.append("%s 의 %s (상한 기호 %s 없음)" % (name, store, symbol))
+    msgs = []
+    if unregistered:
+        msgs.append("상한 등록부에 없는 저장소: %s (scripts/verify.py MEM_STORES 에 "
+                    "상한 기호와 사유를 적을 것 — 인스턴스 메모리는 무한히 자란다)"
+                    % ", ".join(unregistered[:8]))
+    if missing:
+        msgs.append("상한이 사라진 저장소: %s" % ", ".join(missing[:8]))
+    stale = sorted(set(MEM_STORES) - seen)
+    if stale:
+        msgs.append("등록부 잔재(저장소 없음): %s"
+                    % ", ".join("%s 의 %s" % k for k in stale[:8]))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "저장소 %d개 상한 확인" % len(MEM_STORES))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -584,6 +685,7 @@ def main():
     a_ok, a_msg = check_audit_actions(srcs)
     n_ok, n_msg = check_spoken_numbers(srcs)
     r_ok, r_msg = check_spoken_rules(srcs)
+    m_ok, m_msg = check_mem_caps(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -597,6 +699,7 @@ def main():
         {"step": "audit_actions", "ok": a_ok, "detail": a_msg},
         {"step": "spoken_numbers", "ok": n_ok, "detail": n_msg},
         {"step": "spoken_rules", "ok": r_ok, "detail": r_msg},
+        {"step": "mem_caps", "ok": m_ok, "detail": m_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

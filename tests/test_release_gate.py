@@ -12,8 +12,9 @@
   3) audit_actions— 감사를 배선했는데 `_audit.ADMIN_ACTIONS` 에 없는 라우트를 잡는다
   4) spoken_numbers— 프롬프트·데모 툴 결과에 박힌 수치(고객이 듣는 값)를 잡는다
   5) spoken_rules  — 시나리오 프롬프트가 "조회하지 않은 값은 말하지 않는다"를 지시하는가
-  5) 현재 저장소는 네 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
-  5) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
+  6) mem_caps      — 인스턴스 메모리 저장소에 보관 상한이 있는가(등록부 대조)
+  7) 현재 저장소는 위 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
+  8) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
 
 실행: python3 -m pytest tests/test_release_gate.py -q
 """
@@ -345,6 +346,92 @@ class TestSpokenRules(unittest.TestCase):
         ok, msg = verify.check_spoken_rules(verify.api_sources())
         self.assertTrue(ok, msg)
         self.assertIn("6개", msg)              # PROMPT_* 5개 + _sys()
+
+
+class TestMemCaps(unittest.TestCase):
+    """30차 게이트 — 인스턴스 메모리 저장소에 보관 상한이 있는가.
+
+    영속 저장소가 없는 동안 통화 세션·감사·안부 결과는 전부 프로세스 메모리에
+    쌓인다. 상한이 없다는 것은 **코드에 없는 것**이라 리뷰에서 보이지 않는다.
+    """
+
+    def _repo(self):
+        return verify.api_sources()
+
+    def test_new_unregistered_store_fails(self):
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": "CACHE = {}\n"}))
+        self.assertFalse(ok)
+        self.assertIn("newthing.py", msg)
+        self.assertIn("MEM_STORES", msg)
+
+    def test_empty_list_store_also_counts(self):
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": "LOG = []\n"}))
+        self.assertFalse(ok)
+        self.assertIn("LOG", msg)
+
+    def test_dict_call_does_not_slip_past_the_literal_check(self):
+        """`{}` 만 보면 `dict()` 로 우회된다."""
+        ok, _msg = verify.check_mem_caps(self._all({"newthing.py": "CACHE = dict()\n"}))
+        self.assertFalse(ok)
+
+    def test_store_inside_a_class_body_is_checked(self):
+        src = "class _S:\n    _cache = {}\n"
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("_cache", msg)
+
+    def test_constant_registry_is_not_a_store(self):
+        """값이 든 리터럴(상수·요율표)은 자라지 않는다 — 과차단하면 게이트가 꺼진다."""
+        src = "LABELS = {'a': 1}\nORDER = ['x']\n"
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_instance_attribute_is_out_of_scope(self):
+        """검사 범위를 좁힌 사실을 고정한다(한계를 숨기지 않는다)."""
+        src = "class _S:\n    def __init__(self):\n        self._x = {}\n"
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_removing_the_cap_symbol_fails(self):
+        """등록부만 남고 상한이 사라지는 드리프트를 잡는다."""
+        srcs = self._repo()
+        srcs["voice.py"] = "class _Session:\n    _mem = {}\n"
+        ok, msg = verify.check_mem_caps(srcs)
+        self.assertFalse(ok)
+        self.assertIn("SESSION_MAX", msg)
+
+    def test_stale_registry_entry_fails(self):
+        srcs = self._repo()
+        srcs["wellbeing.py"] = "X = 1\n"
+        ok, msg = verify.check_mem_caps(srcs)
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    def test_gate_reads_sources_without_executing_them(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "raise SystemExit('실행되면 안 된다')\nLABELS = {'a': 1}\n"
+        ok, msg = verify.check_mem_caps(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_mem_caps(self._repo())
+        self.assertTrue(ok, msg)
+        self.assertIn("%d개" % len(verify.MEM_STORES), msg)
+
+    def test_registry_matches_reality(self):
+        """등록된 저장소가 실제로 그 파일에 있고, 상한 기호도 있다."""
+        srcs = self._repo()
+        for (fname, store), (symbol, note) in verify.MEM_STORES.items():
+            self.assertIn(fname, srcs, "등록부가 없는 파일을 가리킨다: %s" % fname)
+            self.assertIn((store, ), [(n, ) for n, _l in verify._mem_targets(srcs[fname])],
+                          "%s 에 %s 저장소가 없다" % (fname, store))
+            self.assertIn(symbol, srcs[fname], "%s 에 상한 기호 %s 가 없다" % (fname, symbol))
+            self.assertTrue(note.strip(), "사유가 비어 있다: %s" % fname)
+
+    def _all(self, extra):
+        srcs = self._repo()
+        srcs.update(extra)
+        return srcs
 
 
 class TestGateRuns(unittest.TestCase):

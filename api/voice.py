@@ -17,6 +17,21 @@ sys.path.insert(0, os.path.dirname(__file__))
 # 외부 URL 로 나가는 것보다 import 시점에 드러나는 편이 안전하다(fail-closed).
 import _urlguard
 
+def _scrub_unavailable(v):
+    """마스킹 모듈을 못 불러왔을 때의 폴백 — 발화를 **통과시키지 않는다**.
+
+    폴백이 원문을 그대로 돌려주면 모듈 하나가 빠진 순간 조회 경로(`?op=log`)로
+    발화가 그대로 흘러간다(fail-open). 가려서 못 읽는 쪽이 낫다.
+    """
+    return "(마스킹 모듈 없음)" if v else ""
+
+
+try:
+    # 발화 마스킹용. 없어도 통화는 동작해야 하므로 폴백을 둔다(fail-closed).
+    from _monitoring import scrub as _scrub
+except Exception:                       # pragma: no cover - 모듈 부재 폴백
+    _scrub = _scrub_unavailable
+
 try:
     from _engine import run_turn
 except Exception:
@@ -83,23 +98,124 @@ AGENT_SIP = os.environ.get("CALLBOT_AGENT_SIP", "sip:agent@pbx.local")
 LIVE = os.environ.get("CPAAS_LIVE", "0") == "1"
 
 
+# --------------------------------------------------------------------------
+# 통화 세션 — 인스턴스 메모리. **상한과 만료가 있다.**
+#
+# 세션 1건에는 그 통화의 대화 원문(`messages`: 고객 발화 전사 + 봇 응답)과
+# 발신번호(`phone`, 툴 조회에 쓰므로 원문)가 들어 있다. 삭제는 `completed`
+# 이벤트 한 곳뿐이었는데 그 이벤트는 **보장되지 않는다** — 연결이 끊긴 통화,
+# CPaaS 가 재시도에 실패한 종료 이벤트, `_parse_event` 가 모르는 이벤트 종류로
+# 끝난 통화는 세션이 그대로 남는다. 웜 인스턴스는 수 시간을 살기 때문에,
+# 상한이 없으면 (1) 통화를 처리할수록 메모리가 자라 결국 **진행 중인 통화**가
+# 죽고(26차가 전환 티켓에서 고친 것과 같은 결함), (2) 통화가 끝난 뒤에도
+# 대화 원문이 기한 없이 남는다(개인정보 보관 기간 = 인스턴스 수명).
+#
+# 같은 통화를 **세는** 쪽(`_call_metrics`)은 이미 `MAX_OPEN`·`RETENTION_SEC` 를
+# 갖고 있었다 — 눈금을 같이 쓴다. 상한 초과 시에는 **가장 오래 접촉이 없던**
+# 세션부터 버린다(방금 말한 고객의 맥락을 먼저 버리지 않는다). 세션이 사라져도
+# 통화는 죽지 않는다 — 호출부가 프레시 세션으로 폴백한다(대화 맥락만 잃는다).
+# 버린 건수는 조용히 사라지지 않고 `GET /api/voice.sessions` 와 로그에 남는다.
+# --------------------------------------------------------------------------
+SESSION_MAX = 500          # 동시 보관 세션 상한(`_call_metrics.MAX_OPEN` 과 같은 눈금)
+SESSION_TTL = 1800.0       # 마지막 접촉 후 만료(초). 통화는 이보다 길지 않다.
+# 만료·축출 집계 — 만든 수치가 아니라 이 인스턴스가 실제로 버린 건수.
+SESSION_STATS = {"expired": 0, "evicted": 0, "last_reason": None}
+
+
+def _session_limit(name, default, cast):
+    """상한·만료는 호출 시점에 읽는다(배포 후 조정이 반영된다).
+
+    잘못된 값으로 상한이 **사라지는** 쪽으로 실패하지 않는다 — 해석 불가·0 이하는
+    기본값으로 되돌린다(`_sip_adapter.is_live()` 와 같은 '호출 시점 판독' 규약).
+    """
+    try:
+        v = cast((os.environ.get(name) or "").strip())
+        return v if v > 0 else default
+    except Exception:
+        return default
+
+
+def _session_note(kind, reason):
+    """세션을 버린 사실을 드러낸다. 집계 실패가 통화를 끊지 않는다.
+
+    통화ID·발화 원문은 남기지 않는다 — 우리가 만든 고정 사유 문구만 남긴다.
+    """
+    try:
+        SESSION_STATS[kind] = int(SESSION_STATS.get(kind) or 0) + 1
+        SESSION_STATS["last_reason"] = reason
+        _log.emit({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                   "level": "warn", "service": _log.SERVICE, "route": "/api/voice",
+                   "event": "session_drop", "result": kind, "reason": reason})
+    except Exception:                    # pragma: no cover - 집계 실패가 통화를 끊지 않는다
+        pass
+
+
 class _Session:
     _mem = {}
 
+    @staticmethod
+    def _seen(data):
+        try:
+            return float(data.get("seen") or 0.0)
+        except Exception:                # pragma: no cover - 외부가 넣은 값 방어
+            return 0.0
+
+    @classmethod
+    def sweep(cls, now=None):
+        """만료분 정리 + 하드 상한. 버린 건수는 집계·로그로 드러낸다."""
+        now = time.time() if now is None else now
+        ttl = _session_limit("CALLBOT_SESSION_TTL", SESSION_TTL, float)
+        for cid in [c for c, d in list(cls._mem.items()) if now - cls._seen(d) > ttl]:
+            cls._mem.pop(cid, None)
+            _session_note("expired", "마지막 접촉 후 %d초 초과" % int(ttl))
+        cap = _session_limit("CALLBOT_SESSION_MAX", SESSION_MAX, int)
+        if len(cls._mem) > cap:
+            # 가장 오래 접촉이 없던 것부터 — 방금 말한 고객의 맥락이 먼저 사라지지 않는다.
+            old = sorted(cls._mem.items(), key=lambda kv: cls._seen(kv[1]))
+            for cid, _d in old[:len(cls._mem) - cap]:
+                cls._mem.pop(cid, None)
+                _session_note("evicted", "동시 세션 상한 %d건 초과" % cap)
+
     @classmethod
     def get(cls, cid):
-        return cls._mem.get(cid)
+        data = cls._mem.get(cid)
+        if data is None:
+            return None
+        ttl = _session_limit("CALLBOT_SESSION_TTL", SESSION_TTL, float)
+        if time.time() - cls._seen(data) > ttl:
+            # 만료된 세션은 '없는 것'으로 본다 — 몇 시간 전 대화를 이어받지 않는다.
+            cls._mem.pop(cid, None)
+            _session_note("expired", "마지막 접촉 후 %d초 초과" % int(ttl))
+            return None
+        data["seen"] = time.time()
+        return data
 
     @classmethod
     def put(cls, cid, data):
+        try:
+            data["seen"] = time.time()
+        except Exception:                # pragma: no cover - dict 아닌 값 방어
+            pass
         cls._mem[cid] = data
+        cls.sweep()
 
     @classmethod
     def drop(cls, cid):
         cls._mem.pop(cid, None)
 
+    @classmethod
+    def stats(cls):
+        """노출용 사실만 — 통화ID·발화는 담지 않는다."""
+        d = dict(SESSION_STATS)
+        d["live"] = len(cls._mem)
+        d["max"] = _session_limit("CALLBOT_SESSION_MAX", SESSION_MAX, int)
+        d["ttl_sec"] = int(_session_limit("CALLBOT_SESSION_TTL", SESSION_TTL, float))
+        return d
+
 
 RECENT = []
+MAX_RECENT = 60            # 인입 콜 로그 보관 건수(조회 경로 `?op=log`)
+MAX_LOG_TEXT = 300         # 로그 1건의 발화 길이 상한(마스킹 후 측정)
 
 
 def _now():
@@ -120,12 +236,30 @@ def _mask_phone(v):
     return s[:3] + "*" * (len(s) - 7) + s[-4:]
 
 
+def _mask_text(v):
+    """통화 로그의 발화 — 개인정보 패턴을 마스킹하고 길이를 자른다.
+
+    `?op=log` 는 콘솔이 4초마다 폴링하는 조회 경로이고, 앞단 `_guard` 는 인증이
+    아니다(`Origin` 헤더 한 줄로 통과한다 — `check_recording_url` 주석 참조).
+    발신번호는 `_mask_phone` 으로 막아 두었는데 **같은 레코드의 발화 원문**은
+    그대로 나갔다 — 고객이 통화 중 말하는 주민번호·카드번호·계좌번호가 그
+    경로로 노출된다. 안부 결과 요약이 이미 `monitoring.scrub()` 를 통과하는
+    것과 같은 규칙을 쓴다(한쪽만 지켜지지 않도록).
+
+    화면 기능(대화 흐름 확인)은 유지된다 — 지우는 것이 아니라 가린다.
+    """
+    s = _scrub(v) if v else ""
+    return s[:MAX_LOG_TEXT] if len(s) > MAX_LOG_TEXT else s
+
+
 def _log_call(entry):
     entry["t"] = _now()
     if "from" in entry:
         entry["from"] = _mask_phone(entry.get("from"))
+    if "text" in entry:
+        entry["text"] = _mask_text(entry.get("text"))
     RECENT.insert(0, entry)
-    del RECENT[60:]
+    del RECENT[MAX_RECENT:]
 
 
 def _xesc(s):
@@ -434,10 +568,42 @@ def _transcribe_url(url):
     return text or ""
 
 
-def _persist_call_result(cid, sess, result):
+def _call_digest(cid):
+    """통화ID 지문. 원문은 로그에 남기지 않는다(`_call_metrics.digest` 와 같은 값).
+
+    통화ID 는 CPaaS 가 주는 외부 식별자라 형식이 보장되지 않는다 — 번호 같은
+    값이 섞여 들어와도 로그에 원문이 남지 않도록 지표 수집기와 **같은 지문**을
+    쓴다(한 인스턴스 안에서 로그 ↔ 지표를 맞출 수 있다).
+    """
+    if call_metrics is None:
+        return None
     try:
-        print("[voice] call done", cid, json.dumps(result, ensure_ascii=False))
+        return call_metrics.digest(cid)
     except Exception:
+        return None
+
+
+def _persist_call_result(cid, sess, result):
+    """통화 종료 사실을 구조화 로그 1줄로 남긴다. **요약 본문은 싣지 않는다.**
+
+    예전에는 `print("[voice] call done", cid, json.dumps(result))` 였다. 요약은
+    대화 전체를 모델이 자유 문장으로 옮긴 것이고(`assist.parse_json` 이 파싱에
+    실패하면 `{"raw": <모델 원문>}` 을 돌려준다), 그 안에는 고객이 말한
+    성명·주소·주문번호가 섞인다. 17·18차가 접근로그와 요청로그에서 막아 둔
+    발화 원문이 이 한 줄로 플랫폼 로그(stdout)에 그대로 남고 있었다 — `print`
+    는 scrub·`_log` 등록부·요청ID 어느 것도 거치지 않는다.
+
+    요약 본문은 응답(`{"ok":true,"summary":...}`)으로만 돌려준다 — 그 소비자는
+    통화 주체다. 통화 이력 영속 보관은 **[승인 필요]**(저장소 미승인).
+    """
+    try:
+        msgs = (sess or {}).get("messages") or []
+        _log.emit({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                   "level": "info", "service": _log.SERVICE, "route": "/api/voice",
+                   "event": "call_done", "call": _call_digest(cid),
+                   "result": "summarized" if isinstance(result, dict) and result else "no_summary",
+                   "turn_count": len(msgs)})
+    except Exception:                    # pragma: no cover - 기록 실패가 응답을 막지 않는다
         pass
 
 
@@ -566,6 +732,10 @@ class handler(BaseHTTPRequestHandler):
                     # 실측 집계(만든 수치가 아니라 이 인스턴스가 실제로 처리한 건수).
                     # 거부·실패가 0 이 아니면 녹음 주소가 가드에 걸리고 있다는 뜻이다.
                     "recording": dict(RECORDING_STATS),
+                    # 세션 보관 현황. evicted 가 0 이 아니면 동시 통화가 상한에
+                    # 닿았다는 뜻이고(상한을 올릴 판단 근거), expired 는 종료
+                    # 이벤트가 오지 않은 통화가 있다는 뜻이다.
+                    "sessions": _Session.stats(),
                     "note": "CPaaS webhook adapter"})
 
     def do_POST(self):

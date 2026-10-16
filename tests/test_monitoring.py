@@ -93,6 +93,52 @@ class TestScrub(unittest.TestCase):
             self.assertNotIn(leak, body, leak)
 
 
+class TestScrubKoreanBoundary(unittest.TestCase):
+    """회귀(30차): 한국어 문장에서 마스킹이 **한 건도 걸리지 않던** 결함.
+
+    규칙 경계가 `\\b` 였고 파이썬 3 의 `\\w` 는 유니코드라 한글도 낱말 문자다.
+    그래서 조사·단위가 숫자에 붙는 실제 대화문(「…1234567이에요」·「…2222번으로」)
+    에서는 끝쪽 경계가 성립하지 않아 원문이 그대로 통과했다. 기존 회귀는 모두
+    숫자 뒤에 **공백**을 둔 문장이라 침묵했다.
+    """
+
+    SUFFIXED = (
+        ("주민번호는 900101-1234567이에요", "900101-1234567"),
+        ("번호는 010-1111-2222번으로", "010-1111-2222"),
+        ("카드 1234-5678-9012-3456으로 결제", "1234-5678-9012-3456"),
+        ("계좌 110-1234-567890로 보냈어요", "110-1234-567890"),
+        ("(010-1111-2222)", "010-1111-2222"),
+        ("연락처:01011112222、", "01011112222"),
+    )
+
+    def test_josa_attached_numbers_are_masked(self):
+        for text, secret in self.SUFFIXED:
+            self.assertNotIn(secret, monitoring.scrub(text), text)
+
+    def test_prefixed_korean_is_masked_too(self):
+        self.assertNotIn("01011112222", monitoring.scrub("고객번호01011112222"))
+
+    def test_longer_digit_runs_are_still_not_partially_matched(self):
+        """`\\b` 를 둔 원래 이유(긴 숫자열 안쪽 부분 일치 방지)는 지켜진다."""
+        for safe in ("12345678901234567890", "주문 12345678901234567 건"):
+            self.assertEqual(monitoring.scrub(safe), safe, safe)
+
+    def test_ordinary_numbers_are_not_over_masked(self):
+        """과차단되면 로그가 못 읽게 된다 — 날짜·버전·금액은 건드리지 않는다."""
+        for safe in ("2026-10-16 접수", "버전 1.2.3", "금액 37,000원",
+                     "소요 1.5초", "건수 12건", "주문 A-12-3456"):
+            self.assertEqual(monitoring.scrub(safe), safe, safe)
+
+    def test_limit_is_stated_not_hidden(self):
+        """숫자가 아닌 표기(말로 읽은 번호)는 이 규칙으로 가려지지 않는다.
+
+        마스킹은 '표기 패턴' 방어다 — 「공일공 일일일일」 처럼 읽은 발화는
+        걸리지 않는다. 그 한계를 회귀로 적어 둔다(해결됐다고 착각하지 않도록).
+        """
+        spoken = "제 번호는 공일공 일일일일 이이이이예요"
+        self.assertEqual(monitoring.scrub(spoken), spoken)
+
+
 class TestNoHardcodedDsn(unittest.TestCase):
     def test_source_has_no_dsn_literal(self):
         with open(os.path.join(ROOT, "api", "_monitoring.py"), encoding="utf-8") as f:
