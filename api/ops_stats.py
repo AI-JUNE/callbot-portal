@@ -63,7 +63,12 @@ ESCALATION_KEYS = ("queued", "assigned", "resolved", "abandoned", "total",
                    "dropped", "dropped_waiting", "record_errors")
 # 숫자가 아닌 '성질' 칸 — 소스를 못 읽어도 구현의 성질은 변하지 않으므로 기본값이 있다.
 ESCALATION_META = {"scope": "instance", "volatile": True}
-RECORDING_KEYS = ("active", "purged", "total")
+# 31차: 녹취 장부도 상한이 생겼다(인스턴스 메모리). 버린 건수를 내보내지 않으면
+# 조용한 삭제가 된다 — `dropped_active` 가 0 이 아니면 **아직 보관기간이 남은**
+# 녹취 메타가 장부에서 사라졌다는 뜻이라 운영자가 알아야 한다.
+RECORDING_KEYS = ("active", "purged", "total",
+                  "dropped", "dropped_active", "audit_dropped")
+RECORDING_META = {"scope": "instance", "volatile": True}
 GATE_FLAGS = ("RECORDING_LIVE", "CPAAS_LIVE", "SPEECH_LIVE")
 
 
@@ -168,7 +173,8 @@ def get_ops_summary(baseline=None, period="today"):
     auto_done = int(round(total * auto_rate))
     esc = _norm_stats(_safe_stats("_escalation", "QUEUE"), ESCALATION_KEYS,
                       ESCALATION_META)
-    rec = _norm_stats(_safe_stats("_recording_audit", "STORE"), RECORDING_KEYS)
+    rec = _norm_stats(_safe_stats("_recording_audit", "STORE"), RECORDING_KEYS,
+                      RECORDING_META)
     return {
         "ok": True,
         "ts": int(time.time()),

@@ -49,6 +49,16 @@ PURGE_METHODS = ("hard_delete", "anonymize")
 
 ALLOWED_PURPOSES = ("qa", "dispute", "audit", "training_optout_check")  # 접근 목적 화이트리스트
 
+# ── 보관 상한(인스턴스 메모리) ───────────────────────────────────────────────
+# 영속 저장소는 [승인 필요]다. 그래서 이 장부는 프로세스 메모리에만 있고,
+# 상한이 없으면 웜 인스턴스가 사는 동안 무한히 자란다 — 26차 `_escalation.QUEUE`,
+# 30차 `voice._Session` 과 **같은 결함**이고 끝도 같다: 메모리가 자라 결국
+# 진행 중인 통화가 죽는다. `purge_due()` 는 레코드를 **지우지 않고** 묘비로
+# 바꾸기만 하므로(파기 증적) 파기해도 건수는 줄지 않는다 — 상한이 더 필요한 쪽이다.
+# 눈금은 `_escalation.MAX_TICKETS`·`_call_metrics.MAX_RECORDS` 규약을 따른다.
+MAX_RECORDS = 2000   # 녹취 메타 상한(초과 시 **파기된 것부터** 버린다)
+MAX_AUDIT = 2000     # 접근 감사 기록 상한(오래된 것부터)
+
 # 참조 보호 상태
 PROTECTION_NONE = "none"                # 보관 중인 참조가 없음(기본)
 PROTECTION_SEALED = "sealed"            # 봉인 보관 중
@@ -92,6 +102,46 @@ class RecordingStore:
         self._records = {}
         self._audit = []
         self.retention_days = retention_days
+        # 버린 건수 — 조용한 삭제 금지. stats() 로 드러나고 ops_stats 가 내보낸다.
+        self.dropped = 0          # 상한 초과로 버린 레코드
+        self.dropped_active = 0   # 그중 **아직 보관기간이 남아 있던** 것(0 이어야 정상)
+        self.audit_dropped = 0    # 상한 초과로 버린 감사 기록 줄 수
+
+    # ── 보관 상한 ───────────────────────────────────────────────────────
+    def _evict(self):
+        """상한 초과 시 **파기된 레코드를 먼저** 버린다.
+
+        순서가 중요하다. active 를 먼저 버리면 아직 보관기간이 남은 녹취가
+        장부에서 사라져 `purge_due()` 가 영영 찾지 못한다 — 파기해야 할 것이
+        파기되지 않은 채 '없는 일'이 되는 쪽이 가장 나쁘다. purged 는 봉투도
+        참조도 없는 묘비라 먼저 버려도 잃는 것이 적다(파기 사실 자체는 감사
+        기록에 남는다).
+
+        묘비가 하나도 없으면 가장 오래된 것을 버리되 `dropped_active` 로 따로
+        센다. 그 숫자가 0 이 아니면 용량이 실제로 모자란다는 뜻이고, 상한을
+        올릴 것이 아니라 **영속 저장소**를 봐야 한다([승인 필요]).
+
+        봉인된 참조는 버리기 전에 암호 파기한다 — 레코드 dict 사본이 어딘가
+        남아 있어도 복호 재료가 함께 사라진다.
+        """
+        while len(self._records) >= MAX_RECORDS:
+            # (파기 안 됨, 오래된 순) — False(=0) 인 purged 가 먼저 뽑힌다.
+            victim = min(self._records.values(),
+                         key=lambda r: (r["state"] == "active", r["started_at"]))
+            if victim["protection"] == PROTECTION_SEALED:
+                for field in ("audio_ref", "transcript_ref"):
+                    if victim.get(field):
+                        try:
+                            victim[field] = pii_vault.shred(victim[field])
+                        except Exception:   # pragma: no cover - 파기 실패가 축출을 막지 않는다
+                            victim[field] = None
+            del self._records[victim["record_id"]]
+            self.dropped += 1
+            if victim["state"] == "active":
+                self.dropped_active += 1
+            # 버린 사실은 감사에 남긴다(세션ID·참조는 적지 않는다 — 고정 문구만).
+            self._log("system", victim["record_id"], "evict",
+                      "보관 상한 %d건 초과 — state=%s" % (MAX_RECORDS, victim["state"]))
 
     # ── 등록 ────────────────────────────────────────────────────────────
     def register(self, session_id, scenario="", duration_sec=0, consent=False,
@@ -127,6 +177,7 @@ class RecordingStore:
             "expires_at": now + self.retention_days * 86400,
             "state": "active", "protection": protection,
         }
+        self._evict()                   # 넣기 전에 자리를 비운다(상한을 넘기지 않는다)
         self._records[rid] = rec
         self._log("system", rid, "register",
                   "consent=%s live=%s protection=%s" % (bool(consent), live, protection))
@@ -223,10 +274,22 @@ class RecordingStore:
         return dict(rec)
 
     def stats(self):
+        """현황 + **이 장부의 성질**.
+
+        숫자만 내보내면 소비자는 영속 장부로 읽는다. `scope`·`volatile` 로
+        "인스턴스 메모리이고 재시작하면 사라진다"를 함께 말한다
+        (`_escalation.QUEUE.stats()` 와 같은 규약).
+        """
         s = {"active": 0, "purged": 0}
         for r in self._records.values():
             s[r["state"]] = s.get(r["state"], 0) + 1
         s["total"] = len(self._records)
+        s["dropped"] = self.dropped
+        s["dropped_active"] = self.dropped_active
+        s["audit_dropped"] = self.audit_dropped
+        s["capacity"] = MAX_RECORDS
+        s["scope"] = "instance"      # 클러스터 합산 아님
+        s["volatile"] = True         # 재시작 시 소멸(영속 저장소 [승인 필요])
         return s
 
     def protection_stats(self):
@@ -239,12 +302,24 @@ class RecordingStore:
         return s
 
     def audit_log(self):
-        # 항목까지 복사 — 반환값을 고쳐도 감사 원본은 변하지 않는다(append-only 보장)
+        """항목까지 복사 — 반환값을 고쳐도 원본은 변하지 않는다.
+
+        **이 버퍼는 감사 원본이 아니다.** 인스턴스 메모리이고 최근
+        `MAX_AUDIT` 줄만 들고 있다(재시작하면 사라진다). 법정 보존이 필요한
+        감사 원본은 영속 저장소 몫이고 그건 [승인 필요] 다 — 잘려 나간 줄 수는
+        `stats()["audit_dropped"]` 로 드러난다(모르는 채로 쓰지 않도록).
+        """
         return [dict(a) for a in self._audit]
 
     def _log(self, actor, record_id, action, note=""):
         self._audit.append({"ts": time.time(), "actor": actor,
                             "record": record_id, "action": action, "note": note})
+        if len(self._audit) > MAX_AUDIT:
+            # append-only 성질(기록을 고치지 않는다)은 유지하되 상한은 둔다 —
+            # 무한 성장은 진행 중인 통화를 죽인다. 버린 줄 수는 숨기지 않는다.
+            cut = len(self._audit) - MAX_AUDIT
+            del self._audit[:cut]
+            self.audit_dropped += cut
 
 
 STORE = RecordingStore()  # 모듈 전역(프로세스 단위 sim 저장소)
@@ -317,4 +392,14 @@ if __name__ == "__main__":     # pragma: no cover
 
     acts = [a["action"] for a in st.audit_log()]
     assert "access_denied" in acts and "purge" in acts and "access_miss" in acts
-    print("SELF-TEST OK:", st.stats(), st3.protection_stats(), "audit=%d" % len(st.audit_log()))
+
+    # 8) 보관 상한 — 넘겨서 확인한다(방어 코드는 초과 때만 돈다)
+    st4 = RecordingStore()
+    for i in range(MAX_RECORDS + 10):
+        st4.register("sim-%d" % i, "refund", 1, consent=False)
+    s4 = st4.stats()
+    assert s4["total"] <= MAX_RECORDS and s4["dropped"] > 0, s4
+    assert len(st4.audit_log()) <= MAX_AUDIT, len(st4.audit_log())
+
+    print("SELF-TEST OK:", st.stats(), st3.protection_stats(),
+          "audit=%d" % len(st.audit_log()), "caps=%s" % s4)

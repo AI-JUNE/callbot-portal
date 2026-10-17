@@ -61,12 +61,26 @@
 - 규약: 모듈·클래스 본문에서 **빈** dict/list 로 시작하는 저장소는 보관 상한을 **이름 있는 상수**로
   두고, 버린 건수를 집계·로그로 드러낸다(조용히 사라지게 하지 않는다).
 - 게이트: `scripts/verify.py` 12단계 `mem_caps` — 저장소가 `MEM_STORES` 등록부에 없거나 등록된
-  상한 기호가 사라지면 통과하지 못한다. 범위는 모듈·클래스 본문까지이고 **인스턴스 속성
-  (`self._x = {}`)은 보지 않는다**(과차단하면 사람이 게이트를 끈다 — 남은 구멍은 아래).
+  상한 기호가 사라지면 통과하지 못한다. 범위는 모듈·클래스 본문 + **모듈 전역 싱글턴**
+  (`STORE = RecordingStore()` 처럼 import 시점에 하나만 만들어지는 인스턴스) 클래스의
+  인스턴스 속성까지다(31차 확장). 요청마다 새로 만들어지는 클래스의 속성은 보지 않는다 —
+  과차단하면 사람이 게이트를 끈다.
 - 통화 세션(`voice._Session`): 상한 `SESSION_MAX`(기본 500, `_call_metrics.MAX_OPEN` 과 같은 눈금) ·
   만료 `SESSION_TTL`(기본 1800초). 환경변수 `CALLBOT_SESSION_MAX`·`CALLBOT_SESSION_TTL` 로
   **호출 시점**에 조정된다(잘못된 값은 기본값으로 — 상한이 사라지는 쪽으로 실패하지 않는다).
   현황은 `GET /api/voice.sessions`(`live`·`expired`·`evicted`·`max`·`ttl_sec`).
+- 녹취 장부(`_recording_audit.STORE`, 31차): 상한 `MAX_RECORDS`(2000, `_call_metrics` 와 같은 눈금) ·
+  감사 버퍼 `MAX_AUDIT`(2000, `_escalation` 과 같은 눈금). 초과 시 **파기된 묘비부터** 버린다 —
+  아직 보관기간이 남은 레코드를 버리면 `purge_due()` 가 파기해야 할 것을 영영 찾지 못한다.
+  현황은 `GET /api/ops_stats.recording`(`dropped`·`dropped_active`·`audit_dropped`·`scope`·`volatile`).
+  **`dropped_active > 0` 이면 상한을 올릴 것이 아니라 영속 저장소를 봐야 한다**([승인 필요]).
+  이 감사 버퍼는 **법정 보존용 원본이 아니다**(최근 2000줄, 재시작 시 소멸).
+- 한 통화 **안쪽**의 대화 이력(`_engine._window`, 31차): 모델에 보내는 창은
+  `HISTORY_MAX_MSGS`(40건)·`HISTORY_MAX_CHARS`(24000자). 환경변수
+  `CALLBOT_HISTORY_MAX`·`CALLBOT_HISTORY_MAX_CHARS` 로 호출 시점에 조정된다.
+  창을 넘어 잘린 건수는 응답 `log` 의 `{"turn":"context","dropped":n,"kept":m}` 한 줄로 드러난다.
+  **줄어드는 것은 모델이 보는 창뿐이고 가드의 기억(`_mem`)은 전체 이력에서 계산한다** —
+  견적 금액·정책 한도가 창 밖으로 밀려도 금액 재확인·한도 검사는 그대로 돈다.
 
 ## /health 계약 (업타임 모니터 설정 기준)
 

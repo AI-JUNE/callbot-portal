@@ -536,7 +536,9 @@ class TestRecordingRetention(Base):
     def test_only_expired_are_purged(self):
         purged = self.st.purge_due(now=90 * 86400.0)
         self.assertEqual(purged, ["REC-0001"])
-        self.assertEqual(self.st.stats(), {"active": 1, "purged": 1, "total": 2})
+        s = self.st.stats()
+        self.assertEqual({k: s[k] for k in ("active", "purged", "total")},
+                         {"active": 1, "purged": 1, "total": 2})
         self.assertEqual(self.st.access("a", "REC-0002", "qa")["state"], "active")
 
     def test_boundary_expires_at_equal_now_is_purged(self):
@@ -581,8 +583,14 @@ class TestRecordingRetention(Base):
         self.assertEqual(len(purges), 2)
 
     def test_stats_empty_store(self):
-        self.assertEqual(recording_audit.RecordingStore().stats(),
+        """31차: 상한·유실 칸이 붙었다. 건수 칸의 의미는 그대로여야 한다."""
+        s = recording_audit.RecordingStore().stats()
+        self.assertEqual({k: s[k] for k in ("active", "purged", "total")},
                          {"active": 0, "purged": 0, "total": 0})
+        self.assertEqual((s["dropped"], s["dropped_active"], s["audit_dropped"]),
+                         (0, 0, 0))
+        self.assertTrue(s["volatile"])
+        self.assertEqual(s["scope"], "instance")
 
     def test_default_policy_constants(self):
         self.assertEqual(recording_audit.DEFAULT_RETENTION_DAYS, 90)

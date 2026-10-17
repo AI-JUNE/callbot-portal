@@ -320,6 +320,65 @@ def _esc_log(tk,reason):
     return {"turn":"escalation","ticket":(tk or {}).get("id"),
             "recorded":bool(tk),"reason":reason}
 
+# --------------------------------------------------------------------------
+# 모델에 보내는 대화 이력 창 (31차)
+#
+# 30차의 `voice._Session` 상한은 **통화 건수** 상한이었다. 이것은 한 통화
+# **안쪽**의 상한이다. 호출부(`voice.py`)는 턴마다 `sess["messages"] =
+# r["messages"]` 로 이력을 쌓고 매 턴 **전체를 다시** 보낸다 — 상한이 없으면
+# 입력 토큰이 턴 수의 제곱으로 자라서 (1) LLM 과금이 함께 자라고 (2) 긴 통화는
+# 결국 컨텍스트 한도에 부딪혀 **통화 중에** 죽는다(고객이 말하는 중에 끊긴다).
+# `/api/chat` 은 라우트가 100건·8000자로 막아 두었지만(= 한 번에 80만 자)
+# `/api/voice` 에는 막는 곳이 **한 군데도 없었다** — 또 절반만 지켜진 규칙이다.
+#
+# **줄이는 것은 모델이 보는 창뿐이다.** 가드가 보는 기억(`_mem`)은 여전히 전체
+# 이력에서 계산한다 — 창을 줄였다고 `awaiting`·`quoted_amount`·`max_refund` 가
+# 사라져 금액 재확인이 꺼지면 그것은 fail-open 이다(20차 `quoted_amount=None`
+# 사고와 같은 자리). 창은 '모델의 기억', `_mem` 은 '가드의 기억'이고 둘은 다르다.
+# --------------------------------------------------------------------------
+HISTORY_MAX_MSGS = 40        # 창에 남기는 메시지 수(대략 최근 20턴)
+HISTORY_MAX_CHARS = 24000    # 창 전체 본문 길이 상한(자) — 건수가 적어도 본문이 길면 같다
+
+def _hist_limit(name,default):
+    """상한은 호출 시점에 읽는다(배포 후 조정이 반영된다).
+
+    해석 불가·0 이하는 기본값으로 되돌린다 — 설정 오타로 상한이 **사라지는**
+    쪽으로 실패하지 않는다(`voice._session_limit` 과 같은 규약).
+    """
+    try:
+        v=int((os.environ.get(name) or "").strip())
+        return v if v>0 else default
+    except Exception:
+        return default
+
+def _chars(m):
+    """메시지 1건의 본문 길이. 문자열이 아닌 content 는 0 으로 본다."""
+    if not isinstance(m,dict): return 0
+    c=m.get("content")
+    return len(c) if isinstance(c,str) else 0
+
+def _window(messages):
+    """모델에 보낼 이력을 최근 쪽으로 자르고 (창, 버린 건수) 를 돌려준다.
+
+    자르는 단위는 메시지지만 **짝은 깨지 않는다** — 창의 머리에 `tool`
+    (functionResponse)이 남으면 짝이 되는 functionCall 이 잘려 나간 것이고,
+    그대로 보내면 API 가 400 으로 응답해 **통화 중에** 끊긴다. 그래서 자를
+    위치를 뒤로 밀지 않고 **앞으로 당긴다**: 상한을 조금 넘더라도(연속 tool
+    응답 수만큼) 통화를 끊지 않는 쪽으로 실패한다. 뒤로 밀면 창이 통째로
+    비어 버리는 경우가 생긴다(마지막 메시지가 tool 인 홉 중간).
+    """
+    msgs=messages if isinstance(messages,list) else []
+    n=len(msgs)
+    if n<=1: return list(msgs),0
+    cut=max(0,n-_hist_limit("CALLBOT_HISTORY_MAX",HISTORY_MAX_MSGS))
+    budget=_hist_limit("CALLBOT_HISTORY_MAX_CHARS",HISTORY_MAX_CHARS)
+    total=sum(_chars(m) for m in msgs[cut:])
+    while cut<n-1 and total>budget:
+        total-=_chars(msgs[cut]); cut+=1
+    while cut>0 and isinstance(msgs[cut],dict) and msgs[cut].get("role")=="tool":
+        cut-=1
+    return msgs[cut:],cut
+
 def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
     model=os.environ.get("CALLBOT_GEMINI_MODEL","gemini-2.5-flash")
     mem=_mem(messages); log=[]; audit=[]; usage={"input":0,"output":0}; msgs=list(messages)
@@ -329,8 +388,13 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
     elif scenario=="trio": sysp=PROMPT_TRIO; use_tools=False
     elif scenario in ("wellbeing","안부"): sysp=PROMPT_WELLBEING; use_tools=False
     else: sysp=_sys(phone); use_tools=True
+    noted=False
     for _ in range(max_hops):
-        payload={"systemInstruction":{"parts":[{"text":sysp}]},"contents":_to_contents(msgs),
+        win,dropped=_window(msgs)
+        if dropped and not noted:
+            # 조용히 자르지 않는다 — 응답 로그에 사실이 남는다(건수만, 발화 없음).
+            log.append({"turn":"context","dropped":dropped,"kept":len(win)}); noted=True
+        payload={"systemInstruction":{"parts":[{"text":sysp}]},"contents":_to_contents(win),
                  "generationConfig":{"maxOutputTokens":1024}}
         if use_tools: payload["tools"]=[{"functionDeclarations":TOOLS}]
         resp=_call(model,payload); text,calls,(pi,po)=_parse(resp); usage["input"]+=pi; usage["output"]+=po

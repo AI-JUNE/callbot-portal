@@ -1848,7 +1848,7 @@ function opsSimLoad(force,quiet){
   if(!d||!d.ok){_htmlSet(b,'<div style="color:var(--dim);font-size:12px">엔드포인트 조회 불가 — 로컬·데모 환경이거나 API 미배포입니다.</div>');if(g)g.textContent='';return;}
   if(g){var gt=d.gates||{},on=[];if(gt.recording_live)on.push('RECORDING_LIVE');if(gt.cpaas_live)on.push('CPAAS_LIVE');if(gt.speech_live)on.push('SPEECH_LIVE');
    g.textContent=on.length?('게이트 ON: '+on.join(' · ')):'게이트 전부 OFF · sim';}
-  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['record_errors','기록실패']])+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['purged','파기'],['total','누적']]));
+  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['record_errors','기록실패']])+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['purged','파기'],['total','누적'],['dropped','유실']]));
  };
  try{fetch('/api/ops_stats?period='+encodeURIComponent(p),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(fin).catch(function(){fin(null);});}
  catch(e){fin(null);}

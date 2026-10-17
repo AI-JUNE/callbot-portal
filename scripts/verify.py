@@ -581,9 +581,16 @@ def check_spoken_rules(sources):
 # 등록부에 상한 기호와 함께 적혀 있어야 하고, 그 기호가 같은 파일에 실제로
 # 있어야 한다(상한을 지우고 등록부만 남기는 드리프트를 막는다).
 #
-# 검사 범위는 일부러 좁혔다 — 인스턴스 속성(`self._x = {}`)은 보지 않는다.
-# 과차단되면 사람이 게이트를 끄고, 그러면 게이트가 없는 것과 같다. 값이 든
-# 리터럴(상수·등록부·요율표)은 자라지 않으므로 대상이 아니다.
+# 31차에 범위를 한 칸 넓혔다 — **모듈 전역 싱글턴**(`STORE = RecordingStore()`
+# 처럼 import 시점에 딱 하나 만들어지는 인스턴스) 클래스의 인스턴스 속성
+# (`self._records = {}`)도 프로세스 수명을 산다. 30차가 범위 밖으로 두고
+# 보고서에 적어 둔 구멍이 바로 거기였다(`_recording_audit.STORE`).
+#
+# 그래도 범위는 여전히 좁다 — 호출부가 매번 새로 만드는 클래스
+# (`_sip_adapter` 의 어댑터, `_log` 의 요청 컨텍스트)는 요청당 수명이라 보지
+# 않는다. 과차단되면 사람이 게이트를 끄고, 그러면 게이트가 없는 것과 같다
+# (28·30차와 같은 이유). 값이 든 리터럴(상수·등록부·요율표)도 자라지 않으므로
+# 대상이 아니다.
 # --------------------------------------------------------------------------
 MEM_STORES = {
     ("_audit.py", "_BUF"):
@@ -604,11 +611,48 @@ MEM_STORES = {
         ("_MAX_RESULTS", "안부 결과 사본(raw_ref 조회) — 최근 N건"),
     ("wellbeing.py", "_RESULT_ORDER"):
         ("_MAX_RESULTS", "안부 결과 보관 순서 — RESULTS 와 같은 상한"),
+    # 모듈 전역 싱글턴의 인스턴스 속성(31차 확장분)
+    ("_call_metrics.py", "_Store._open"):
+        ("MAX_OPEN", "진행 중 통화 관측치 — 상한 초과는 가장 오래된 것부터"),
+    ("_call_metrics.py", "_Store._done"):
+        ("MAX_RECORDS", "종료 통화 관측치 — 상한 + RETENTION_SEC 보관 한도"),
+    ("_escalation.py", "EscalationQueue._tickets"):
+        ("MAX_TICKETS", "전환 티켓 — 상한 초과는 종결된 것부터 축출"),
+    ("_escalation.py", "EscalationQueue._audit"):
+        ("MAX_AUDIT", "전환 상태 전이 기록 — 오래된 것부터(audit_dropped 로 드러냄)"),
+    ("_recording_audit.py", "RecordingStore._records"):
+        ("MAX_RECORDS", "녹취 메타 — 상한 초과는 파기된 것부터 축출"),
+    ("_recording_audit.py", "RecordingStore._audit"):
+        ("MAX_AUDIT", "녹취 접근 감사 기록 — 오래된 것부터(audit_dropped 로 드러냄)"),
 }
 
 
+def _singleton_classes(tree):
+    """모듈 전역에 인스턴스로 박히는 클래스 이름들.
+
+    `STORE = RecordingStore()` 처럼 import 시점에 만들어져 **프로세스 수명을
+    사는** 인스턴스만 찾는다. 호출부가 요청마다 새로 만드는 클래스까지 보면
+    과차단이 되고, 과차단되면 사람이 게이트를 끈다.
+    """
+    import ast
+    defined = {n.name for n in tree.body if isinstance(n, ast.ClassDef)}
+    out = set()
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        func = node.value.func
+        if isinstance(func, ast.Name) and func.id in defined:
+            out.add(func.id)
+    return out
+
+
 def _mem_targets(text):
-    """[(이름, 줄번호)] — 모듈·클래스 본문에서 빈 dict/list 로 시작하는 이름."""
+    """[(이름, 줄번호)] — 프로세스 수명을 사는 빈 dict/list 저장소.
+
+    대상은 둘이다.
+      · 모듈·클래스 본문의 `X = {}`            → 이름 `X`
+      · 모듈 전역 싱글턴 클래스의 `self._x = {}` → 이름 `클래스._x`
+    """
     import ast
 
     def _empty(node):
@@ -636,7 +680,28 @@ def _mem_targets(text):
             for t in node.targets:
                 if isinstance(t, ast.Name):
                     out.append((t.id, node.lineno))
-    return out
+
+    # 싱글턴 클래스의 인스턴스 속성 — 메서드 어디에서 만들어지든(생성자든
+    # reset() 이든) 그 인스턴스는 하나뿐이므로 수명은 프로세스와 같다.
+    singles = _singleton_classes(tree)
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name not in singles:
+            continue
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Assign) or not _empty(sub.value):
+                continue
+            for t in sub.targets:
+                if (isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name)
+                        and t.value.id == "self"):
+                    out.append(("%s.%s" % (node.name, t.attr), sub.lineno))
+
+    seen, uniq = set(), []                     # 같은 저장소를 여러 곳에서 비워도 1건
+    for name, line in out:
+        if name in seen:
+            continue
+        seen.add(name)
+        uniq.append((name, line))
+    return uniq
 
 
 def check_mem_caps(sources):

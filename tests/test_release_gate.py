@@ -386,11 +386,71 @@ class TestMemCaps(unittest.TestCase):
         ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
         self.assertTrue(ok, msg)
 
-    def test_instance_attribute_is_out_of_scope(self):
-        """검사 범위를 좁힌 사실을 고정한다(한계를 숨기지 않는다)."""
+    def test_instance_attribute_of_a_per_request_class_is_out_of_scope(self):
+        """검사 범위를 좁힌 사실을 고정한다(한계를 숨기지 않는다).
+
+        모듈 전역 인스턴스가 없는 클래스는 호출부가 매번 새로 만든다 =
+        요청당 수명이다. 여기까지 잡으면 과차단이고, 과차단되면 사람이
+        게이트를 끈다.
+        """
         src = "class _S:\n    def __init__(self):\n        self._x = {}\n"
         ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
         self.assertTrue(ok, msg)
+
+    def test_instance_attribute_of_a_module_singleton_is_checked(self):
+        """31차 확장 — `STORE = C()` 로 박히는 인스턴스는 프로세스 수명을 산다."""
+        src = ("class C:\n    def __init__(self):\n        self._recs = {}\n"
+               "STORE = C()\n")
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("C._recs", msg)
+
+    def test_singleton_attribute_assigned_outside_init_is_also_checked(self):
+        """reset() 에서 비우는 저장소도 같은 인스턴스다 — 생성자만 보면 샌다."""
+        src = ("class C:\n    def reset(self):\n        self._recs = []\n"
+               "STORE = C()\n")
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("C._recs", msg)
+
+    def test_same_store_emptied_in_two_places_is_reported_once(self):
+        src = ("class C:\n"
+               "    def __init__(self):\n        self._recs = {}\n"
+               "    def reset(self):\n        self._recs = {}\n"
+               "STORE = C()\n")
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertEqual(msg.count("C._recs"), 1)
+
+    def test_a_local_variable_is_not_a_store(self):
+        """`out = []` 같은 지역 변수까지 잡으면 게이트가 쓸모없어진다."""
+        src = ("class C:\n    def f(self):\n        out = []\n        return out\n"
+               "STORE = C()\n")
+        ok, msg = verify.check_mem_caps(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_registered_singleton_store_passes_with_its_cap(self):
+        src = ("MAX_RECS = 10\n"
+               "class C:\n    def __init__(self):\n        self._recs = {}\n"
+               "STORE = C()\n")
+        srcs = self._all({"newthing.py": src})
+        verify.MEM_STORES[("newthing.py", "C._recs")] = ("MAX_RECS", "테스트")
+        try:
+            ok, msg = verify.check_mem_caps(srcs)
+        finally:
+            del verify.MEM_STORES[("newthing.py", "C._recs")]
+        self.assertTrue(ok, msg)
+
+    def test_removing_a_singleton_attribute_cap_fails(self):
+        """30차가 범위 밖으로 두고 보고서에 적어 둔 구멍 — 이제 게이트가 본다."""
+        srcs = self._repo()
+        srcs["_recording_audit.py"] = (
+            "class RecordingStore:\n    def __init__(self):\n"
+            "        self._records = {}\n        self._audit = []\n"
+            "STORE = RecordingStore()\n")
+        ok, msg = verify.check_mem_caps(srcs)
+        self.assertFalse(ok)
+        self.assertIn("MAX_RECORDS", msg)
 
     def test_removing_the_cap_symbol_fails(self):
         """등록부만 남고 상한이 사라지는 드리프트를 잡는다."""
