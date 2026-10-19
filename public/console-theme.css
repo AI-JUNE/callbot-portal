@@ -160,6 +160,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--warm);outline:none;bo
 /* 안내 둘러보기 카드 */
 .tourcard{border-radius:16px;border:1px solid var(--line);box-shadow:0 24px 60px -20px rgba(25,31,40,.35)}
 .tourbg{background:rgba(15,18,24,.45)}
+.tourcard .ti{width:44px;height:44px;border-radius:12px;background:var(--warmbg);color:var(--warm);display:grid;place-items:center;font-size:0}
+.tourcard .ti svg{width:22px;height:22px}
 
 /* 하단 탭(모바일) 아이콘 */
 .botnav{border-top:1px solid var(--line)}

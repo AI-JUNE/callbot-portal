@@ -139,6 +139,11 @@
     var root = document.getElementById('app'); if (!root) return;
     root.querySelectorAll('.kpi .l, .card > h3, .wrap button, .chip, .hpill b, #noticeBar > span, .popup .noti, .popup .hd, .wrap h3, .wrap h4, .bcard .t, .tmgroup > button')
       .forEach(stripLead);
+    // 둘러보기 카드 — 큰 이모지 → 선 아이콘, 옛 이름 「CallBot AICC 포털」 → 「AICC Portal」
+    var ti = document.getElementById('tourIcon');
+    if (ti && !ti.querySelector('svg')) ti.innerHTML = svg('sparkle');
+    var tt = document.getElementById('tourTitle');
+    if (tt && /CallBot AICC 포털/.test(tt.textContent)) tt.textContent = tt.textContent.replace(/CallBot AICC 포털/g, 'AICC Portal');
     root.querySelectorAll('.spark polyline').forEach(function (p) { p.setAttribute('stroke', '#2457C5'); });
     root.querySelectorAll('.spark circle').forEach(function (c) { c.setAttribute('fill', '#2457C5'); });
   }
