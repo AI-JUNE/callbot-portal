@@ -272,14 +272,16 @@
     var raw = m[2], target = parseFloat(raw.replace(/,/g, '')); if (!isFinite(target) || target === 0) return;
     var dec = (raw.split('.')[1] || '').length, comma = raw.indexOf(',') >= 0;
     var fmt = function (v) { var s = v.toFixed(dec); if (comma) { var p = s.split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ','); s = p.join('.'); } return m[1] + s + m[3]; };
-    var t0 = performance.now(), dur = 760;
+    var t0 = performance.now(), dur = 760, wrote = txt;
     el.dataset.ctCount = txt;
     (function step(now) {
-      if (el.dataset.ctCount !== txt) return;                 // 그사이 화면이 값을 바꿨으면 손을 뗀다
+      // 그사이 화면이 값을 바꿨으면(우리가 마지막에 쓴 글자와 다르면) 손을 뗀다.
+      // 예전에는 dataset 을 중간값으로 덮은 뒤 원래 값과 비교해 첫 프레임에서 멈췄다 → 지표가 「0」으로 굳던 원인
+      if ((el.textContent || '').trim() !== wrote) return;
       var k = Math.min(1, (now - t0) / dur);
-      el.textContent = k < 1 ? fmt(target * easeOut(k)) : txt;
-      el.dataset.ctCount = k < 1 ? el.textContent : txt;
-      if (k < 1) requestAnimationFrame(step);
+      wrote = k < 1 ? fmt(target * easeOut(k)) : txt;
+      el.textContent = wrote;
+      if (k < 1) requestAnimationFrame(step); else el.dataset.ctCount = txt;
     })(t0);
   }
   // 스파크라인 — 선을 왼쪽에서부터 그린다

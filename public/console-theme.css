@@ -36,7 +36,8 @@ body.dark>div[role="note"]{background:rgba(28,33,42,.96)!important;color:#B4BCC7
 @media(min-width:821px){.app{grid-template-columns:252px 1fr}.side{padding-bottom:84px!important}}
 .side{background:var(--panel);border-right:1px solid var(--line);padding:12px 10px 10px}
 .brand{padding:6px 8px 14px;margin-bottom:4px;border-bottom:1px solid var(--line2)}
-.brand .logo{width:32px;height:32px;border-radius:9px;background:var(--grad)!important;box-shadow:none}
+.brand .logo{width:32px;height:32px;border-radius:8px;background:transparent!important;box-shadow:none;overflow:hidden;padding:0}
+.brand .logo img{width:32px;height:32px;display:block}
 .brand .nm{font-size:16.5px;font-weight:800;letter-spacing:-.3px}
 .brand .nm small{display:block;font-size:11.5px;font-weight:600;color:var(--dim);margin-top:4px;letter-spacing:0}
 .navsec{display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--dim);font-size:12px;letter-spacing:0;text-transform:none;font-weight:700;padding:14px 10px 6px;border-radius:6px}
@@ -269,7 +270,8 @@ button:active:not(:disabled),.chip:active{transform:scale(.98)}
 button.primary,.btn-call{box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 1px 2px rgba(25,31,40,.12)}
 
 /* 사이드바 — 선택 표시가 한 칸에서 다음 칸으로 미끄러진다(배경 1개가 움직임) */
-.side{position:relative}
+/* 모바일(≤820px)에서는 사이드바가 position:fixed 서랍이라 relative 로 덮으면 본문 위에 빈 자리가 생긴다 — 넓은 화면에만 */
+@media(min-width:821px){.side{position:relative}}
 .ct-ind{position:absolute;left:10px;right:10px;top:0;height:34px;border-radius:8px;background:var(--warmbg);z-index:0;pointer-events:none;transition:transform var(--d3) var(--e-out),height var(--d3) var(--e-out),opacity var(--d2) var(--e-std);opacity:0}
 .ct-ind.on{opacity:1}
 .side.ct-has-ind .nav a.on{background:transparent}

@@ -842,7 +842,8 @@ class handler(BaseHTTPRequestHandler):
                     code="PAYLOAD_TOO_LARGE", status=413)
             raw = self.rfile.read(n) if n else b""
             ctype = (self.headers.get("Content-Type", "") or "").lower()
-            if "x-www-form-urlencoded" in ctype or CPAAS == "twilio":
+            # JSON 본문(콘솔의 캠페인 dry-run 등)은 CPaaS 가 twilio 여도 아래 JSON 경로로 보낸다
+            if "x-www-form-urlencoded" in ctype or (CPAAS == "twilio" and "json" not in ctype):
                 form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "ignore")).items()}
                 self._send_xml(handle_twilio(form))
                 return

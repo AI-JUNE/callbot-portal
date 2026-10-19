@@ -1,12 +1,13 @@
 {
-  "name": "CallBot AICC 포털",
-  "short_name": "CallBot",
-  "description": "콜봇 기반 AICC 통합 운영 포털",
+  "name": "AICC Portal · 고원",
+  "short_name": "AICC Portal",
+  "description": "AI 콜봇 · 챗봇 · 보이는 ARS 통합 운영 포털",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#faf7f3",
-  "theme_color": "#be5535",
+  "background_color": "#F7F8FA",
+  "theme_color": "#2457C5",
   "icons": [
+    {"src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
     {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
     {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
   ]
