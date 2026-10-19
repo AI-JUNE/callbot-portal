@@ -127,11 +127,39 @@ def _sys(phone):
             "(4)대기 순번·대기시간·소요일수처럼 툴이 알려주지 않은 수치는 말하지 않는다"
             "(모르면 '확인되는 대로 안내드리겠습니다'로 안내).")
 
-def _mem(messages):
-    m={"order_id":None,"max_refund":None,"quoted_amount":None,"awaiting":False,"affirm":False,"transferred":False}; lu=""
+_MEM_KEYS=("order_id","max_refund","quoted_amount","awaiting","affirm","transferred")
+
+def _mem_blank():
+    return {"order_id":None,"max_refund":None,"quoted_amount":None,"awaiting":False,"affirm":False,"transferred":False}
+
+def _mem_prior(prior):
+    """**접혀 넘어온** 가드 기억을 받아들인다(32차). 읽을 수 없으면 유실로 표시한다.
+
+    호출부가 이력을 잘라 저장할 때(`trim_history`) 창 밖으로 밀려난 앞부분의
+    가드 상태를 이 사전으로 넘겨받는다 — 그래야 「옛 정책 한도 → 잡담 →
+    최근 견적 → 동의」 조합에서도 한도 검사가 살아 있다.
+
+    읽을 수 없는 값을 **조용히 빈 상태로** 바꾸면 안 된다: `max_refund` 만
+    사라지고 견적·동의는 창 안에 남는 조합에서 `_guard` 의 한도 검사가
+    통째로 건너뛰어진다(`if mx is not None`) — 차단이 아니라 **승인** 쪽으로
+    틀리는 fail-open 이다(20차 `quoted_amount=None` 사고와 같은 자리).
+    그래서 `lost` 를 세우고 `_guard` 가 확정을 막는다.
+    """
+    m=_mem_blank()
+    if prior is None: return m
+    if not isinstance(prior,dict):
+        m["lost"]=True; return m
+    for k in _MEM_KEYS:
+        if k in prior: m[k]=prior[k]
+    for k in ("awaiting","affirm","transferred"): m[k]=bool(m[k])
+    if prior.get("lost"): m["lost"]=True
+    return m
+
+def _mem(messages,prior=None):
+    m=_mem_prior(prior); lu=""; seen_user=False
     for x in messages if isinstance(messages,list) else []:
         if not isinstance(x,dict): continue
-        if x.get("role")=="user" and isinstance(x.get("content"),str): lu=x["content"]
+        if x.get("role")=="user" and isinstance(x.get("content"),str): lu=x["content"]; seen_user=True
         if x.get("role")=="tool":
             # 툴 결과 본문은 **바깥 값**이다(`/api/chat` 은 대화 이력을 클라이언트가 보낸다).
             # `"[]"`·`"3"` 처럼 객체가 아닌 JSON 이 오면 json.loads 는 예외를 내지 않으므로
@@ -147,7 +175,10 @@ def _mem(messages):
                 if o.get("refund_amount") is not None: m["quoted_amount"]=o.get("refund_amount")
             if n in ("confirm_refund","request_redelivery"): m["awaiting"]=False
             if n=="escalate_to_agent": m["transferred"]=True
-    m["affirm"]=bool(_AFFIRM.search(lu)); return m
+    # 창 안에 고객 발화가 하나도 없으면 **접혀 온 판정을 유지한다** — 여기서
+    # False 로 덮으면 전체 이력으로 계산한 값과 달라진다(창이 좁을 때만 나는 차이).
+    if seen_user: m["affirm"]=bool(_AFFIRM.search(lu))
+    return m
 
 _RX_AMOUNT=re.compile(r"^-?\d+(?:\.\d+)?$")
 
@@ -183,6 +214,9 @@ def _guard(name,inp,m):
     # 해석 불가는 예외가 아니라 '차단' 판정으로 돌려준다(fail-safe).
     if not isinstance(inp,dict): return False,"툴 인자 형식 오류(객체가 아님)",False
     if name=="confirm_refund":
+        # 접혀 온 가드 기억을 읽지 못한 경우(`_mem_prior`) — 견적·한도를 '모르는'
+        # 상태다. 모르는 채로 확정하면 fail-open 이므로 차단 + 상담사 전환.
+        if m.get("lost"): return False,"가드 기억 유실(견적·한도 확인 불가)",True
         a=_amount(inp.get("refund_amount"))
         # (1단계) LLM 이 넘긴 명시 확정 플래그
         if not inp.get("user_confirmed"): return False,"사용자 확정 없이 환불 불가",False
@@ -300,14 +334,32 @@ def _esc_note_failure(reason):
         # 로그에는 `recorded:false` 가 남는다(둘 다 조용하지 않다).
         pass
 
-def _esc_enqueue(reason,summary,scenario=""):
+def _esc_ref(session_ref,scenario):
+    """티켓에 적을 통화 참조(32차).
+
+    예전에는 `"sim-%s"%scenario` **한 가지**였다 — 호출부가 `/api/chat`·sim 뿐일
+    때 쓴 라벨인데 실통화(`/api/voice`)도 그 라벨로 들어왔다. 결과는 둘 다 나쁘다:
+    한 인스턴스의 모든 티켓이 `sim-refund` 라서 **어느 통화인지 알 수 없고**,
+    고객에게 "상담사에게 연결해 드리겠습니다"라고 말한 통화를 되짚을 수 없다.
+    그리고 라벨이 `sim-` 이라 **실통화 전환이 시연으로 읽힌다**(운영자가 데모가
+    만든 티켓으로 보고 넘긴다). 17·19·30차가 반복해 지적한 '규칙이 절반만
+    지켜진' 모양이다 — sim 경로용 라벨을 실경로가 그대로 물려받았다.
+
+    호출부가 참조를 주면 그것을 쓴다(`voice.py` 는 통화ID **지문**을 준다 —
+    통화ID 는 CPaaS 가 주는 외부 값이라 번호가 섞여 들어올 수 있다).
+    """
+    if isinstance(session_ref,str) and session_ref.strip():
+        return session_ref.strip()
+    return "sim-%s"%(scenario or "call")
+
+def _esc_enqueue(reason,summary,scenario="",session_ref=None):
     """상담사 전환 시 에스컬레이션 큐(escalation.QUEUE)에 티켓 기록 — best-effort sim.
     큐 기록 실패는 통화 흐름에 영향 주지 않지만 **드러낸다**(_esc_note_failure).
     실제 상담원 배정·CTI 연동은 [승인 필요]."""
     if _ESC_QUEUE is None:
         _esc_note_failure("queue_unavailable"); return None
     try:
-        return _ESC_QUEUE.enqueue(session_id="sim-%s"%(scenario or "call"),reason=reason,summary=summary,scenario=scenario)
+        return _ESC_QUEUE.enqueue(session_id=_esc_ref(session_ref,scenario),reason=reason,summary=summary,scenario=scenario)
     except Exception as e:
         _esc_note_failure(type(e).__name__); return None
 
@@ -379,9 +431,44 @@ def _window(messages):
         cut-=1
     return msgs[cut:],cut
 
-def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
+# --------------------------------------------------------------------------
+# 저장하는 이력 자르기 (32차)
+#
+# 31차는 **모델이 보는 창**만 줄였다(`_window`). 호출부가 **저장하는** 이력에는
+# 상한이 없었고 31차 보고서가 그 사실을 한계 ②로 적어 두었다 — 통화 1건의
+# 수명(`voice.SESSION_TTL` 30분)이 사실상의 상한이었다. 그 사이 세션은 고객이
+# 말한 전사 원문을 전부 들고 있다(영속 저장소는 [승인 필요]이므로 보관 기간이
+# '웜 인스턴스 수명'이 되는 자리 — 30차가 세션 **건수**에서 고친 것과 같은 뿌리).
+#
+# 31차가 저장 쪽을 손대지 않은 이유는 fail-open 이었다: 가드의 기억(`_mem`)은
+# 전체 이력에서 계산되므로 이력을 버리면 견적·한도가 함께 사라진다. 그래서
+# 버리는 것이 아니라 **접어서 넘긴다** — 창 밖으로 밀려난 앞부분은 `_mem` 으로
+# 접어 사전 1개로 만들고(발화 원문 없음·금액과 판정만), 다음 턴은 그 사전을
+# `mem_prior` 로 받아 가드 기억을 **전체 이력과 동일하게** 복원한다.
+#
+#   _mem(창, prior=접힌것) == _mem(전체)        ← 회귀로 고정한 불변식
+#
+# 덤으로 개인정보 보관량이 줄어든다: 자르고 남는 것은 최근 창뿐이고, 접힌 쪽은
+# 발화가 아니라 금액·판정 6칸이다.
+# --------------------------------------------------------------------------
+def trim_history(messages,prior=None):
+    """(남길 이력, 접힌 가드 기억, 버린 건수).
+
+    상한은 `_window` 와 **같은 눈금**을 쓴다 — 모델이 보는 창보다 더 들고 있을
+    이유가 없고(그 이상은 통화 종료 요약에만 쓰인다), 두 상한이 따로 놀면
+    어느 쪽이 실제 보관 기간인지 코드에서 읽히지 않는다.
+    """
+    msgs=messages if isinstance(messages,list) else []
+    win,dropped=_window(msgs)
+    # 접는 대상은 **버린 앞부분뿐**이다. 창 안쪽을 함께 접으면 다음 턴에 같은
+    # 이력이 두 번 반영된다(`awaiting` 이 뒤집히는 순서 사고).
+    folded=_mem(msgs[:dropped],prior=prior) if dropped else _mem_prior(prior)
+    return list(win),folded,dropped
+
+def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5,
+             mem_prior=None,session_ref=None):
     model=os.environ.get("CALLBOT_GEMINI_MODEL","gemini-2.5-flash")
-    mem=_mem(messages); log=[]; audit=[]; usage={"input":0,"output":0}; msgs=list(messages)
+    mem=_mem(messages,prior=mem_prior); log=[]; audit=[]; usage={"input":0,"output":0}; msgs=list(messages)
     if scenario=="integrity": sysp=PROMPT_INTEGRITY; use_tools=False
     elif scenario=="overdue": sysp=PROMPT_OVERDUE; use_tools=False
     elif scenario=="welfare": sysp=PROMPT_WELFARE; use_tools=False
@@ -410,7 +497,7 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
             if not ok:
                 if esc:
                     out=_dispatch("escalate_to_agent",{"reason":reason,"summary":str(c["args"])}); mem["transferred"]=True
-                    tk=_esc_enqueue("guard",reason,scenario)
+                    tk=_esc_enqueue("guard",reason,scenario,session_ref)
                     log.append(_esc_log(tk,reason))
                 else: out={"blocked":True,"reason":reason}
                 log.append({"turn":"guard","tool":c["name"],"blocked":reason})
@@ -421,7 +508,7 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5):
                     # transferred 가 다음 턴에야 True 가 되어 봇이 한 턴 더 응대했다)
                     mem["transferred"]=True
                     _r=c["args"].get("reason","request")
-                    tk=_esc_enqueue(_r,c["args"].get("summary",""),scenario)
+                    tk=_esc_enqueue(_r,c["args"].get("summary",""),scenario,session_ref)
                     log.append(_esc_log(tk,(tk or {}).get("reason") or _r))
                 if c["name"]=="lookup_recent_order" and out.get("found"): mem["order_id"]=out.get("order_id")
                 if c["name"]=="get_refund_policy" and out.get("eligible"): mem["max_refund"]=out.get("max_refund")

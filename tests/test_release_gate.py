@@ -494,6 +494,108 @@ class TestMemCaps(unittest.TestCase):
         return srcs
 
 
+class TestHistoryCaps(unittest.TestCase):
+    """32차 게이트 — `run_turn` 호출부가 대화 이력 상한을 거치는가.
+
+    `mem_caps` 는 저장소 **선언**(`X = {}`)을 본다. 대화 이력은 그 눈으로
+    보이지 않는다 — 선언은 `{"messages": []}` 한 칸이고 자라는 것은 그 안쪽이다.
+    31차가 모델 창을, 32차가 저장 이력을 막았지만 둘 다 **호출부가 거쳐야**
+    효력이 있다(지금까지 `voice.py` 가 거치지 않았다).
+    """
+
+    def _repo(self):
+        return verify.api_sources()
+
+    def _all(self, extra):
+        srcs = self._repo()
+        srcs.update(extra)
+        return srcs
+
+    def test_new_unregistered_caller_fails(self):
+        src = "from _engine import run_turn\nr = run_turn(msgs)\n"
+        ok, msg = verify.check_history_caps(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("newthing.py", msg)
+        self.assertIn("HISTORY_CALLERS", msg)
+
+    def test_attribute_call_is_also_a_call(self):
+        """`engine.run_turn(...)` 모양으로 불러도 같은 호출부다."""
+        src = "import _engine\nr = _engine.run_turn(msgs)\n"
+        ok, msg = verify.check_history_caps(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("newthing.py", msg)
+
+    def test_importing_without_calling_is_not_a_caller(self):
+        """과차단하지 않는다 — import·주석만 있는 파일은 이력을 쌓지 않는다."""
+        src = "from _engine import run_turn  # 아직 안 쓴다\n"
+        ok, msg = verify.check_history_caps(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_mentioning_run_turn_in_a_comment_is_not_a_call(self):
+        src = "# run_turn(msgs) 로 바꿀 예정\nX = 1\n"
+        ok, msg = verify.check_history_caps(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_removing_the_cap_symbol_fails(self):
+        """등록부만 남고 상한이 사라지는 드리프트를 잡는다(voice 의 trim_history)."""
+        srcs = self._repo()
+        srcs["voice.py"] = "r = run_turn(sess['messages'])\n"
+        ok, msg = verify.check_history_caps(srcs)
+        self.assertFalse(ok)
+        self.assertIn("trim_history", msg)
+
+    def test_a_comment_does_not_count_as_the_cap(self):
+        """주석에 적어 두는 것은 배선이 아니다(audit_actions 와 같은 규약)."""
+        srcs = self._repo()
+        srcs["voice.py"] = "# trim_history 를 붙일 예정\nr = run_turn(m)\n"
+        ok, msg = verify.check_history_caps(srcs)
+        self.assertFalse(ok)
+
+    def test_stale_registry_entry_fails(self):
+        srcs = self._repo()
+        srcs["sim_call.py"] = "X = 1\n"
+        ok, msg = verify.check_history_caps(srcs)
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    def test_engine_losing_its_own_caps_fails(self):
+        """호출부 배선만 보면, 엔진이 상한을 지워도 전부 통과해 버린다."""
+        for symbol in ("HISTORY_MAX_MSGS", "HISTORY_MAX_CHARS", "def trim_history",
+                       "mem_prior"):
+            srcs = self._repo()
+            srcs["_engine.py"] = srcs["_engine.py"].replace(symbol, "GONE")
+            ok, msg = verify.check_history_caps(srcs)
+            self.assertFalse(ok, symbol)
+            self.assertIn(symbol, msg)
+
+    def test_gate_reads_sources_without_executing_them(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "raise SystemExit('실행되면 안 된다')\nX = 1\n"
+        ok, msg = verify.check_history_caps(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_syntax_error_is_left_to_py_compile(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "def broken(:\n"
+        ok, msg = verify.check_history_caps(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_history_caps(self._repo())
+        self.assertTrue(ok, msg)
+        self.assertIn("%d개" % len(verify.HISTORY_CALLERS), msg)
+
+    def test_registry_matches_reality(self):
+        srcs = self._repo()
+        for fname, (symbol, note) in verify.HISTORY_CALLERS.items():
+            self.assertIn(fname, srcs, "등록부가 없는 파일을 가리킨다: %s" % fname)
+            self.assertTrue(verify._calls_run_turn(srcs[fname]),
+                            "%s 는 run_turn 을 호출하지 않는다" % fname)
+            self.assertIn(symbol, srcs[fname],
+                          "%s 에 상한 기호 %s 가 없다" % (fname, symbol))
+            self.assertTrue(note.strip(), "사유가 비어 있다: %s" % fname)
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -509,7 +611,7 @@ class TestGateRuns(unittest.TestCase):
         self.assertEqual(rc, 0, buf.getvalue())
         out = buf.getvalue()
         for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
-                     "spoken_rules"):
+                     "spoken_rules", "mem_caps", "history_caps"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

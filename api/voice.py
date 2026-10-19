@@ -33,9 +33,10 @@ except Exception:                       # pragma: no cover - 모듈 부재 폴�
     _scrub = _scrub_unavailable
 
 try:
-    from _engine import run_turn
+    from _engine import run_turn, trim_history
 except Exception:
     run_turn = None
+    trim_history = None
 try:
     from _stt import transcribe
 except Exception:
@@ -119,7 +120,9 @@ LIVE = os.environ.get("CPAAS_LIVE", "0") == "1"
 SESSION_MAX = 500          # 동시 보관 세션 상한(`_call_metrics.MAX_OPEN` 과 같은 눈금)
 SESSION_TTL = 1800.0       # 마지막 접촉 후 만료(초). 통화는 이보다 길지 않다.
 # 만료·축출 집계 — 만든 수치가 아니라 이 인스턴스가 실제로 버린 건수.
-SESSION_STATS = {"expired": 0, "evicted": 0, "last_reason": None}
+# `trimmed`(이력을 자른 통화 수)·`trimmed_msgs`(버린 메시지 수)는 32차 추가분.
+SESSION_STATS = {"expired": 0, "evicted": 0, "trimmed": 0, "trimmed_msgs": 0,
+                 "last_reason": None}
 
 
 def _session_limit(name, default, cast):
@@ -211,6 +214,72 @@ class _Session:
         d["max"] = _session_limit("CALLBOT_SESSION_MAX", SESSION_MAX, int)
         d["ttl_sec"] = int(_session_limit("CALLBOT_SESSION_TTL", SESSION_TTL, float))
         return d
+
+
+# --------------------------------------------------------------------------
+# 세션이 **저장하는** 대화 이력 (32차)
+#
+# 30차는 세션 **건수**에 상한을 뒀고, 31차는 **모델에 보내는 창**에 상한을 뒀다.
+# 그런데 세션이 들고 있는 이력 자체에는 상한이 없었다 — 31차 보고서가 한계 ②로
+# 적어 둔 자리다. 그래서 한 통화 안에서 (1) 고객이 말한 전사 **원문**이 통화가
+# 끝날 때까지(또는 `SESSION_TTL` 30분까지) 전부 쌓이고 (2) 긴 통화 하나가 쓰는
+# 메모리에 한도가 없다. 영속 저장소가 [승인 필요]인 동안 통화 데이터의 보관
+# 기간은 코드가 적는 것이고, 여기에는 적혀 있지 않았다.
+#
+# 31차가 손대지 않은 이유는 fail-open 이었다: 가드의 기억(`_engine._mem`)은 전체
+# 이력에서 계산되므로 이력을 **버리면** 견적·한도가 함께 사라진다. 그래서 버리지
+# 않고 **접어서 넘긴다**(`_engine.trim_history` → `mem_prior`). 접힌 쪽에는 발화가
+# 없고 금액·판정 6칸만 남는다.
+#
+# 자른 사실은 조용히 지나가지 않는다 — 통화당 1줄(건수만)과
+# `GET /api/voice.sessions` 의 `trimmed`·`trimmed_msgs` 로 드러난다.
+# --------------------------------------------------------------------------
+def _session_trim_note(dropped, kept, first):
+    """이력을 잘랐다는 사실을 센다. 집계 실패가 통화를 끊지 않는다.
+
+    로그는 **통화당 1줄**이다(60턴 통화에서 20줄을 남기면 실제 트래픽이 묻힌다 —
+    18차가 `/api/health` 에서 내린 것과 같은 판단). 건수만 남기고 발화는 담지 않는다.
+    """
+    try:
+        SESSION_STATS["trimmed_msgs"] = int(SESSION_STATS.get("trimmed_msgs") or 0) + dropped
+        if first:
+            SESSION_STATS["trimmed"] = int(SESSION_STATS.get("trimmed") or 0) + 1
+            _log.emit({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                       "level": "info", "service": _log.SERVICE, "route": "/api/voice",
+                       "event": "history_trim", "dropped": dropped, "kept": kept})
+    except Exception:                    # pragma: no cover - 집계 실패가 통화를 끊지 않는다
+        pass
+
+
+def _store_history(sess, messages):
+    """턴이 끝난 이력을 세션에 **상한과 함께** 저장한다.
+
+    `trim_history` 가 없으면(엔진 모듈 부재 폴백) 자르지 않고 그대로 저장한다 —
+    상한이 없는 쪽으로 넘어지지만, 그 경로에서는 `run_turn` 도 없어서 통화가
+    진행되지 않는다(이력이 자랄 일 자체가 없다).
+    """
+    if trim_history is None:             # pragma: no cover - 엔진 부재 폴백
+        sess["messages"] = messages
+        return 0
+    kept, folded, dropped = trim_history(messages, sess.get("mem"))
+    sess["messages"] = kept
+    sess["mem"] = folded
+    if dropped:
+        # 통화 전체 메시지 수는 계속 센다 — 잘랐다고 `turn_count` 가 작아지면
+        # 통화 종료 로그가 거짓이 된다(상한은 보관량의 상한이지 사실의 상한이 아니다).
+        sess["dropped_total"] = int(sess.get("dropped_total") or 0) + dropped
+        _session_trim_note(dropped, len(kept), sess["dropped_total"] == dropped)
+    return dropped
+
+
+def _session_ref(cid):
+    """전환 티켓에 남길 통화 참조 — 통화ID **지문**(원문 아님).
+
+    지문을 만들 수 없더라도 `sim-` 이라고 적지 않는다 — 실통화 전환을 시연으로
+    읽게 만드는 쪽이 모르는 것보다 나쁘다(`_engine._esc_ref` 주석 참조).
+    """
+    d = _call_digest(cid)
+    return "call-%s" % d if d else "call-unknown"
 
 
 RECENT = []
@@ -370,8 +439,9 @@ def handle_twilio(p):
 
     if run_turn:
         sess["messages"].append({"role": "user", "content": user_text})
-        r = run_turn(sess["messages"], phone=frm, scenario=sess["scenario"])
-        sess["messages"] = r["messages"]
+        r = run_turn(sess["messages"], phone=frm, scenario=sess["scenario"],
+                     mem_prior=sess.get("mem"), session_ref=_session_ref(cid))
+        _store_history(sess, r["messages"])
         _log_call({"from": frm, "ev": "봇응답", "text": r.get("reply", "")})
         _metric("mark_turn", cid)
         if r.get("transferred"):
@@ -443,8 +513,10 @@ def handle_event(ev):
             return _act_say_then_listen("죄송합니다, 잘 못 들었어요. 다시 말씀해 주시겠어요?")
         sess["messages"].append({"role": "user", "content": user_text})
         if run_turn:
-            r = run_turn(sess["messages"], phone=sess.get("phone", ""), scenario=sess.get("scenario", "refund"))
-            sess["messages"] = r["messages"]
+            r = run_turn(sess["messages"], phone=sess.get("phone", ""),
+                         scenario=sess.get("scenario", "refund"),
+                         mem_prior=sess.get("mem"), session_ref=_session_ref(cid))
+            _store_history(sess, r["messages"])
             _Session.put(cid, sess)
             _metric("mark_turn", cid)
             if r.get("transferred"):
@@ -464,7 +536,15 @@ def handle_event(ev):
         _metric("finish", cid)
         _persist_call_result(cid, sess, result)
         _Session.drop(cid)
-        return {"ok": True, "summary": result}
+        out = {"ok": True, "summary": result}
+        dropped = int((sess or {}).get("dropped_total") or 0)
+        if dropped:
+            # 요약이 보는 것은 **남아 있는 창**뿐이다(잘린 앞부분은 들어가지 않는다).
+            # 말하지 않으면 소비자는 통화 전체의 요약으로 읽는다 — 긴 통화에서
+            # 앞부분 약속이 요약에서 빠진 것을 모른 채 쓰게 된다.
+            out["summary_partial"] = True
+            out["summary_dropped_messages"] = dropped
+        return out
     return {"ok": True, "ignored": ev["type"]}
 
 
@@ -598,11 +678,14 @@ def _persist_call_result(cid, sess, result):
     """
     try:
         msgs = (sess or {}).get("messages") or []
+        # 32차: 이력을 잘라 저장하므로 `len(msgs)` 는 **보관량**이다. 통화가 몇 턴
+        # 이었는지는 잘라 버린 수를 더해야 사실이 된다(상한이 사실을 줄이지 않는다).
+        dropped = int((sess or {}).get("dropped_total") or 0)
         _log.emit({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                    "level": "info", "service": _log.SERVICE, "route": "/api/voice",
                    "event": "call_done", "call": _call_digest(cid),
                    "result": "summarized" if isinstance(result, dict) and result else "no_summary",
-                   "turn_count": len(msgs)})
+                   "turn_count": len(msgs) + dropped, "kept": len(msgs)})
     except Exception:                    # pragma: no cover - 기록 실패가 응답을 막지 않는다
         pass
 

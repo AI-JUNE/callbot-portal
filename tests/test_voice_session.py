@@ -173,7 +173,7 @@ class TestSessionTtl(Base):
         os.environ["CALLBOT_SESSION_TTL"] = "60"
         calls = []
 
-        def run_turn(messages, phone="", scenario="refund"):
+        def run_turn(messages, phone="", scenario="refund", **kw):
             calls.append(list(messages))
             return {"messages": list(messages) + [{"role": "assistant", "content": "네"}],
                     "reply": "네", "transferred": False}
@@ -263,7 +263,7 @@ class TestSpeechMasking(Base):
 
     def test_speech_through_the_live_path_is_masked(self):
         """단위 함수만 보면 호출부가 우회할 수 있다 — 실제 이벤트 경로로 확인한다."""
-        def run_turn(messages, phone="", scenario="refund"):
+        def run_turn(messages, phone="", scenario="refund", **kw):
             return {"messages": list(messages) + [{"role": "assistant", "content": "확인했습니다"}],
                     "reply": "확인했습니다", "transferred": False}
 

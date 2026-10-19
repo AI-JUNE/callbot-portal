@@ -731,6 +731,79 @@ def check_mem_caps(sources):
                         else "저장소 %d개 상한 확인" % len(MEM_STORES))
 
 
+# --------------------------------------------------------------------------
+# history_caps 게이트 (32차)
+#
+# `mem_caps` 는 **저장소 선언**(`X = {}`)을 본다. 대화 이력은 그 눈으로 보이지
+# 않는다 — 선언은 `{"messages": []}` 한 칸이고, 자라는 것은 그 **안쪽**이다.
+# 31차가 모델 창(`_window`)을, 32차가 저장 이력(`trim_history`)을 막았지만 둘 다
+# **호출부가 거쳐야** 효력이 있다. 새 핸들러가 `run_turn` 을 호출하면서 이력을
+# 그냥 쌓으면(지금까지 `voice.py` 가 그랬다) 아무 게이트도 걸리지 않는다.
+#
+# 그래서 센다: `api/` 에서 `run_turn` 을 호출하는 파일은 등록부에 **어떻게
+# 상한을 두는지** 적혀 있어야 하고, 그 상한 기호가 같은 파일에 실제로 있어야
+# 한다(상한을 지우고 등록만 남기는 드리프트를 막는다. `mem_caps`·`log_fields`·
+# `audit_actions` 와 같은 양방향 규약).
+#
+# 범위는 좁게 — 호출 여부만 ast 로 본다. "저장하는가"를 정적으로 판정하려 들면
+# 과차단되고, 과차단되면 사람이 게이트를 끈다(28·30·31차와 같은 이유).
+# --------------------------------------------------------------------------
+HISTORY_CALLERS = {
+    "chat.py": ("MAX_CONTENT",
+                "클라이언트가 보낸 이력 — 라우트가 건수(100)·본문 길이로 막는다"),
+    "voice.py": ("trim_history",
+                 "세션에 저장하는 이력 — 턴마다 창으로 자르고 가드 기억은 접어 넘긴다"),
+    "sim_call.py": ("SCRIPTS",
+                    "대본 길이가 상한 — 한 요청 안에서만 자라고 저장되지 않는다"),
+}
+
+
+def _calls_run_turn(text):
+    """`run_turn(...)` 을 **호출**하는가(import·주석 언급은 아니다)."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return False                           # 문법 오류는 py_compile 게이트가 잡는다
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        if isinstance(f, ast.Name) and f.id == "run_turn":
+            return True
+        if isinstance(f, ast.Attribute) and f.attr == "run_turn":
+            return True
+    return False
+
+
+def check_history_caps(sources):
+    msgs, seen = [], set()
+    for name, text in sorted(sources.items()):
+        if name == "_engine.py":
+            continue                           # 상한을 정의하는 본인
+        if not _calls_run_turn(text):
+            continue
+        if name not in HISTORY_CALLERS:
+            msgs.append("%s (scripts/verify.py HISTORY_CALLERS 에 상한 기호와 사유를 "
+                        "적을 것 — 이력은 턴마다 자란다)" % name)
+            continue
+        seen.add(name)
+        symbol = HISTORY_CALLERS[name][0]
+        if not re.search(r"\b%s\b" % re.escape(symbol), _code(text)):
+            msgs.append("%s 의 이력 상한이 사라졌다(기호 %s 없음)" % (name, symbol))
+    stale = sorted(set(HISTORY_CALLERS) - seen)
+    if stale:
+        msgs.append("등록부 잔재(run_turn 호출 없음): %s" % ", ".join(stale))
+    # 엔진 자신의 상한 두 축이 사라지면 호출부 배선은 의미가 없다.
+    eng = sources.get("_engine.py", "")
+    for symbol in ("HISTORY_MAX_MSGS", "HISTORY_MAX_CHARS", "def trim_history",
+                   "mem_prior"):
+        if symbol not in eng:
+            msgs.append("_engine.py 의 %s 가 없다" % symbol)
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "run_turn 호출부 %d개 상한 확인" % len(seen))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -751,6 +824,7 @@ def main():
     n_ok, n_msg = check_spoken_numbers(srcs)
     r_ok, r_msg = check_spoken_rules(srcs)
     m_ok, m_msg = check_mem_caps(srcs)
+    hc_ok, hc_msg = check_history_caps(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -765,6 +839,7 @@ def main():
         {"step": "spoken_numbers", "ok": n_ok, "detail": n_msg},
         {"step": "spoken_rules", "ok": r_ok, "detail": r_msg},
         {"step": "mem_caps", "ok": m_ok, "detail": m_msg},
+        {"step": "history_caps", "ok": hc_ok, "detail": hc_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

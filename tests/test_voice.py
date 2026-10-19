@@ -166,8 +166,11 @@ class VoiceBase(unittest.TestCase):
     def stub_engine(self, reply="네, 도와드릴게요.", transferred=False):
         calls = []
 
-        def run_turn(messages, phone="", scenario="refund"):
-            calls.append({"messages": list(messages), "phone": phone, "scenario": scenario})
+        # 32차: 호출부는 `mem_prior`(접힌 가드 기억)·`session_ref`(통화 지문)도 넘긴다.
+        # 대역이 그 칸을 받지 않으면 배선이 TypeError 로 드러난다 — 받아서 **기록**한다.
+        def run_turn(messages, phone="", scenario="refund", **kw):
+            calls.append({"messages": list(messages), "phone": phone, "scenario": scenario,
+                          "mem_prior": kw.get("mem_prior"), "session_ref": kw.get("session_ref")})
             msgs = list(messages) + [{"role": "assistant", "content": reply}]
             return {"messages": msgs, "reply": reply, "transferred": transferred}
 
