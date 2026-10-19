@@ -189,8 +189,33 @@ footer{background:#fff;border-top:1px solid var(--line);padding:44px 0 56px;colo
   .nav-cta .btn:first-child{display:none}
   .foot{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+/* ── 모션(2026-10-19 2차) — 감속 곡선 하나, 짧게, 내용이 늦게 읽히지 않게 ── */
+:root{--e-out:cubic-bezier(.16,1,.3,1)}
+.nav{transition:box-shadow .25s ease,background-color .25s ease}
+.nav.scrolled{box-shadow:0 8px 24px -18px rgba(25,31,40,.35);background:rgba(255,255,255,.96)}
+.btn{transition:background .15s,border-color .15s,color .15s,transform .08s}
+.btn:active{transform:scale(.98)}
+.btn svg{transition:transform .25s var(--e-out)}
+.btn:hover svg{transform:translateX(3px)}
+.shot img{transition:transform .9s var(--e-out)}
+.shot:hover img{transform:scale(1.045)}
+.shot::after{transition:opacity .4s ease}
+.pr,.fl,.fc,.hn,.eum-list li{transition:border-color .2s ease,box-shadow .25s ease,transform .25s var(--e-out)}
+.pr:hover,.fl:hover,.fc:hover,.eum-list li:hover{border-color:#C9D7F4;box-shadow:0 14px 32px -22px rgba(36,87,197,.35);transform:translateY(-2px)}
+.faq details[open] p{animation:fq .35s var(--e-out)}
+@keyframes fq{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+/* 히어로: 사진은 아주 천천히 제자리로(1.06→1), 글은 차례로 */
+.js-motion .hero-media img{transform:scale(1.06);transition:transform 2.2s var(--e-out)}
+.js-motion.ready .hero-media img{transform:none}
+@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.js-motion .hero-copy>*{animation:up .8s var(--e-out) both;animation-delay:calc(var(--i,0) * 90ms + 120ms)}
+/* 스크롤 등장 — 화면에 들어올 때 한 번, 같은 줄의 카드는 70ms 간격 */
+.js-motion .rv{opacity:0;transform:translateY(18px);transition:opacity .7s var(--e-out) calc(var(--i,0) * 70ms),transform .7s var(--e-out) calc(var(--i,0) * 70ms),border-color .2s ease,box-shadow .25s ease}
+.js-motion .rv.in{opacity:1;transform:none}
+.js-motion .rv.in.pr:hover,.js-motion .rv.in.fl:hover,.js-motion .rv.in.fc:hover{transform:translateY(-2px);transition-delay:0s}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}.js-motion .rv{opacity:1;transform:none}.js-motion .hero-media img{transform:none}}
 </style>
+<script>document.documentElement.classList.add('js-motion');</script>
 </head>
 <body>
 <a class="sr-only" href="#main">본문으로 건너뛰기</a>
@@ -325,6 +350,37 @@ document.querySelectorAll('img[data-cdn]').forEach(function (img) {
   img.addEventListener('error', swap, { once: true });
   if (img.complete && img.naturalWidth === 0) swap();
 });
+
+// 모션 — 히어로 차례 등장, 스크롤 등장(한 번), 상단 바 그림자. 스크립트가 실패해도 내용이 숨지 않게 안전장치를 둔다.
+(function () {
+  var root = document.documentElement;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  Array.prototype.forEach.call(document.querySelectorAll('.hero-copy > *'), function (el, i) { el.style.setProperty('--i', i); });
+  requestAnimationFrame(function () { root.classList.add('ready'); });
+  var groups = ['.pr-grid', '.flow', '.shots', '.feat', '.eum-list', '.honest', '.faq'];
+  var items = [];
+  document.querySelectorAll('.sec-h, .eum-fig, .band h2, .band p').forEach(function (el) { items.push(el); });
+  groups.forEach(function (g) {
+    document.querySelectorAll(g).forEach(function (box) {
+      Array.prototype.forEach.call(box.children, function (el, i) { el.style.setProperty('--i', Math.min(i, 6)); items.push(el); });
+    });
+  });
+  items.forEach(function (el) { el.classList.add('rv'); });
+  function showAll() { items.forEach(function (el) { el.classList.add('in'); }); }
+  if (reduce || !('IntersectionObserver' in window)) { showAll(); }
+  else {
+    var io = new IntersectionObserver(function (ents) {
+      ents.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
+    items.forEach(function (el) { io.observe(el); });
+    // 인쇄·느린 기기 안전장치 — 8초 뒤에는 보이지 않은 것도 모두 보인다
+    setTimeout(showAll, 8000);
+    window.addEventListener('beforeprint', showAll);
+  }
+  var nav = document.querySelector('.nav');
+  function onScroll() { if (nav) nav.classList.toggle('scrolled', window.scrollY > 8); }
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+})();
 </script>
 </body>
 </html>

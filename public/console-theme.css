@@ -90,7 +90,10 @@ body.dark .card:hover{border-color:#39414D}
 .card>h3 .r{color:var(--dim);font-weight:600;font-size:12.5px}
 
 /* KPI — 왼쪽·위 색 띠 제거, 숫자 위계 강화(Stripe) */
-.kpis,.kpis.k4{gap:12px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+.kpis,.kpis.k4{gap:12px;grid-template-columns:repeat(auto-fit,minmax(146px,1fr))}
+/* 상단 바 도구가 두 줄로 꺾이지 않게 — 좁은 데스크톱에서는 비용·언어 칸을 접는다 */
+.topbar button,.topbar .tog,.topbar .stat{white-space:nowrap}
+@media(max-width:1360px){.topbar .stat:not([title]),.topbar #langBtn{display:none!important}.search{width:220px}}
 .kpi{border-radius:var(--ct-r);border:1px solid var(--line);box-shadow:none;padding:16px 18px;animation:none}
 .kpi::before,.kpi:before{display:none!important}
 .kpi:hover{transform:none;box-shadow:none;border-color:#D5DAE0}
@@ -114,6 +117,7 @@ body.dark .card:hover{border-color:#39414D}
 .bcard:hover{transform:none;box-shadow:none}
 .bcard.alert{background:#3A1A1F}.bcard.warn{background:#3A2A0F}
 
+.wrap button>.ct-ic:only-child{width:16px;height:16px;display:block}
 /* 버튼 — 기본은 조용히, 주 동작만 채운다 */
 button{box-shadow:none;border-radius:8px;border:1px solid var(--line);font-weight:700;font-size:13px;padding:8px 12px}
 button:hover{border-color:#C9D0D8;color:var(--txt);background:var(--panel2)}
@@ -181,4 +185,67 @@ input:focus,select:focus,textarea:focus{border-color:var(--warm);outline:none;bo
   .wrap{padding:14px 14px 84px}
   body>div[role="note"]{left:12px!important;right:12px!important;bottom:72px!important;max-width:none!important}
 }
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* ══ 모션 시스템(2026-10-19 2차) ══════════════════════════════════════════
+ * 기준: Linear·Stripe·Vercel — 움직임은 「무엇이 바뀌었는지」를 알려 줄 때만, 짧고(120~520ms) 감속 곡선으로.
+ * 튀는 효과·무한 반복 장식 없음. 사용자가 「동작 줄이기」를 켜면 전부 끈다(맨 아래).
+ */
+:root{--e-out:cubic-bezier(.16,1,.3,1);--e-std:cubic-bezier(.2,0,0,1);--e-spring:cubic-bezier(.34,1.4,.64,1);--d1:120ms;--d2:200ms;--d3:320ms;--d4:520ms}
+
+/* 화면 전환 — 새 화면이 아래에서 6px 떠오르며 나타나고, 안의 카드가 차례로 뒤따른다(최대 8개, 35ms 간격) */
+@keyframes ct-view{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes ct-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.ct-enter{animation:ct-view var(--d3) var(--e-out) both}
+.ct-enter .ct-st{animation:ct-rise var(--d4) var(--e-out) both;animation-delay:calc(var(--i,0) * 35ms + 40ms)}
+
+/* 카드·지표 — 들뜨지 않고 테두리·그림자만 부드럽게 */
+.card,.kpi,.hpill,.agent,.node,.step{transition:border-color var(--d2) var(--e-std),box-shadow var(--d2) var(--e-std),background-color var(--d2) var(--e-std)}
+.card:hover,.kpi:hover{box-shadow:0 1px 2px rgba(25,31,40,.04),0 8px 24px -16px rgba(25,31,40,.22)}
+body.dark .card:hover,body.dark .kpi:hover{box-shadow:0 8px 24px -16px rgba(0,0,0,.6)}
+
+/* 버튼·칩 — 누르는 순간 살짝 눌림(80ms), 색 전환 120ms */
+button,.chip,.nav a,.search,.stat{transition:background-color var(--d1) var(--e-std),border-color var(--d1) var(--e-std),color var(--d1) var(--e-std),box-shadow var(--d1) var(--e-std),transform 80ms var(--e-std)}
+button:active:not(:disabled),.chip:active{transform:scale(.98)}
+button.primary,.btn-call{box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 1px 2px rgba(25,31,40,.12)}
+
+/* 사이드바 — 선택 표시가 한 칸에서 다음 칸으로 미끄러진다(배경 1개가 움직임) */
+.side{position:relative}
+.ct-ind{position:absolute;left:10px;right:10px;top:0;height:34px;border-radius:8px;background:var(--warmbg);z-index:0;pointer-events:none;transition:transform var(--d3) var(--e-out),height var(--d3) var(--e-out),opacity var(--d2) var(--e-std);opacity:0}
+.ct-ind.on{opacity:1}
+.side.ct-has-ind .nav a.on{background:transparent}
+.nav a{position:relative;z-index:1}
+.nav.ct-closed{display:none}
+.nav{animation:none}
+.nav.ct-opening{animation:ct-rise var(--d3) var(--e-out) both}
+
+/* 팝업·드롭다운·명령 팔레트 — 위치한 쪽에서 살짝 커지며 나타남 */
+@keyframes ct-pop{from{opacity:0;transform:translateY(-4px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes ct-fade{from{opacity:0}to{opacity:1}}
+.popup.show{animation:ct-pop 160ms var(--e-out) both;transform-origin:top right}
+.cmdbg.on{animation:ct-fade var(--d2) var(--e-std) both}
+.cmdbg.on .cmdbox{animation:ct-pop var(--d2) var(--e-out) both;transform-origin:top center}
+.tourbg.on .tourcard,.csatbg.on .csatbox,.wavebg.on .wavebox{animation:ct-pop var(--d3) var(--e-out) both}
+
+/* 토스트 — 아래에서 올라오며 살짝 튕긴다 */
+.toast{transition:opacity var(--d2) var(--e-std),transform var(--d3) var(--e-spring)!important}
+
+/* 불러오는 중 — 글자 대신 잔잔한 빛줄기(skeleton) */
+@keyframes ct-shimmer{from{background-position:-200% 0}to{background-position:200% 0}}
+.ct-skel{color:transparent!important;border-radius:6px;background:linear-gradient(90deg,var(--panel2) 25%,#E9EDF2 37%,var(--panel2) 63%);background-size:400% 100%;animation:ct-shimmer 1.4s ease infinite;user-select:none}
+body.dark .ct-skel{background:linear-gradient(90deg,#1C212A 25%,#262C36 37%,#1C212A 63%);background-size:400% 100%}
+
+/* 스파크라인 — 화면에 들어올 때 선이 왼쪽에서 그려진다 */
+.spark polyline{transition:stroke-dashoffset 900ms var(--e-out)}
+.spark circle{transition:opacity var(--d3) var(--e-std) 700ms}
+
+/* 실시간 점 — 숨쉬듯 한 번, 2.4초 주기(눈을 끌지 않을 만큼) */
+@keyframes ct-breathe{0%,100%{box-shadow:0 0 0 0 rgba(46,125,79,.35)}50%{box-shadow:0 0 0 5px rgba(46,125,79,0)}}
+.stat .dot{animation:ct-breathe 2.4s var(--e-std) infinite!important}
+
+/* 상단 바 — 내용이 밑으로 지나가면 경계 그림자 */
+.topbar{transition:box-shadow var(--d2) var(--e-std)}
+.main.ct-scrolled .topbar{box-shadow:0 1px 0 var(--line),0 6px 16px -12px rgba(25,31,40,.25)}
+
+/* 포커스 — 키보드 사용자에게 또렷하게 */
+:focus-visible{outline:2px solid var(--warm)!important;outline-offset:2px;border-radius:6px}
+
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

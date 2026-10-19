@@ -60,8 +60,14 @@
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.3-1.4M17.7 6.3l1.4-1.4"/>',
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
     coin: '<circle cx="12" cy="12" r="9"/><path d="M8 9l2 6 2-4 2 4 2-6M7 12h10"/>',
-    info: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>'
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
+    up: '<path d="M7 10v11M15 5.9 14 10h5.8a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 18.4 21H7V10l4-8a3 3 0 0 1 3 3.9Z"/>',
+    down: '<path d="M17 14V3M9 18.1 10 14H4.2a2 2 0 0 1-2-2.3l1.4-7A2 2 0 0 1 5.6 3H17v11l-4 8a3 3 0 0 1-3-3.9Z"/>',
+    pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+    play: '<path d="M6 4l14 8-14 8Z"/>'
   };
+  // 버튼 글자가 이모지 하나뿐인 자리 — 같은 뜻의 선 아이콘으로(누르는 기능은 그대로)
+  var SOLO = { '👍': 'up', '👎': 'down', '⏸': 'pause', '▶': 'play', '🎙': 'mic', '🎙️': 'mic' };
   var NAV = {
     voice: 'mic', chat: 'chat', wellbeing: 'heart', home: 'home', agentmgmt: 'bot', builder: 'flow', qa: 'target', abtest: 'split',
     envvar: 'sliders', monitor: 'pulse', hist: 'list', report: 'chart', alerts: 'bell', kb: 'book', rag: 'search', agents: 'users',
@@ -139,6 +145,11 @@
     var root = document.getElementById('app'); if (!root) return;
     root.querySelectorAll('.kpi .l, .card > h3, .wrap button, .chip, .hpill b, #noticeBar > span, .popup .noti, .popup .hd, .wrap h3, .wrap h4, .bcard .t, .tmgroup > button')
       .forEach(stripLead);
+    root.querySelectorAll('.wrap button').forEach(function (b) {
+      if (b.children.length) return;
+      var t = (b.textContent || '').trim(), name = SOLO[t];
+      if (name) { if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', name === 'up' ? '좋아요' : name === 'down' ? '아쉬워요' : t); b.innerHTML = svg(name); }
+    });
     // 둘러보기 카드 — 큰 이모지 → 선 아이콘, 옛 이름 「CallBot AICC 포털」 → 「AICC Portal」
     var ti = document.getElementById('tourIcon');
     if (ti && !ti.querySelector('svg')) ti.innerHTML = svg('sparkle');
@@ -199,7 +210,7 @@
     h = (h * 60 + 360) % 360;
     var out;
     if (h >= 340 || h < 15) out = '#C9372C';
-    else if (h < 55) out = '#A6620A';
+    else if (h < 55) out = '#D9922B';            // 그래프 면은 글자색(#A6620A)보다 밝은 주황 — 갈색으로 탁해지지 않게
     else if (h < 170) out = '#2E7D4F';
     else if (h < 250) out = l > 0.7 ? '#9DB9F5' : (l > 0.55 ? '#5B8DEF' : '#2457C5');
     else out = '#5B8DEF'; // 보라 계열은 밝은 파랑으로
@@ -230,11 +241,123 @@
     inst.forEach(function (ch) { if (!ch.$ctThemed) { themeChart(ch); try { ch.update('none'); } catch (e) { /* 무시 */ } } });
   }
 
+  // ══ 모션(2차) ═══════════════════════════════════════════════════════════
+  var REDUCE = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var easeOut = function (t) { return 1 - Math.pow(1 - t, 3); };
+
+  // 숫자 카운트업 — 화면에 들어올 때 한 번. 표기(소수 자리·천 단위 쉼표·단위)는 그대로 둔다.
+  var NUM = /^(\D*?)(-?\d[\d,]*(?:\.\d+)?)(.*)$/;
+  function countUp(el) {
+    var txt = (el.textContent || '').trim();
+    var m = txt.match(NUM); if (!m || el.children.length) return;
+    var raw = m[2], target = parseFloat(raw.replace(/,/g, '')); if (!isFinite(target) || target === 0) return;
+    var dec = (raw.split('.')[1] || '').length, comma = raw.indexOf(',') >= 0;
+    var fmt = function (v) { var s = v.toFixed(dec); if (comma) { var p = s.split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ','); s = p.join('.'); } return m[1] + s + m[3]; };
+    var t0 = performance.now(), dur = 760;
+    el.dataset.ctCount = txt;
+    (function step(now) {
+      if (el.dataset.ctCount !== txt) return;                 // 그사이 화면이 값을 바꿨으면 손을 뗀다
+      var k = Math.min(1, (now - t0) / dur);
+      el.textContent = k < 1 ? fmt(target * easeOut(k)) : txt;
+      el.dataset.ctCount = k < 1 ? el.textContent : txt;
+      if (k < 1) requestAnimationFrame(step);
+    })(t0);
+  }
+  // 스파크라인 — 선을 왼쪽에서부터 그린다
+  function drawSpark(svgEl) {
+    var p = svgEl.querySelector('polyline'); if (!p || !p.getTotalLength) return;
+    var len = p.getTotalLength(); if (!len) return;
+    var c = svgEl.querySelector('circle');
+    p.style.transition = 'none'; p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+    if (c) { c.style.transition = 'none'; c.style.opacity = '0'; }
+    p.getBoundingClientRect();
+    p.style.transition = ''; p.style.strokeDashoffset = '0';
+    if (c) { c.style.transition = ''; c.style.opacity = '1'; }
+  }
+  // 화면 전환 — 보이는 화면(section)이 바뀌면 들어오는 효과 + 카드 차례 등장 + 숫자·선·그래프 다시 그리기
+  var lastView = null;
+  function enterView() {
+    var sec = document.querySelector('#mainwrap > section:not(.hidden)');
+    if (!sec || sec === lastView) return;
+    lastView = sec;
+    if (REDUCE) return;
+    sec.classList.remove('ct-enter'); void sec.offsetWidth; sec.classList.add('ct-enter');
+    var items = sec.querySelectorAll('.kpi, .hpill, .card, .bcard, .agent');
+    var n = 0;
+    Array.prototype.forEach.call(items, function (el) {
+      if (el.offsetParent === null) return;
+      if (el.parentElement && el.parentElement.closest('.card')) return; // 카드 안의 카드는 부모와 같이 움직인다
+      el.classList.remove('ct-st'); void el.offsetWidth;
+      el.style.setProperty('--i', Math.min(n++, 8)); el.classList.add('ct-st');
+    });
+    sec.querySelectorAll('.kpi .v, .hpill .st, .bcard .n').forEach(countUp);
+    sec.querySelectorAll('.spark svg').forEach(drawSpark);
+    var C = window.Chart;
+    if (C && C.instances) Object.keys(C.instances).forEach(function (k) {
+      var ch = C.instances[k];
+      if (ch && ch.canvas && sec.contains(ch.canvas) && ch.canvas.offsetParent !== null) { try { ch.reset(); ch.update(); } catch (e) { /* 무시 */ } }
+    });
+    setTimeout(function () { sec.classList.remove('ct-enter'); }, 900);
+  }
+  // 사이드바 선택 표시 — 배경 한 장이 선택 칸으로 미끄러진다
+  var ind = null;
+  function indicator() {
+    var side = document.getElementById('sideNav'); if (!side) return;
+    if (!ind) { ind = document.createElement('div'); ind.className = 'ct-ind'; ind.setAttribute('aria-hidden', 'true'); side.insertBefore(ind, side.firstChild); side.classList.add('ct-has-ind'); }
+    var on = side.querySelector('.nav:not(.ct-closed) a.on');
+    if (!on || on.offsetParent === null) { ind.classList.remove('on'); return; }
+    var top = on.getBoundingClientRect().top - side.getBoundingClientRect().top + side.scrollTop;
+    var key = Math.round(top) + ':' + on.offsetHeight;
+    if (ind.dataset.k === key) return;
+    ind.dataset.k = key;
+    var first = !ind.classList.contains('on');
+    if (first) ind.style.transition = 'none';                 // 처음 자리 잡을 때는 미끄러지지 않는다
+    ind.style.height = on.offsetHeight + 'px';
+    ind.style.transform = 'translateY(' + Math.round(top) + 'px)';
+    ind.classList.add('on');
+    if (first) { ind.getBoundingClientRect(); ind.style.transition = ''; }
+  }
+  // 불러오는 중 — 짧은 안내 글자를 잔잔한 빛줄기로
+  var LOADING = /^(불러오는 중|모으는 중|확인 중|.{0,20}(불러오는|모으는|만드는) 중)…?\.{0,3}$/;
+  function skeletons() {
+    document.querySelectorAll('#mainwrap [role="status"], #mainwrap .hint, #mainwrap .empty').forEach(function (el) {
+      if (el.children.length > 1) return;
+      var t = (el.textContent || '').trim();
+      el.classList.toggle('ct-skel', LOADING.test(t) && t.length < 40);
+    });
+  }
+  var scrollBound = false;
+  function scrolled() {
+    if (scrollBound) return;
+    var main = document.querySelector('.main'); if (!main) return;
+    scrollBound = true;
+    main.addEventListener('scroll', function () { main.classList.toggle('ct-scrolled', main.scrollTop > 4); }, { passive: true });
+  }
+  function chartMotion() {
+    var C = window.Chart; if (!C || C.$ctMotion) return;
+    C.$ctMotion = true;
+    try {
+      C.defaults.animation = C.defaults.animation || {};
+      C.defaults.animation.duration = REDUCE ? 0 : 720;
+      C.defaults.animation.easing = 'easeOutQuart';
+      // 막대·점이 왼쪽부터 차례로 — 처음 그릴 때만(값이 갱신될 때는 지연 없이)
+      C.defaults.animation.delay = function (ctx) { return (!REDUCE && ctx.type === 'data' && ctx.mode === 'default') ? ctx.dataIndex * 32 + ctx.datasetIndex * 90 : 0; };
+      var tt = C.defaults.plugins && C.defaults.plugins.tooltip;
+      if (tt) {
+        tt.backgroundColor = 'rgba(25,31,40,.94)'; tt.padding = 10; tt.cornerRadius = 8; tt.boxPadding = 4;
+        tt.titleFont = { weight: '700', size: 12 }; tt.bodyFont = { size: 12 }; tt.caretSize = 5; tt.displayColors = true; tt.usePointStyle = true;
+      }
+      if (C.defaults.elements && C.defaults.elements.line) { C.defaults.elements.line.tension = 0.35; C.defaults.elements.line.borderWidth = 2; }
+      if (C.defaults.elements && C.defaults.elements.point) { C.defaults.elements.point.radius = 0; C.defaults.elements.point.hoverRadius = 4; }
+    } catch (e) { /* Chart 판본이 달라도 화면은 그대로 돈다 */ }
+  }
+
   var queued = false;
   function run() {
     queued = false;
-    try { navIcons(); topbar(); decor(); folds(); charts(); } catch (e) { /* 표시 층 오류가 콘솔 동작을 막지 않는다 */ }
+    try { navIcons(); topbar(); decor(); folds(); chartMotion(); charts(); skeletons(); scrolled(); enterView(); indicator(); } catch (e) { /* 표시 층 오류가 콘솔 동작을 막지 않는다 */ }
   }
+  window.addEventListener('resize', function () { if (ind) ind.dataset.k = ''; schedule(); });
   function schedule() { if (!queued) { queued = true; (window.requestAnimationFrame || setTimeout)(run); } }
 
   function start() {
