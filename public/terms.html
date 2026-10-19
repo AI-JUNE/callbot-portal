@@ -26,12 +26,21 @@
   section p{margin:0;color:#2b3038}
   footer{border-top:1px solid var(--line);background:#fff;padding:24px 0;color:var(--mute);font-size:13px}
   footer a{color:var(--mute)}
+  /* 2026-10-19 — 랜딩·콘솔과 같은 토큰·머리 바. 좁은 화면에서 메뉴가 넘치지 않게 */
+  :root{--ink:#191F28;--mute:#4E5968;--line:#E5E8EB;--bg:#F7F8FA;--brand:#2457C5;--soft:#F4F6F8}
+  .logo{display:inline-flex;align-items:center;gap:9px;color:#1A3F94;letter-spacing:-.3px}
+  .logo i{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#3B74E0,#1F4DB3);display:grid;place-items:center;color:#fff;font-style:normal}
+  .logo i svg{width:17px;height:17px}
+  nav{display:flex;flex-wrap:wrap;gap:4px 14px;justify-content:flex-end}
+  nav a{margin-left:0}
+  .notice{background:#FDF1DC;border-color:#F0D49B;color:#7A4A06}
+  @media(max-width:520px){.top{flex-direction:column;align-items:flex-start;gap:8px}nav{justify-content:flex-start}h1{font-size:24px}}
 </style>
 </head>
 <body>
 <header>
   <div class="wrap top">
-    <a class="logo" href="/">Call<span>Bot</span></a>
+    <a class="logo" href="/"><i aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/></svg></i>AICC Portal</a>
     <nav>
       <a href="/terms">이용약관</a>
       <a href="/privacy">개인정보처리방침</a>

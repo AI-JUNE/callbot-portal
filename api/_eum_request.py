@@ -146,6 +146,15 @@ def deliver(url, payload, secret, timeout=TIMEOUT):
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             out["status"] = int(getattr(resp, "status", 0) or resp.getcode() or 0)
+            # 리다이렉트로 허용 호스트 밖에 닿았다면 「보냈다」고 보고하지 않는다(안부 웹훅과 같은 규약)
+            try:
+                final = resp.geturl() or url
+            except Exception:
+                final = url
+            if final != url and not _urlguard.check(final, label="eum_request_url", allowlist=_hosts())[0]:
+                out["error"] = "리다이렉트 이탈: 허용 호스트 밖으로 이동했습니다"
+                out["duration_ms"] = int((time.time() - t0) * 1000)
+                return out
             out["delivered"] = 200 <= out["status"] < 300
             if not out["delivered"]:
                 out["error"] = "이음이 %d 로 응답했습니다" % out["status"]

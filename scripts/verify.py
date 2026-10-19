@@ -41,7 +41,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 허위 도입사례·후기로 읽힐 수 있는 실제 기업/제품명. 발견되면 실패.
 BANNED = ["농협", "라피치", "IBK", "날리지큐브", "보이스봇", "신세계", "하나은행"]
 # 복지 사업 잔재 — B2B 브랜드(AICC Portal)와 맞지 않는다.
-WELFARE = ["이음", "광산구", "3세대", "상생"]
+# 2026-10-19: 「이음」은 공식 연계 대상(안부 결과·현장 음성 요청 웹훅)으로 랜딩 「이음 연계」 절에 노출하므로 목록에서 뺀다.
+WELFARE = ["광산구", "3세대", "상생"]
 # 문안상 정당한 사용까지 잡지 않도록, 검사 대상은 라이브 페이지로 한정한다.
 HTML_DIR = os.path.join(REPO, "public")
 API_DIR = os.path.join(REPO, "api")
