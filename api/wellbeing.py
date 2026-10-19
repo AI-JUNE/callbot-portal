@@ -608,7 +608,7 @@ def _op_from_path(path):
 
 # 로그 보조필드는 **아는 값만** 남긴다. op 는 외부가 보내는 값이라 그대로 담으면
 # 임의 문자열(대상자 식별자 포함)이 로그에 섞인다.
-_OPS = ("call", "recent", "result", "failures", "info")
+_OPS = ("call", "recent", "result", "failures", "info", "request")
 
 
 def _op_label(op):
@@ -735,6 +735,8 @@ class handler(BaseHTTPRequestHandler):
             body = _errors.read_json(self, max_bytes=MAX_BODY, required=True)
             op = _op_from_path(self.path) or str(body.get("op") or "call").lower()
             rq.set(op=_op_label(op))
+            if op == "request":
+                return self._eum_request(body, rq)
             if op not in ("call", ""):
                 raise _errors.ValidationError.field("op", "지원하지 않는 동작입니다(call)")
             if live_mode() or str(body.get("mode") or "").lower() == "live":
@@ -766,6 +768,30 @@ class handler(BaseHTTPRequestHandler):
             self._send(out)
         except Exception as e:
             _errors.handle(self, e, route="/api/wellbeing", method="POST")
+
+    def _eum_request(self, body, rq):
+        """이음 3R 현장 음성 요청 — `POST /api/wellbeing/request`.
+
+        함수 한도(Vercel Hobby 12개) 때문에 새 파일을 만들지 않고 이 라우트의 하위 동작으로 둔다.
+        전화를 걸지 않으므로 실발신 차단(501)과 무관하다. 규칙은 `_eum_request.py` 한 곳이다.
+        본문: {participant_id, transcript, ref?, send?} — transcript 는 STT 결과 글(원문은 로그에 남기지 않는다).
+        """
+        import _eum_request as er
+        pid = _errors.as_str(body, "participant_id", required=True, max_len=64, allow_empty=False)
+        transcript = _errors.as_str(body, "transcript", required=True, max_len=4000, allow_empty=False)
+        ref = _errors.as_str(body, "ref", default="", max_len=64)
+        send = body.get("send") is True
+        try:
+            out = er.run(pid, transcript, ref=ref or None, send=send, retry_fn=deliver_with_retry)
+        except ValueError as e:
+            raise _errors.ValidationError.field("request", str(e))
+        rq.set(kind=(out.get("payload") or {}).get("kind_label"), mode=out.get("mode"),
+               delivered=bool((out.get("delivery") or {}).get("delivered")))
+        if out.get("mode") == "sent" and not out.get("ok"):
+            d = out.get("delivery") or {}
+            return self._send({**out, "ok": False, "error": d.get("error") or "이음 전송 실패",
+                               "code": "EUM_DELIVERY_FAILED"}, code=502)
+        return self._send(out)
 
 
 # --------------------------------------------------------------------------

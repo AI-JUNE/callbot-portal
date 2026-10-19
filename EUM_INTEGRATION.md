@@ -64,6 +64,20 @@
       · 회귀: `tests/test_console_wellbeing.py` **15건**(라우팅·엔드포인트·프로필 목록 드리프트·페이로드 필드 정합·이스케이프·빈/오류 상태·허위수치 금지). 전체 **414건 통과**.
       · 검증: HTMLParser 파싱(신규 오류 0, 기존 1건은 사전 존재분)·`py_compile`·금지어 스캔·로컬 E2E(4개 프로필 200, 입력오류 400, 실발신 501, 사설 콜백 400, 가드 401).
 
+## 3R 연계 — 현장 음성 요청 → 이음 소통창 (2026-10-19)
+이음 발표 13쪽 흐름: 음성 요청 → STT → **요청 유형 분류** → 담당자 알림 → 접수·조치 → 참여자 회신 → 처리 이력.
+AICC 는 「STT 된 글을 분류·정리해 서명 웹훅으로 넘기는 것」까지 맡고, 알림·조치·회신·이력은 이음(`/staff/requests`, `/me`)이 맡는다.
+
+- [x] `api/_eum_request.py` — 규칙 분류(emergency·schedule_change·onsite_issue·senior_concern·other, **긴급 우선**), 요약 개인정보 가림(`monitoring.scrub`)·500자, 서명·전송.
+- [x] `POST /api/wellbeing/request` — 함수 한도 때문에 wellbeing 의 하위 동작. 본문 `{participant_id, transcript, ref?, send?}`.
+      · 기본은 **dry-run**(분류 결과·보낼 본문만 돌려줌). `EUM_CHANNEL_SECRET`(16자 이상) 등록 + `send:true` 일 때만 이음으로 전송.
+      · 전송 실패는 502 `EUM_DELIVERY_FAILED` 로 드러낸다. 재시도·실패 보관은 안부 웹훅과 같은 `deliver_with_retry`.
+      · 전화를 걸지 않으므로 실발신 차단(501)과 무관.
+- [x] 이음 수신 `POST https://eum.gowon.co.kr/api/channel/aicc/request` — 헤더 `X-Channel-Id: phone` · `X-Channel-Timestamp` · `X-Channel-Signature: sha256=HMAC("<ts>.<body>")`, 비밀은 이음 `CHANNEL_SECRET` 과 **같은 값**. 응답 200·400·401·404·429·503 (이음 `docs/CHANNEL_API.md` 6절).
+- [x] 테스트 `tests/test_eum_request.py`(분류·가림·dry-run 스위치·서명 꼴·허용 호스트·라우트 대역 3건).
+- [ ] **[승인 필요]** 운영 연결: Vercel 에 `EUM_CHANNEL_SECRET`(= 이음 CHANNEL_SECRET) 등록. 그 전까지는 dry-run 만 동작한다.
+- [ ] 실회선 음성 인입(참여자가 대표번호로 말하기) — CPaaS 실회선 개통 뒤 `voice.py` 인입 → STT → 이 동작 호출로 결선.
+
 ## 남은 항목
 - [ ] 실회선 발신 경로 — `api/voice.py` 아웃바운드 + 안부 시나리오 결선 **[승인 필요: CPAAS_LIVE·실발신·실과금]**
       · 코드로 열지 않는다. 승인 전까지 엔드포인트는 `mode=live`·`CPAAS_LIVE=1` 을 501 로 막는다.
