@@ -1,4 +1,4 @@
-var CACHE='callbot-b26'; // 2026-10-19 콘솔 디자인 개편 — 옛 캐시를 비운다. 실패 응답(404 등)은 담지 않는다.
+var CACHE='callbot-b27'; // 2026-10-19 콘솔 디자인 개편 — 옛 캐시를 비운다. 실패 응답(404 등)은 담지 않는다.
 var CORE=['/','/index.html','/manifest.json','/icon-192.png','/icon-512.png'];
 self.addEventListener('install',function(e){self.skipWaiting();e.waitUntil(caches.open(CACHE).then(function(c){return c.addAll(CORE).catch(function(){});}));});
 self.addEventListener('activate',function(e){e.waitUntil(caches.keys().then(function(ks){return Promise.all(ks.map(function(k){if(k!==CACHE)return caches.delete(k);}));}));self.clients.claim();});

@@ -207,7 +207,7 @@
         sec.setAttribute('aria-expanded', shut ? 'false' : 'true');
       }
       apply();
-      if (hasOn) { nav.classList.remove('ct-closed'); sec.classList.remove('ct-closed'); }
+      if (hasOn) { nav.classList.toggle('ct-closed', false); sec.classList.toggle('ct-closed', false); }
     });
   }
 
@@ -324,7 +324,7 @@
     var side = document.getElementById('sideNav'); if (!side) return;
     if (!ind) { ind = document.createElement('div'); ind.className = 'ct-ind'; ind.setAttribute('aria-hidden', 'true'); side.insertBefore(ind, side.firstChild); side.classList.add('ct-has-ind'); }
     var on = side.querySelector('.nav:not(.ct-closed) a.on');
-    if (!on || on.offsetParent === null) { ind.classList.remove('on'); return; }
+    if (!on || on.offsetParent === null) { ind.classList.toggle('on', false); return; }
     var top = on.getBoundingClientRect().top - side.getBoundingClientRect().top + side.scrollTop;
     var key = Math.round(top) + ':' + on.offsetHeight;
     if (ind.dataset.k === key) return;
