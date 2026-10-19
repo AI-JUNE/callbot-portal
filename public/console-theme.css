@@ -112,10 +112,17 @@ body.dark .card:hover{border-color:#39414D}
 .hpill.neu::before{background:var(--warm)}
 .hpill b{font-size:11.5px;color:var(--dim);font-weight:700}
 
-/* 어두운 강조 카드(bcard) — 남색 평면 */
-.bcard{background:#16213A;border-radius:var(--ct-r);box-shadow:none}
-.bcard:hover{transform:none;box-shadow:none}
-.bcard.alert{background:#3A1A1F}.bcard.warn{background:#3A2A0F}
+/* 전광판 카드(bcard) — 남색 덩어리 16장 → 밝은 카드. 이상·지연만 색 면으로 눈에 띄게(Genesys 월보드의 「예외만 강조」) */
+#mainwrap .bcard{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:var(--ct-r);box-shadow:none;padding:16px 18px}
+#mainwrap .bcard:hover{transform:none;box-shadow:0 8px 24px -16px rgba(25,31,40,.22)}
+#mainwrap .bcard .t{color:var(--mut);font-size:12.5px}
+#mainwrap .bcard .n{color:var(--txt);font-size:28px;letter-spacing:-.6px}
+#mainwrap .bcard .n span{color:var(--dim)!important}
+#mainwrap .bcard .sub{color:var(--dim)}
+#mainwrap .bcard.alert{background:#FDF0EE;border-color:#F3C9C4}#mainwrap .bcard.alert .n,#mainwrap .bcard.alert .t{color:#A8261C}
+#mainwrap .bcard.warn{background:#FEF6E7;border-color:#F1D9A8}#mainwrap .bcard.warn .n,#mainwrap .bcard.warn .t{color:#7E4C00}
+body.dark #mainwrap .bcard.alert{background:#3A1F22;border-color:#5A2A2E}body.dark #mainwrap .bcard.alert .n,body.dark #mainwrap .bcard.alert .t{color:#F2B8B2}
+body.dark #mainwrap .bcard.warn{background:#362A12;border-color:#5A4518}body.dark #mainwrap .bcard.warn .n,body.dark #mainwrap .bcard.warn .t{color:#F1CF8B}
 
 .wrap button>.ct-ic:only-child{width:16px;height:16px;display:block}
 /* 버튼 — 기본은 조용히, 주 동작만 채운다 */
@@ -185,6 +192,60 @@ input:focus,select:focus,textarea:focus{border-color:var(--warm);outline:none;bo
   .wrap{padding:14px 14px 84px}
   body>div[role="note"]{left:12px!important;right:12px!important;bottom:72px!important;max-width:none!important}
 }
+/* ══ 콜봇 상담 워크스페이스(3차) — Genesys Cloud·Twilio Flex·Zendesk Talk 방식 ══════════
+ * 큰 원·빈 여백 → 「머리(상태·파형·시간) / 조작 줄 / 대화록」 3단. 대화록이 화면의 대부분을 쓴다.
+ */
+@media(min-width:821px){.wrap{padding:20px 24px 36px}}
+.card>h3{padding:13px 16px}
+th,td{padding:10px 14px}
+.voice{grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
+.callstage{display:grid!important;grid-template-columns:auto minmax(0,1fr) auto auto;grid-template-areas:"orb status bars timer" "bar bar bar bar" "tr tr tr tr" "hint hint hint hint";align-items:center;gap:0;padding:0!important;background:var(--panel)!important;border:1px solid var(--line);border-radius:var(--ct-r);box-shadow:none;min-height:calc(100vh - 250px)!important;overflow:hidden}
+.callstage::before{content:"";grid-row:1;grid-column:1/-1;align-self:stretch;background:var(--panel2);border-bottom:1px solid var(--line)}
+.callstage>.orb{grid-area:orb;width:44px;height:44px;margin:14px 0 14px 18px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--line);z-index:1}
+.callstage>.orb .ico{font-size:0;color:var(--warm);display:grid;place-items:center}
+.callstage>.orb .ico svg{width:20px;height:20px}
+.callstage>.orb .ring{inset:-4px;border-width:2px}
+.callstage>.statusbig{grid-area:status;justify-self:start;align-self:start;margin:15px 0 0 14px;font-size:15px;font-weight:800;line-height:1.3;z-index:1}
+.callstage>.statussub{grid-area:status;justify-self:start;align-self:end;margin:0 0 15px 14px;font-size:12px;line-height:1.3;min-height:0;z-index:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.callstage>.bars{grid-area:bars;height:24px;margin:0 14px 0 0;gap:3px;z-index:1;align-items:center}
+.callstage>.bars i{width:3px;background:var(--warm);opacity:.55;border-radius:2px}
+.callstage>.calltimer{grid-area:timer;position:static;margin-right:18px;z-index:1;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12.5px;color:var(--txt)}
+.ct-callbar{grid-area:bar;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--line2)}
+.ct-callbar .callbtns{margin:0;gap:8px}
+.ct-callbar .callbtns button{padding:9px 16px;border-radius:9px;font-size:13.5px}
+.ct-callbar>.chips{margin:0!important;justify-content:flex-start!important;gap:6px;flex:1;min-width:0}
+.ct-callbar>.chips button{padding:6px 11px;font-size:12.5px;border-radius:999px}
+.btn-end{background:var(--panel);border:1px solid var(--red);color:var(--red)}
+.btn-end:hover{background:var(--redbg);color:var(--red);border-color:var(--red)}
+.callstage>.transcript{grid-area:tr;align-self:stretch;margin:0;padding:18px 20px;min-height:320px;gap:10px;background-image:radial-gradient(var(--line2) 1px,transparent 1px);background-size:18px 18px}
+.callstage>.transcript:empty{display:grid;place-items:center}
+.callstage>.transcript:empty::before{content:"통화를 시작하면 고객과 AI의 대화가 여기에 실시간으로 적힙니다";color:var(--dim);font-size:13px;background:var(--panel);padding:10px 14px;border-radius:10px;border:1px dashed var(--line)}
+.callstage>.vhint{grid-area:hint;text-align:left;margin:0;padding:10px 18px;border-top:1px solid var(--line2);font-size:12px}
+/* 대화 말풍선 — 고객(오른쪽·브랜드) / AI(왼쪽·회색) */
+.tb{max-width:76%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.55;white-space:pre-wrap;animation:ct-rise var(--d3,320ms) var(--e-out,ease) both}
+.tb.bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-top-left-radius:4px;color:var(--txt)}
+.tb.me{align-self:flex-end;background:var(--warm);color:#fff;border-top-right-radius:4px}
+.tb.interim{opacity:.6;background:var(--warmbg);color:var(--warm2)}
+.tb::before{display:block;font-size:11px;font-weight:700;margin-bottom:3px;letter-spacing:0}
+.tb.bot::before{content:"AI 상담원";color:var(--dim)}
+.tb.me::before{content:"고객";color:rgba(255,255,255,.78)}
+.tb.interim::before{content:"고객 · 듣는 중";color:var(--warm)}
+/* 오른쪽 어시스트 — 머리 고정, 촘촘한 칸 */
+.voice .assist{position:sticky;top:76px}
+.assist .blk{padding:12px 16px}
+.assist .lbl{font-size:11.5px;letter-spacing:0;text-transform:none;color:var(--dim);font-weight:700;margin-bottom:6px}
+.meter{height:6px;margin-top:8px}
+.acts li:before{content:"";width:5px;height:5px;border-radius:50%;background:var(--warm);top:8px}
+/* 텍스트 상담 */
+#chat{padding:14px 16px;gap:10px;display:flex;flex-direction:column;min-height:420px;background-image:radial-gradient(var(--line2) 1px,transparent 1px);background-size:18px 18px}
+#chat .msg{font-size:14px;line-height:1.55;border-radius:14px;max-width:76%}
+#chat .msg.bot2,#chat .msg.bot{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-top-left-radius:4px}
+#chat .msg.me,#chat .msg.user{align-self:flex-end;background:var(--warm);color:#fff;border-top-right-radius:4px}
+.inbar{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line2)}
+.inbar input{flex:1;min-height:42px;padding:0 12px}
+@media(max-width:1100px){.voice{grid-template-columns:1fr}.voice .assist{position:static}}
+@media(max-width:820px){.callstage{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"orb status timer" "bar bar bar" "tr tr tr" "hint hint hint";min-height:0!important}.callstage>.bars{display:none}}
+
 /* ══ 모션 시스템(2026-10-19 2차) ══════════════════════════════════════════
  * 기준: Linear·Stripe·Vercel — 움직임은 「무엇이 바뀌었는지」를 알려 줄 때만, 짧고(120~520ms) 감속 곡선으로.
  * 튀는 효과·무한 반복 장식 없음. 사용자가 「동작 줄이기」를 켜면 전부 끈다(맨 아래).

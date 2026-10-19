@@ -150,6 +150,25 @@
       var t = (b.textContent || '').trim(), name = SOLO[t];
       if (name) { if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', name === 'up' ? '좋아요' : name === 'down' ? '아쉬워요' : t); b.innerHTML = svg(name); }
     });
+    // 음성 상담 — 통화 버튼과 빠른 답변을 한 줄(조작 줄)로 묶는다. 노드를 옮길 뿐 id·동작은 그대로
+    var stage = document.querySelector('#view-voice .callstage');
+    if (stage && !stage.querySelector('.ct-callbar')) {
+      var btns = stage.querySelector('.callbtns'), quick = btns && btns.nextElementSibling;
+      if (btns) {
+        var bar = document.createElement('div'); bar.className = 'ct-callbar';
+        btns.parentNode.insertBefore(bar, btns); bar.appendChild(btns);
+        if (quick && quick.classList.contains('chips')) bar.appendChild(quick);
+      }
+    }
+    // 통화 원의 이모지 → 상태에 맞는 선 아이콘(말하는 중이면 파형, 듣는 중·대기면 마이크)
+    var orbIco = document.getElementById('orbIco');
+    if (orbIco) {
+      var orb = document.getElementById('orb');
+      var want = orb && orb.classList.contains('speaking') ? 'wave' : (orb && orb.classList.contains('processing') ? 'sparkle' : 'mic');
+      if (orbIco.dataset.ctIc !== want || !orbIco.querySelector('svg')) { orbIco.innerHTML = svg(want); orbIco.dataset.ctIc = want; }
+    }
+    var tm = document.getElementById('timer');
+    if (tm) stripLead(tm);
     // 둘러보기 카드 — 큰 이모지 → 선 아이콘, 옛 이름 「CallBot AICC 포털」 → 「AICC Portal」
     var ti = document.getElementById('tourIcon');
     if (ti && !ti.querySelector('svg')) ti.innerHTML = svg('sparkle');

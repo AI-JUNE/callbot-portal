@@ -459,7 +459,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
 .tag.neu{background:#EEF4FF;color:#1D4ED8}
 </style>
 <!-- 2026-10-19 디자인 한 벌(이음·랜딩과 같은 토큰) — 화면 구조·문구는 그대로, 겉모습만 덮는다 -->
-<link rel="stylesheet" href="/console-theme.css?v=20261019c"/>
+<link rel="stylesheet" href="/console-theme.css?v=20261019d"/>
 </head>
 <body>
 <div role="note" style="display:flex;align-items:center;gap:8px;background:#fff4ee;border:1px solid #f4d9c8;color:#a8451f;border-radius:999px;padding:9px 16px;font-size:13px;font-weight:700;position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:99999;max-width:min(640px,92vw);box-shadow:0 4px 14px rgba(40,32,26,.18);pointer-events:none"><span aria-hidden="true">🤖</span><span>본 서비스는 인공지능(AI)이 응대합니다. AI가 생성한 안내가 포함될 수 있습니다.</span></div>
@@ -3487,6 +3487,6 @@ async function vsZip(){var files=[];for(var i=0;i<VS.rows.length;i++){var r=VS.r
   var a=document.createElement('a');a.href=URL.createObjectURL(new Blob(chunks,{type:'application/zip'}));a.download='voice-studio_'+new Date().toISOString().slice(0,10)+'.zip';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);}
 (function(){var _s=window.show;if(typeof _s==='function'){window.show=function(v){var r=_s.apply(this,arguments);if(v==='vstudio')vsInit();return r;};}if(location.hash==='#vstudio')setTimeout(vsInit,300);})();
 </script>
-<script src="/console-theme.js?v=20261019c" defer></script>
+<script src="/console-theme.js?v=20261019d" defer></script>
 </body>
 </html>
