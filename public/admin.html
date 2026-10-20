@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>AICC Portal · 관리 콘솔</title>
+<title>AICC Portal | 관리 콘솔</title>
 <meta name="description" content="CallBot 콜봇 관리 포털 — 음성·텍스트 상담, 실시간 모니터링, 통계·품질관리 통합 콘솔"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#2457C5"/>
@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 :root{
@@ -454,6 +455,11 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
   --sh:0 1px 2px rgba(15,23,42,.05),0 4px 16px rgba(15,23,42,.06);
   --sh-lg:0 20px 46px rgba(15,23,42,.13),0 6px 18px rgba(15,23,42,.07);}
 .brand .logo{background:linear-gradient(135deg,#2563EB,#3B82F6)!important}
+/* 로고: 모회사 사이트(www.gowon.co.kr)와 같은 GOWON 마크 + 워드마크 */
+.brand .logo.gw{background:none!important;box-shadow:none;border-radius:0;width:40px;height:24px}
+.brand .logo.gw img{width:40px;height:24px;object-fit:contain;display:block}
+.brand .nm.gw{font-family:'Montserrat',Pretendard,sans-serif;font-weight:700;letter-spacing:.06em}
+.brand .nm.gw small{font-family:Pretendard,sans-serif;letter-spacing:0;font-size:10.5px;margin-top:4px}
 .avatar{background:linear-gradient(135deg,#2563EB,#3B82F6)!important}
 .primary{box-shadow:0 6px 16px rgba(37,99,235,.24)}
 .nav a.on::before{background:#2563EB}
@@ -474,7 +480,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
 <div class="app show" id="app">
   <a href="#mainwrap" class="skip">본문 바로가기</a>
   <aside class="side" id="sideNav" role="navigation" aria-label="주 메뉴">
-    <div class="brand" onclick="show('home')" style="cursor:pointer"><span class="logo"><img src="/brand/aicc-app-icon.svg" alt="" width="32" height="32"/></span><div class="nm">AICC Portal<small>관리 콘솔</small></div></div>
+    <div class="brand" onclick="show('home')" style="cursor:pointer"><span class="logo gw"><img src="/brand/gowon-mark.png" alt="" width="40" height="24" onerror="this.style.display='none'"/></span><div class="nm gw">GOWON<small>AICC Portal 관리 콘솔</small></div></div>
     <div class="navsec" id="favSec" style="display:none">⭐ 즐겨찾기</div>
     <nav class="nav" id="favNav" aria-label="즐겨찾기 메뉴"></nav>
     <div class="navsec">콜봇 데모</div>
@@ -2806,7 +2812,7 @@ function wbRun(){
 }
 function wbRender(d,append){
   var p=d.payload||{},dl=d.delivery||{},dim=p.dimensions||{};
-  var rows=Object.keys(dim).map(function(k){var v=dim[k]||{};return '<tr><td>'+wbEsc(k)+'</td><td style="text-align:center">'+wbEsc(v.score)+'</td><td>'+wbEsc(v.label)+'</td></tr>';}).join('');
+  var rows=Object.keys(dim).map(function(k){var v=dim[k]||{};return '<tr><td>'+wbEsc(k)+'</td><td style="text-align:center">'+wbEsc(v.score)+'</td><td>'+wbEsc(v.label)+(v.negated?' <span style="color:var(--mut)">· 부정 표현 반영</span>':'')+'</td></tr>';}).join('');
   if(!rows)rows='<tr><td colspan="3" style="color:var(--mut)">미응답 — 항목별 점수 없음</td></tr>';
   var dtag=dl.skipped?'<span class="tag neu">발송 안 함(콜백 URL 미지정 · 페이로드만 생성)</span>'
     :(dl.delivered?'<span class="tag pos">웹훅 전송 성공 · 시도 '+wbEsc(dl.attempts||1)+'회</span>'
