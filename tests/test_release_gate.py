@@ -596,6 +596,134 @@ class TestHistoryCaps(unittest.TestCase):
             self.assertTrue(note.strip(), "사유가 비어 있다: %s" % fname)
 
 
+class TestSpeechRules(unittest.TestCase):
+    """33차 게이트 — 고객 발화를 **긍정으로 읽는** 규칙에 부정 처리가 있는가.
+
+    `_engine._AFFIRM` 은 `(네|예|응|좋아|…|할게|동의)` 한 줄이었고, 한글 1글자
+    대안은 다른 낱말 안에서 걸린다(「취소**할게**요」·「**예**전에」). 코드에
+    **없는 것**(부정 처리)이 문제라 리뷰에서 보이지 않는다.
+    """
+
+    def _repo(self):
+        return verify.api_sources()
+
+    def _all(self, extra):
+        srcs = self._repo()
+        srcs.update(extra)
+        return srcs
+
+    def test_unregistered_hangul_rule_fails(self):
+        src = "import re\n_YES = re.compile('좋아요|맞아요')\n"
+        ok, msg = verify.check_speech_rules(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("newthing.py:_YES", msg)
+        self.assertIn("SPEECH_RULES", msg)
+
+    def test_the_old_loose_shape_is_caught(self):
+        """이번 결함의 모양 그대로 — 1글자 한글 대안이 돌아오면 실패한다."""
+        srcs = self._repo()
+        srcs["_engine.py"] = srcs["_engine.py"].replace(
+            "_AFFIRM_PHRASE=re.compile(",
+            "_AFFIRM_PHRASE=re.compile(\"(네|예|응|좋아|할게|동의)\")\n_UNUSED=re.compile(")
+        ok, msg = verify.check_speech_rules(srcs)
+        self.assertFalse(ok)
+        self.assertIn("1글자", msg)
+
+    def test_a_prefixed_group_is_not_a_single_syllable_alternative(self):
+        """과차단하지 않는다 — `진행(?:해|하)` 의 '해' 는 홀로 걸리지 않는다."""
+        self.assertEqual(verify._single_hangul_alts("진행(?:해|하)|접수해"), [])
+        self.assertEqual(verify._single_hangul_alts("좋아요|해\\s*주세요"), [])
+
+    def test_a_bare_group_of_single_syllables_is_flagged(self):
+        self.assertEqual(sorted(set(verify._single_hangul_alts("(네|예|응|좋아)"))),
+                         ["네", "예", "응"])
+        self.assertIn("네", verify._single_hangul_alts("네|좋아요"))
+
+    def test_a_boundary_guarded_single_syllable_is_allowed(self):
+        """경계를 보는 대안은 낱말 안에서 걸리지 않는다 — 이것이 올바른 모양이다."""
+        self.assertEqual(verify._single_hangul_alts("(?<![가-힣])네(?![가-힣])"), [])
+        self.assertEqual(verify._single_hangul_alts("(?<![가-힣])안\\s+[가-힣]|싫어요"),
+                         [])
+
+    def test_a_character_class_is_not_a_required_syllable(self):
+        self.assertEqual(verify._syllables("[네예응]\\s*\\?"), "")
+        self.assertEqual(verify._syllables("좋아요"), "좋아요")
+
+    def test_latin_alternatives_are_out_of_scope(self):
+        self.assertEqual(verify._single_hangul_alts("yes|ok|좋아요"), [])
+
+    def test_deny_rules_may_stay_loose(self):
+        """거절 쪽은 넓게 걸려도 된다 — 동의가 아니라고 끝나고 봇이 다시 묻는다."""
+        self.assertIn("싫", verify._single_hangul_alts(
+            verify._hangul_regexes(self._repo()["_engine.py"])["_DENY"]))
+        ok, msg = verify.check_speech_rules(self._repo())
+        self.assertTrue(ok, msg)
+
+    def test_a_regex_built_inside_a_function_is_out_of_scope(self):
+        """범위를 좁힌 사실을 고정한다(과차단되면 사람이 게이트를 끈다)."""
+        src = ("import re\ndef f(x):\n    pat = re.compile('네|예')\n"
+               "    return pat.search(x)\n")
+        ok, msg = verify.check_speech_rules(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_a_regex_without_hangul_is_out_of_scope(self):
+        src = "import re\nX = re.compile(r'a|b')\n"
+        ok, msg = verify.check_speech_rules(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_stale_registry_entry_fails(self):
+        srcs = self._repo()
+        srcs["wellbeing.py"] = "X = 1\n"
+        ok, msg = verify.check_speech_rules(srcs)
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    def test_losing_the_negation_symbol_fails(self):
+        """등록부만 남고 부정 처리가 사라지는 드리프트를 잡는다."""
+        for fname, symbols in verify.SPEECH_REQUIRED.items():
+            for symbol in symbols:
+                srcs = self._repo()
+                srcs[fname] = srcs[fname].replace(symbol, "GONE")
+                ok, msg = verify.check_speech_rules(srcs)
+                self.assertFalse(ok, "%s %s" % (fname, symbol))
+                self.assertIn(symbol, msg)
+
+    def test_a_comment_does_not_count_as_the_wiring(self):
+        srcs = self._repo()
+        srcs["wellbeing.py"] = ("# def _negated 를 붙일 예정\n"
+                                "_NEG = re.compile('지\\\\s*않|지\\\\s*못')\n"
+                                "_POS_IDIOM = re.compile('아무렇지|나쁘지 않')\n")
+        ok, msg = verify.check_speech_rules(srcs)
+        self.assertFalse(ok)
+        self.assertIn("_negated", msg)
+
+    def test_gate_reads_sources_without_executing_them(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "raise SystemExit('실행되면 안 된다')\nX = 1\n"
+        ok, msg = verify.check_speech_rules(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_syntax_error_is_left_to_py_compile(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "def broken(:\n"
+        ok, msg = verify.check_speech_rules(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_speech_rules(self._repo())
+        self.assertTrue(ok, msg)
+        self.assertIn("%d개" % len(verify.SPEECH_RULES), msg)
+
+    def test_registry_matches_reality(self):
+        srcs = self._repo()
+        for (fname, symbol), (direction, note) in verify.SPEECH_RULES.items():
+            self.assertIn(fname, srcs, "등록부가 없는 파일을 가리킨다: %s" % fname)
+            self.assertIn(symbol, verify._hangul_regexes(srcs[fname]),
+                          "%s 에 %s 가 없다" % (fname, symbol))
+            self.assertIn(direction, ("affirm", "deny"), symbol)
+            self.assertTrue(note.strip(), "사유가 비어 있다: %s" % symbol)
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -611,7 +739,7 @@ class TestGateRuns(unittest.TestCase):
         self.assertEqual(rc, 0, buf.getvalue())
         out = buf.getvalue()
         for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
-                     "spoken_rules", "mem_caps", "history_caps"):
+                     "spoken_rules", "mem_caps", "history_caps", "speech_rules"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

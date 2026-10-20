@@ -206,7 +206,11 @@ class TestConsoleScriptTableAgrees(unittest.TestCase):
         """
         block = self._block(*self.PAGES[0])
         self.assertNotIn("RAG 문서검색 후", block)
-        self.assertIn("근거 문서 미연결", block)
+        # 문구는 사람이 다듬는다 — 79b4f68(문안 정리)이 「근거 문서 미연결」을
+        # 「근거 문서 미연동 상태」로 바꾸면서 이 회귀가 **적색인 채로** 커밋됐다.
+        # 게이트가 봐야 하는 것은 철자가 아니라 **사실**이다: 표가 근거 문서가
+        # 연결되지 않았다고 말하고 있는가(33차).
+        self.assertRegex(block, "근거 문서[^']*미연(?:결|동)")
 
     def test_flow_diagram_marks_the_retrieval_node_as_unwired(self):
         """같은 화면이 서로 다른 말을 하면 안 된다 — 흐름도의 RAG 노드도 미연결."""

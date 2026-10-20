@@ -12,6 +12,8 @@
  - **판정은 규칙 기반**: mood_score·risk_level 은 LLM 문장이 아니라 답변 키워드
    규칙(`score_answers`)으로 산출한다. 같은 답변이면 항상 같은 점수가 나오고
    근거(`dimensions`)를 함께 돌려주므로 담당자가 검증할 수 있다.
+   키워드는 부분 일치이므로 **부정문**을 반대로 읽지 않게 따로 막는다
+   (「잘 자지 못해요」가 '수면 양호'로 읽히던 결함 — `_negated`, 33차).
  - **개인정보 미포함**: `transcript_summary` 는 원문 발화가 아니라 4개 항목의
    판정 라벨로 조립하고, 마지막에 `monitoring.scrub()` 을 한 번 더 통과시킨다.
    성명·연락처는 페이로드 어디에도 담기지 않는다(`senior_id` 는 이음이 준 익명 키).
@@ -37,6 +39,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -112,7 +115,10 @@ PROFILES = {
 _RULES = {
     "mood": [
         (1, ["죽고 싶", "살기 싫", "다 끝내"]),
-        (2, ["우울", "외롭", "외로", "힘들", "눈물", "answer_no_will"]),
+        # 「좋지 않아요」·「안 좋아요」는 '좋아'(긍정 키워드)가 아예 없어서 어느
+        # 규칙에도 걸리지 않고 3(보통)으로 읽혔다(33차).
+        (2, ["우울", "외롭", "외로", "힘들", "눈물", "좋지 않", "안 좋",
+             "answer_no_will"]),
         (3, ["그럭저럭", "심심", "그저 그", "별로"]),
         (5, ["아주 좋", "행복", "기분 좋"]),
         (4, ["좋아", "괜찮", "편안"]),
@@ -125,7 +131,8 @@ _RULES = {
     ],
     "sleep": [
         (1, ["한숨도 못", "밤새", "며칠째 못 자"]),
-        (2, ["못 자", "잠이 안", "새벽에 깨", "자주 깨"]),
+        # 「잘 못 잤어요」는 '못 자'(현재형)에 걸리지 않아 3(보통)으로 읽혔다(33차).
+        (2, ["못 자", "못 잤", "잠이 안", "새벽에 깨", "자주 깨"]),
         (5, ["푹 잘", "푹 자"]),
         (4, ["잘 자", "잘 잤"]),
     ],
@@ -152,16 +159,58 @@ _LABEL = {
 }
 
 
-def score_one(key, text):
-    """항목 1개 채점 — 규칙 미적중 시 3(보통). 항상 1~5."""
+# ── 부정문 처리(33차) ─────────────────────────────────────────────────────
+# 규칙은 키워드 **부분 일치**다. 한국어의 부정은 동사 **뒤**에 오거나(…지 않다/
+# …지 못하다) 앞에 떨어져 온다(안/못). 그래서 긍정 키워드가 부정문 안에서
+# 그대로 걸렸다:
+#   「잘 자지 못해요」      → sleep 4(수면 양호)   ← '잘 자'
+#   「잘 챙겨 먹지 못해요」 → meal 5(식사 규칙적)  ← '잘 챙겨'
+#   「하나도 안 좋아요」    → mood 4(기분 양호)    ← '좋아'
+#   「안 괜찮아요」         → pain 4(통증 거의 없음) ← '괜찮'
+# 낮은 점수 규칙이 먼저 걸리는 표현(「못 자」·「못 먹」)만 회귀에 있었기 때문에
+# 침묵했다. 이 경로의 목적은 **위험을 담당자에게 올리는 것**인데, 위 네 문장은
+# risk_level 을 낮춰 이음이 follow_up 을 만들지 않게 한다 — 통제가 반대로 돈다.
+#
+# → 긍정 규칙(4·5점)이 걸렸을 때만 부정을 보고, 부정이면 **2점(부족)** 으로 읽는다.
+#   낮은 점수 규칙(1·2·3)은 손대지 않는다 — 그쪽은 이미 위험 쪽으로 읽으므로
+#   건드리면 fail-open 이 된다(범위를 좁힌다: 30~32차 게이트와 같은 이유).
+POSITIVE_SCORE = 4        # 이 점수 이상이 '긍정' 규칙 — 부정문에서는 적용하지 않는다
+NEGATED_SCORE = 2         # 긍정 표현이 부정된 답변의 점수(= 해당 항목 '부족')
+
+# 부정형이지만 **긍정 의미**인 관용구 — 부정 탐지 전에 가린다.
+# (「아무렇지 않아요」는 '괜찮다'는 뜻이다. 이걸 가리지 않고 `지 않`만 보면
+#  멀쩡한 어르신이 전부 '통증 있음'으로 올라가 알림이 무의미해진다.)
+_POS_IDIOM = re.compile("아무렇지\\s*(?:도\\s*)?않|나쁘지\\s*않|별일\\s*없|"
+                        "별\\s*일\\s*없|문제\\s*없|걱정\\s*없|이상\\s*없")
+# 부정 표현. `안`·`못` 은 1글자라 어절 경계를 본다(「편**안**해요」 제외).
+# `없` 은 넣지 않는다 — 「아픈 데 없어요」는 긍정 답변이다.
+_NEG = re.compile("지\\s*(?:를\\s*)?않|지\\s*(?:를\\s*)?못|"
+                  "(?<![가-힣])안\\s+[가-힣]|(?<![가-힣])안(?=좋|괜찮|먹|자|되|돼|해)|"
+                  "(?<![가-힣])못\\s*[가-힣]|하나도|전혀|도저히")
+
+
+def _negated(text):
+    """부정 표현이 있는가 — 긍정 규칙에만 적용한다(답변 단위 판정)."""
+    return bool(_NEG.search(_POS_IDIOM.sub(" ", text or "")))
+
+
+def score_detail(key, text):
+    """항목 1개 채점 → (점수, 부정반영여부). 규칙 미적중 시 3(보통). 항상 1~5."""
     t = (text or "").strip()
     if not t:
-        return 3
+        return 3, False
     for score, words in _RULES.get(key, []):
         for w in words:
             if w in t:
-                return score
-    return 3
+                if score >= POSITIVE_SCORE and _negated(t):
+                    return NEGATED_SCORE, True
+                return score, False
+    return 3, False
+
+
+def score_one(key, text):
+    """항목 1개 채점 — 규칙 미적중 시 3(보통). 항상 1~5."""
+    return score_detail(key, text)[0]
 
 
 def score_answers(answers):
@@ -174,8 +223,10 @@ def score_answers(answers):
     answers = answers if isinstance(answers, dict) else {}
     dims, flags = {}, []
     for k in QUESTION_KEYS:
-        s = score_one(k, answers.get(k))
-        dims[k] = {"score": s, "label": _LABEL[k][s]}
+        # `negated` 는 **판정 근거**다 — 긍정 표현이 부정문 안에서 걸려 점수를
+        # 내린 경우를 담당자가 되짚을 수 있게 함께 보낸다(부가 키, 무시 가능).
+        s, neg = score_detail(k, answers.get(k))
+        dims[k] = {"score": s, "label": _LABEL[k][s], "negated": neg}
     joined = " ".join(str(answers.get(k) or "") for k in QUESTION_KEYS)
     for flag, words in _CRITICAL.items():
         if any(w in joined for w in words):

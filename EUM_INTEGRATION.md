@@ -12,8 +12,10 @@
 
 ### 규격 보충 (구현 확정분)
 - 미응답 시: `answered=false`, `mood_score=null`, `risk_level="unknown"`. 연속 미응답 집계는 이음 쪽 책임(우리는 건별 사실만 보고).
-- 부가 키(무시 가능): `schema`("wellbeing.result.v1")·`scenario`·`mode`·`dimensions`(4항목 점수·라벨)·`flags`·`ts`.
+- 부가 키(무시 가능): `schema`("wellbeing.result.v1")·`scenario`·`mode`·`dimensions`(4항목 점수·라벨·`negated`)·`flags`·`ts`.
   `dimensions` 는 담당자가 점수 근거를 확인할 수 있게 함께 보낸다.
+  `dimensions[*].negated`(2026-10-20 추가, bool)는 **긍정 표현이 부정문 안에서 걸려** 점수를 내린 경우를 뜻한다
+  (「잘 자지 못해요」). 이음 쪽은 무시해도 되고, 판정 근거를 화면에 보일 때만 쓴다.
 - 서명 헤더: `X-Callbot-Timestamp`, `X-Callbot-Signature: sha256=<hex>`, `X-Callbot-Event: wellbeing.result`.
   서명 대상은 `<timestamp>.<body>` (본문 재전송 방지). 검증 예시는 `wellbeing.verify_signature()`.
 - 요청 옵션: `profile`(ok|watch|risk|no_answer, 시연 대본) 또는 `answers`(4문항 직접 주입).
@@ -29,6 +31,14 @@
       · **판정은 LLM 문장이 아니라 규칙**(`score_answers`): 항목별 키워드 → 1~5, 평균 반올림이 `mood_score`.
         한 항목이라도 1점이거나 위험신호(자해 암시·거동 곤란·결식·어지럼)가 있으면 평균과 무관하게 `high`.
         같은 답변이면 같은 점수가 나오고 근거(`dimensions`)가 남아 담당자가 검증할 수 있다.
+      · 2026-10-20 보강: 키워드는 부분 일치라 **부정문을 반대로 읽고 있었다** —
+        「잘 자지 못해요」가 '수면 양호'(4점), 「잘 챙겨 먹지 못해요」가 '식사 규칙적'(5점),
+        「하나도 안 좋아요」가 '기분 양호'(4점)로 나갔다(risk_level 이 낮아져 이음이 follow_up 을 만들지 않는다).
+        이제 **긍정 규칙(4·5점)이 걸렸을 때만** 부정 표현(`…지 않다/…지 못하다/안·못/하나도·전혀`)을 보고,
+        부정이면 2점(부족)으로 읽으며 `dimensions[*].negated=true` 로 근거를 남긴다.
+        부정형이지만 긍정 의미인 관용구(「아무렇지 않아요」·「아픈 데 없어요」)는 가려서 과차단하지 않는다.
+        낮은 점수 규칙(1·2·3)은 손대지 않았다 — 그쪽을 건드리면 위험을 낮추는 쪽으로 틀릴 수 있다.
+        회귀 `tests/test_wellbeing_negation.py` 13건 · 릴리스 게이트 14단계 `speech_rules`.
 - [x] 웹훅 서명(HMAC) — `CALLBACK_SECRET` 환경변수, 미설정 시 서명 생략(로컬)
       · HMAC-SHA256(`<ts>.<body>`), 허용 시차 300초. 본문 변조·키 불일치·시각 이탈 모두 거부(회귀 9건).
       · 덤으로 **SSRF 가드**: 콜백은 https 만(개발 시 `WELLBEING_ALLOW_INSECURE=1`), 루프백·사설·링크로컬·메타데이터 주소 차단, `WELLBEING_CALLBACK_HOSTS` 화이트리스트 지원. 한계(DNS rebinding)는 코드 주석에 명시.

@@ -806,6 +806,164 @@ def check_history_caps(sources):
                         else "run_turn 호출부 %d개 상한 확인" % len(seen))
 
 
+# --------------------------------------------------------------------------
+# 14) speech_rules — 고객 발화를 **긍정으로 읽는** 규칙에 부정 처리가 있는가
+#
+# 33차에 같은 결함이 두 곳에서 나왔다. 둘 다 한글 키워드 **부분 일치**로
+# 긍정을 판정하면서 부정문을 보지 않았다.
+#   `_engine._AFFIRM`  = (네|예|응|좋아|…|할게|동의)  → 「환불 **취소할게**요」·
+#                        「**동의**하지 않습니다」가 환불 확정의 2단계 관문을 통과
+#   `wellbeing._RULES` 의 4·5점 규칙 → 「잘 자지 못해요」가 '수면 양호'
+# 리뷰에서 보이지 않는 결함이다 — 코드에는 **없는 것**(부정 처리)이 문제이고,
+# 1글자 한글 대안은 다른 낱말 안에서 걸린다는 사실이 패턴만 봐서는 드러나지 않는다.
+#
+# 그래서 게이트가 센다.
+#  (a) 모듈 전역 `X = re.compile("… | …")` 에 한글 대안이 있으면 등록부에
+#      **방향**(affirm/deny)과 사유가 적혀 있어야 한다.
+#  (b) 방향이 affirm 인 패턴에는 **1글자 한글 대안**을 둘 수 없다(= 33차 결함의 모양).
+#      deny 쪽은 느슨해도 된다 — 넓게 걸리면 '동의가 아니다'로 끝나고 봇이 다시 묻는다.
+#  (c) 등록부와 코드가 **양방향**으로 맞아야 한다(기호 소멸·등록부 잔재 모두 실패).
+#  (d) 동의·점수를 올리는 판정이 있는 파일에는 부정 처리 기호가 실제로 있어야 한다.
+#
+# 범위는 좁다(28·30~32차와 같은 이유 — 과차단되면 사람이 게이트를 끈다):
+# 모듈 전역의 **상수 문자열** `re.compile` 만 ast 로 본다. 함수 안에서 만드는
+# 정규식·문자열 리스트 키워드표(`wellbeing._RULES` 자신)는 보지 않는다 —
+# 그쪽은 (d)의 기호 검사와 회귀가 지킨다.
+# --------------------------------------------------------------------------
+SPEECH_RULES = {
+    ("_engine.py", "_AFFIRM_PHRASE"):
+        ("affirm", "동의 표현 — 2글자 이상만. 1글자 감탄사는 _AFFIRM_TOKENS 어절 일치"),
+    ("_engine.py", "_DENY"):
+        ("deny", "거절·보류·되묻기 — 넓게 걸리는 쪽이 안전(동의를 놓치면 다시 묻는다)"),
+    ("wellbeing.py", "_NEG"):
+        ("deny", "부정 표현 — 긍정 규칙(4·5점)을 부정문에서 끈다"),
+    ("wellbeing.py", "_POS_IDIOM"):
+        ("deny", "부정형이지만 긍정 의미인 관용구 — 부정 탐지에서 가린다"),
+}
+# 판정 기호(부정 처리 배선) — 사라지면 등록부만 남는다.
+SPEECH_REQUIRED = {
+    "_engine.py": ("_AFFIRM_TOKENS", "def _affirm_hit"),
+    "wellbeing.py": ("def _negated", "NEGATED_SCORE", "POSITIVE_SCORE"),
+}
+RX_HANGUL = re.compile(r"[가-힣]")
+
+
+def _hangul_regexes(text):
+    """모듈 전역 `X = re.compile("…")` 중 **한글 대안**을 가진 것 → {기호: 패턴}."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return {}                              # 문법 오류는 py_compile 게이트가 잡는다
+    out = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        v = node.value
+        if not (isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute)
+                and v.func.attr == "compile" and v.args
+                and isinstance(v.args[0], ast.Constant)
+                and isinstance(v.args[0].value, str)):
+            continue
+        pat = v.args[0].value
+        if "|" not in pat or not RX_HANGUL.search(pat):
+            continue
+        for t in node.targets:
+            if isinstance(t, ast.Name):
+                out[t.id] = pat
+    return out
+
+
+def _top_alts(pattern):
+    """괄호 **밖**의 `|` 로만 쪼갠 대안들(그룹 안쪽의 `|` 는 대안이 아니다)."""
+    out, buf, depth, i = [], [], 0, 0
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "\\" and i + 1 < len(pattern):
+            buf.append(pattern[i:i + 2]); i += 2; continue
+        if c == "[":                           # 문자 클래스 안은 통째로
+            j = pattern.find("]", i + 1)
+            j = len(pattern) - 1 if j < 0 else j
+            buf.append(pattern[i:j + 1]); i = j + 1; continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif c == "|" and depth == 0:
+            out.append("".join(buf)); buf = []; i += 1; continue
+        buf.append(c); i += 1
+    out.append("".join(buf))
+    return out
+
+
+def _syllables(alt):
+    """대안이 **글자로 요구하는** 한글(문자 클래스·전후방탐색은 글자가 아니다)."""
+    s = re.sub(r"\(\?<?[!=][^)]*\)", "", alt)
+    return "".join(RX_HANGUL.findall(re.sub(r"\[[^\]]*\]", "", s)))
+
+
+def _single_hangul_alts(pattern):
+    """**한글 1글자만** 요구하는 대안들(= 다른 낱말 안에서 걸리는 모양).
+
+    `진행(?:해|하)` 처럼 앞에 글자가 붙은 그룹은 1글자가 아니다 — 그룹 안쪽의
+    `해`·`하` 는 홀로 걸릴 수 없다. 반면 `(네|예|응|…)` 은 그룹 **전체**가 하나의
+    대안이라 안쪽이 그대로 1글자 부분일치가 된다(33차 결함의 모양).
+    """
+    bad = []
+    for alt in _top_alts(pattern):
+        if re.search(r"\(\?<?[!=]", alt):
+            continue          # 전후방탐색으로 **경계를 보는** 대안은 낱말 안에서 걸리지 않는다
+        core = re.sub(r"\\s[*+?]|\s", "", alt)
+        g = re.match(r"^\((?:\?:)?(.*)\)$", core)
+        cands = _top_alts(g.group(1)) if g else [core]
+        for cand in cands:
+            if re.search(r"[0-9A-Za-z]", cand):
+                continue                       # 영문·숫자 대안은 이 규칙의 대상이 아니다
+            syl = _syllables(cand)
+            if len(syl) == 1:
+                bad.append(syl)
+    return bad
+
+
+def _affirm_files():
+    """동의(긍정) 방향 규칙이 있는 파일들."""
+    return {f for (f, _s), (d, _r) in SPEECH_RULES.items() if d == "affirm"}
+
+
+def check_speech_rules(sources):
+    msgs, seen = [], set()
+    for name, text in sorted(sources.items()):
+        for symbol, pattern in sorted(_hangul_regexes(text).items()):
+            key = (name, symbol)
+            if key not in SPEECH_RULES:
+                msgs.append("%s:%s (한글 발화 판정 정규식 — scripts/verify.py "
+                            "SPEECH_RULES 에 방향(affirm/deny)과 사유를 적을 것)"
+                            % (name, symbol))
+                continue
+            seen.add(key)
+            if SPEECH_RULES[key][0] == "affirm":
+                bad = _single_hangul_alts(pattern)
+                if bad:
+                    msgs.append("%s:%s 에 한글 1글자 대안(%s) — 다른 낱말 안에서 "
+                                "걸린다(33차 결함의 모양). 어절 단위로 볼 것"
+                                % (name, symbol, "·".join(sorted(set(bad)))))
+    stale = sorted(set(SPEECH_RULES) - seen)
+    if stale:
+        msgs.append("등록부 잔재: %s" % ", ".join("%s:%s" % k for k in stale))
+    for name, symbols in sorted(SPEECH_REQUIRED.items()):
+        code = _code(sources.get(name, ""))
+        for symbol in symbols:
+            if symbol not in code:
+                msgs.append("%s 의 부정 처리 기호 %s 가 없다" % (name, symbol))
+    # 동의 판정이 있는 파일에는 거절 판정이 함께 있어야 한다(한쪽만 있으면 반쪽이다).
+    for fname in sorted(_affirm_files()):
+        if not any(f == fname and d == "deny"
+                   for (f, _s), (d, _r) in SPEECH_RULES.items()):
+            msgs.append("%s 에 동의 판정만 있고 거절 판정이 없다" % fname)
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "발화 판정 정규식 %d개 확인" % len(seen))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -827,6 +985,7 @@ def main():
     r_ok, r_msg = check_spoken_rules(srcs)
     m_ok, m_msg = check_mem_caps(srcs)
     hc_ok, hc_msg = check_history_caps(srcs)
+    sp_ok, sp_msg = check_speech_rules(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -842,6 +1001,7 @@ def main():
         {"step": "spoken_rules", "ok": r_ok, "detail": r_msg},
         {"step": "mem_caps", "ok": m_ok, "detail": m_msg},
         {"step": "history_caps", "ok": hc_ok, "detail": hc_msg},
+        {"step": "speech_rules", "ok": sp_ok, "detail": sp_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:
