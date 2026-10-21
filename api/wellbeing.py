@@ -435,6 +435,10 @@ def is_retryable(out):
     """
     if not isinstance(out, dict) or out.get("delivered"):
         return False
+    if out.get("retryable") is False:
+        # 보내지 **않은** 실패(서명할 비밀이 없는 경우 등)는 다시 보내도 같다.
+        # 발송 함수가 그렇게 말했으면 그 말을 믿는다(상대 서버를 두드리지 않는다).
+        return False
     st = out.get("status")
     if st is None:
         return True
@@ -443,6 +447,37 @@ def is_retryable(out):
     except (TypeError, ValueError):
         return False
     return st >= 500 or st in RETRYABLE_STATUS
+
+
+RECORD_KINDS = ("wellbeing.result", "eum.request", "unknown")
+
+
+def record_kind(payload):
+    """실패 보관 기록의 **종류** — 이 보관함을 쓰는 발송 경로가 둘이기 때문이다.
+
+    `deliver_with_retry` 는 안부 결과 웹훅과 이음 3R 현장요청(`_eum_request.run`)
+    **양쪽**의 재시도·실패 보관을 맡는다. 그런데 기록은 안부 페이로드의 칸
+    (`raw_ref`·`senior_id`)만 적고 있었다 — 이음 요청 페이로드에는 그 칸이
+    없으므로 전송이 실패하면 `raw_ref=null, senior_id=null` 짝만 쌓이고
+    `?op=failures` 를 보는 담당자는 **무엇이 실패했는지 알 수 없다**(두 경로가
+    같은 50건 버퍼를 나눠 쓰므로 서로를 밀어내기까지 한다).
+    페이로드 칸으로 종류를 가린다 — 호출부가 늘어도 한 곳만 본다.
+    """
+    pl = payload if isinstance(payload, dict) else {}
+    if "raw_ref" in pl or "senior_id" in pl:
+        return RECORD_KINDS[0]
+    if "kind_label" in pl or "participant_id" in pl:
+        return RECORD_KINDS[1]
+    return RECORD_KINDS[2]
+
+
+def failure_kinds():
+    """보관된 실패를 종류별로 센다(실측값 — 꾸민 수치가 아니다)."""
+    out = {}
+    for rec in FAILED:
+        k = rec.get("kind") or RECORD_KINDS[2]
+        out[k] = out.get(k, 0) + 1
+    return out
 
 
 def _callback_host(url):
@@ -504,6 +539,10 @@ def deliver_with_retry(url, payload, timeout=WEBHOOK_TIMEOUT, secret=None,
     if not out.get("delivered"):
         _remember_failure({
             "ts": _now_iso(),
+            "kind": record_kind(payload),
+            # 종류와 무관한 추적 키 — 안부는 `raw_ref`, 이음 요청은 `ref` 를 쓴다.
+            # 이음에 보낸 본문에도 같은 값이 실리므로 양쪽 장부를 맞출 수 있다.
+            "ref": (payload or {}).get("raw_ref") or (payload or {}).get("ref"),
             "raw_ref": (payload or {}).get("raw_ref"),
             "senior_id": (payload or {}).get("senior_id"),
             "callback_host": _callback_host(url),
@@ -735,9 +774,11 @@ class handler(BaseHTTPRequestHandler):
             return self._send({"ok": True, "recent": RECENT})
         if op == "failures":
             return self._send({
-                "ok": True, "failures": FAILED,
-                "note": "웹훅 최종 실패 보관(최근 %d건, 인스턴스 메모리). "
-                        "콜백 호스트만 남기며 경로·토큰은 기록하지 않습니다." % _MAX_FAILED})
+                "ok": True, "failures": FAILED, "kinds": failure_kinds(),
+                "note": "전송 최종 실패 보관(최근 %d건, 인스턴스 메모리). 안부 결과 웹훅"
+                        "(wellbeing.result)과 이음 3R 현장요청(eum.request)이 같은 보관함을 "
+                        "쓰므로 `kind` 로 구분합니다. 호스트만 남기며 경로·토큰은 기록하지 "
+                        "않습니다." % _MAX_FAILED})
         if op == "result":
             ref = (q.get("ref", [""])[0] or "").strip()
             # 오류 봉투는 손으로 조립하지 않고 _errors.send 를 거친다 — 그래야
@@ -764,7 +805,7 @@ class handler(BaseHTTPRequestHandler):
             "ops": {"call": "POST /api/wellbeing/call — 안부 1건 실행",
                     "recent": "GET ?op=recent — 최근 실행 메타",
                     "result": "GET ?op=result&ref=<raw_ref> — 판정 근거 이력",
-                    "failures": "GET ?op=failures — 웹훅 최종 실패 보관"},
+                    "failures": "GET ?op=failures — 전송 최종 실패 보관(kind 로 구분)"},
             "webhook_retry": {"attempts": _attempts_setting(),
                               "retry_on": "타임아웃·5xx·429", "backoff": "지수(0.5s→4s)"},
             "signature": {"header": SIGNATURE_HEADER, "timestamp_header": TIMESTAMP_HEADER,

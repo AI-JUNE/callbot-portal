@@ -964,6 +964,141 @@ def check_speech_rules(sources):
                         else "발화 판정 정규식 %d개 확인" % len(seen))
 
 
+# --------------------------------------------------------------------------
+# 15) 낱말표 등록부 (34차) — 문자열 키워드표도 발화를 판정한다
+#
+# 33차가 `speech_rules` 로 **정규식** 판정을 센 뒤, 스스로 한계 ④를 적어 뒀다:
+# 「새 게이트는 모듈 전역 상수 정규식만 본다 — 문자열 리스트 키워드표
+# (`wellbeing._RULES`)와 함수 안 정규식은 범위 밖이다」. 34차 결함이 바로 그
+# 범위 밖에서 나왔다 — `_eum_request._RULES` 의 `피가`·`숨을` 이 「커**피를**」·
+# 「한**숨을**」 에서 걸려 **긴급 연결**로 올라갔다(부분 일치는 정규식만의
+# 문제가 아니다. `w in text` 도 같다).
+#
+# 그래서 센다.
+#  (a) 모듈 전역의 **짧은 한글 문자열표**(튜플·리스트·사전)는 등록부
+#      (`KEYWORD_TABLES`)에 쓰임(match/mask/label)과 사유가 적혀 있어야 한다.
+#      양방향으로 맞아야 한다(표 소멸·등록부 잔재 모두 실패).
+#  (b) 쓰임이 `match` 인 표의 **한글 1글자 낱말**은 `KEYWORD_SHORT` 에 사유와
+#      함께 적혀 있어야 한다 — 1글자는 다른 낱말 안에서 걸린다(33차 결함의 모양).
+#      금지가 아니라 **검토 강제**다: 분류를 틀리는 것은 환불을 보내는 것과
+#      무게가 다르므로, 사유를 적고 회귀로 고정했다면 둬도 된다.
+#  (c) `KEYWORD_MASKS` 에 적힌 오탐 가림 기호는 그 파일에 **코드로** 있어야 한다
+#      (주석은 배선이 아니다 — 33차 (d)와 같은 규약).
+#
+# 범위는 좁다(28·30~33차와 같은 이유 — 과차단되면 사람이 게이트를 끈다):
+# 모듈 전역의 리터럴만 ast 로 보고, **짧은 낱말**(12자 이하·문장부호 없음)이
+# 3개 이상인 표만 본다. 안내 문구·프롬프트·질문지는 표가 아니다. 함수 안에서
+# 만드는 낱말표는 보지 않는다 — 그쪽은 (c)의 기호 검사와 회귀의 몫이다.
+# --------------------------------------------------------------------------
+KEYWORD_TABLES = {
+    ("_eum_request.py", "_RULES"):
+        ("match", "이음 3R 요청 유형 분류 — 부분 일치. 긴급이 다른 유형보다 앞선다"),
+    ("_eum_request.py", "_DECOY"):
+        ("mask", "오탐 낱말(커피·한숨·무사고·돈가스) — 분류 직전에 가린다"),
+    ("_eum_request.py", "LABEL_KO"):
+        ("label", "유형 한글 이름 — 화면 표시용, 판정에 쓰지 않는다"),
+    ("wellbeing.py", "_RULES"):
+        ("match", "안부 4항목 점수 규칙 — 부분 일치. 긍정 규칙은 _negated 로 뒤집는다"),
+    ("wellbeing.py", "_CRITICAL"):
+        ("match", "위험신호 — 평균과 무관하게 high. 부정을 보지 않는다(과하게 올리는 쪽)"),
+    ("wellbeing.py", "_LABEL"):
+        ("label", "점수별 판정 라벨 — dimensions 근거 표시용"),
+    ("_escalation.py", "HANDOFF_KEYWORDS"):
+        ("match", "상담원 연결 요청 — 걸리면 사람에게 넘긴다(넓게 걸리는 쪽이 안전)"),
+    ("_escalation.py", "SENSITIVE_KEYWORDS"):
+        ("match", "민감 신호(법적·언론) — 걸리면 우선순위를 올린다"),
+    ("disclosure.py", "BANNED"):
+        ("match", "금지어 — 화면·문서에 있으면 실패시킨다"),
+    ("caller_id.py", "EVIDENCE_TYPES"):
+        ("label", "발신번호 증빙 종류 — 입력 화이트리스트"),
+    ("partners.py", "ROLES"):
+        ("label", "파트너 권한 이름 — 표시용"),
+    ("settlement.py", "CSV_COLUMNS"):
+        ("label", "정산 CSV 머리글"),
+    ("settlement.py", "STATUS_LABEL"):
+        ("label", "정산 상태 한글 이름"),
+    ("_settle_lines.py", "CSV_HEADER"):
+        ("label", "과금 라인 CSV 머리글"),
+}
+# match 표에 둔 **한글 1글자** 낱말과 그 사유. 적지 않은 1글자는 게이트가 막는다.
+KEYWORD_SHORT = {
+    ("_eum_request.py", "_RULES", "돈"):
+        "금전 문제는 1글자로 들어온다(「돈 잃어버리셨어요」). 오탐(돈가스·돈까스)은 _DECOY 가 가린다",
+    ("wellbeing.py", "_RULES", "굶"):
+        "결식은 어간 1글자로만 공통된다(굶었·굶고·굶으). 위험을 올리는 쪽이라 넓게 본다",
+    ("wellbeing.py", "_CRITICAL", "굶"):
+        "위 _RULES 와 같은 낱말 — 위험신호는 놓치는 쪽이 더 위험하다",
+}
+# 오탐 가림 배선 — 사라지면 등록부만 남는다.
+KEYWORD_MASKS = {
+    "_eum_request.py": ("_DECOY", "def _mask_decoys"),
+    "wellbeing.py": ("_POS_IDIOM", "def _negated"),
+}
+KW_MAX_LEN = 12
+RX_KW_PUNCT = re.compile(r"[?!.…·]")
+
+
+def _keyword_tables(text):
+    """모듈 전역의 **짧은 한글 낱말표** → {기호: [낱말…]}."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except Exception:                          # noqa: BLE001
+        return {}                              # 문법 오류는 py_compile 게이트가 잡는다
+    out = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not isinstance(node.value, (ast.Tuple, ast.List, ast.Dict)):
+            continue
+        words = [n.value for n in ast.walk(node.value)
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                 and RX_HANGUL.search(n.value)]
+        if len(words) < 3 or max(len(w) for w in words) > KW_MAX_LEN:
+            continue                           # 안내 문구·프롬프트는 낱말표가 아니다
+        if any(RX_KW_PUNCT.search(w) for w in words):
+            continue                           # 문장(질문지·대본)은 낱말표가 아니다
+        for t in node.targets:
+            if isinstance(t, ast.Name):
+                out[t.id] = words
+    return out
+
+
+def check_keyword_tables(sources):
+    msgs, seen, shorts = [], set(), set()
+    for name, text in sorted(sources.items()):
+        for symbol, words in sorted(_keyword_tables(text).items()):
+            key = (name, symbol)
+            if key not in KEYWORD_TABLES:
+                msgs.append("%s:%s (한글 낱말표 — scripts/verify.py KEYWORD_TABLES 에 "
+                            "쓰임(match/mask/label)과 사유를 적을 것)" % (name, symbol))
+                continue
+            seen.add(key)
+            if KEYWORD_TABLES[key][0] != "match":
+                continue
+            for w in sorted(set(w for w in words if len(w) == 1)):
+                if (name, symbol, w) in KEYWORD_SHORT:
+                    shorts.add((name, symbol, w))
+                else:
+                    msgs.append("%s:%s 의 한글 1글자 낱말 「%s」 — 다른 낱말 안에서 "
+                                "걸린다(33·34차 결함의 모양). KEYWORD_SHORT 에 사유를 "
+                                "적거나 어절·조사 꼴로 바꿀 것" % (name, symbol, w))
+    stale = sorted(set(KEYWORD_TABLES) - seen)
+    if stale:
+        msgs.append("등록부 잔재: %s" % ", ".join("%s:%s" % k for k in stale))
+    stale_short = sorted(set(KEYWORD_SHORT) - shorts)
+    if stale_short:
+        msgs.append("1글자 등록부 잔재: %s" % ", ".join("%s:%s:%s" % k for k in stale_short))
+    for fname, symbols in sorted(KEYWORD_MASKS.items()):
+        code = _code(sources.get(fname, ""))
+        for symbol in symbols:
+            if symbol not in code:
+                msgs.append("%s 의 오탐 가림 기호 %s 가 없다" % (fname, symbol))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "한글 낱말표 %d개 확인(1글자 등록 %d건)"
+                             % (len(seen), len(shorts)))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -986,6 +1121,7 @@ def main():
     m_ok, m_msg = check_mem_caps(srcs)
     hc_ok, hc_msg = check_history_caps(srcs)
     sp_ok, sp_msg = check_speech_rules(srcs)
+    kt_ok, kt_msg = check_keyword_tables(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -1002,6 +1138,7 @@ def main():
         {"step": "mem_caps", "ok": m_ok, "detail": m_msg},
         {"step": "history_caps", "ok": hc_ok, "detail": hc_msg},
         {"step": "speech_rules", "ok": sp_ok, "detail": sp_msg},
+        {"step": "keyword_tables", "ok": kt_ok, "detail": kt_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

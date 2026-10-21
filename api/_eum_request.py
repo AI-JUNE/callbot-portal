@@ -54,6 +54,7 @@ DEFAULT_HOSTS = ("eum.gowon.co.kr",)
 CHANNEL_ID = "phone"            # 이음 CHANNEL_KEY_CHANNELS 는 chat·phone 두 가지 — 음성은 phone
 SUMMARY_MAX = 500
 TIMEOUT = 8.0
+MIN_SECRET = 16                 # 이음 CHANNEL_SECRET 최소 길이 — 이보다 짧으면 보내지 않는다
 
 # 분류 라벨 — 이음 `kindFromVoice` 가 읽는 이름과 같다(이음 쪽 유형: schedule·onsite·senior·urgent·other)
 LABELS = ("emergency", "schedule_change", "onsite_issue", "senior_concern", "other")
@@ -71,12 +72,28 @@ _RULES = (
     ("senior_concern", ("어르신", "할머니", "할아버지", "기운", "식사를 안", "드시지", "우울", "아프시", "아파하", "걱정")),
     ("onsite_issue", ("현장", "활동 중", "문이 잠", "연락이 안", "열쇠", "물건", "돈", "다툼", "불편", "문제")),
 )
+# 오탐 낱말 — 판정 낱말을 **안에 품고 있으면서 뜻이 전혀 다른** 흔한 낱말.
+# 규칙이 부분 일치라 「커**피를**」이 `피를`(출혈)로, 「한**숨을**」이 `숨을`(호흡)로,
+# 「**무사고**」가 `사고`로, 「**돈**가스」가 `돈`으로 걸렸다 — 33차가 고친 결함과
+# 같은 모양이고(한글 키워드 부분 일치), 방향이 **긴급 과대보고**라 더 나쁘다:
+# 「어르신이 커피를 드시고 싶다고 하세요」가 **긴급 연결**로 올라가면 그 채널이
+# 쓸모를 잃는다(놓치는 쪽만 위험한 게 아니다 — 알림 피로도 통제를 무력화한다).
+# 분류 **직전에만** 가린다 — 이음에 보내는 요약(`clean_summary`)은 손대지 않는다.
+# 목록은 '실제로 흔한 낱말'만 좁게 둔다(과차단되면 진짜 긴급을 놓친다):
+# 「코피가」·「교통사고가」처럼 판정 낱말이 뜻 그대로 들어 있는 낱말은 넣지 않는다.
+_DECOY = ("커피", "한숨", "무사고", "무의식", "돈가스", "돈까스")
+_DECOY_RX = re.compile("|".join(map(re.escape, _DECOY)))
 _PID = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+def _mask_decoys(t):
+    """오탐 낱말을 한글 아닌 기호로 바꿔 둔다(길이·위치는 보존하지 않아도 된다)."""
+    return _DECOY_RX.sub("·", t)
 
 
 def classify(text):
     """(label, 근거 낱말 목록). 같은 글이면 항상 같은 답이다."""
-    t = re.sub(r"\s+", " ", str(text or ""))
+    t = _mask_decoys(re.sub(r"\s+", " ", str(text or "")))
     for label, words in _RULES:
         hit = [w for w in words if w in t]
         if hit:
@@ -94,6 +111,12 @@ def build_payload(participant_id, transcript, ref=None):
     pid = str(participant_id or "").strip()
     if not _PID.match(pid):
         raise ValueError("participant_id 형식이 올바르지 않습니다")
+    rf = str(ref or "").strip()
+    if rf and not _PID.match(rf):
+        # 추적 키는 우리가 만들거나(`vr_…`) 호출부가 넘긴 값이고 **그대로 이음 본문에
+        # 실린다**. 길이·문자 검증이 없으면 발화 원문·개인정보가 요약 마스킹을
+        # 비켜 이 칸으로 새어 나간다 — 그래서 participant_id 와 같은 규격만 받는다.
+        raise ValueError("ref 형식이 올바르지 않습니다")
     summary = clean_summary(transcript)
     if len(summary) < 2:
         raise ValueError("요청 내용(transcript)이 비어 있습니다")
@@ -102,7 +125,7 @@ def build_payload(participant_id, transcript, ref=None):
         "participant_id": pid,
         "kind_label": label,
         "summary": summary,
-        "ref": str(ref or "") or ("vr_" + uuid.uuid4().hex[:12]),
+        "ref": rf or ("vr_" + uuid.uuid4().hex[:12]),
     }
     return payload, {"label": label, "label_ko": LABEL_KO[label], "evidence": evidence}
 
@@ -131,6 +154,13 @@ def sign(body, secret, ts=None):
 
 def deliver(url, payload, secret, timeout=TIMEOUT):
     """한 번 보낸다. 실패를 삼키지 않고 사유를 돌려준다(URL·비밀은 사유에 담지 않는다)."""
+    if len(str(secret or "")) < MIN_SECRET:
+        # 서명할 수 없으면 **보내지 않는다.** `run()` 이 이미 막지만 이 함수도
+        # 공개 API 다 — 통제를 한쪽에만 두면 다른 쪽이 열린다(이 저장소에서
+        # 반복해 나온 모양). 보내지 않은 실패는 재시도 대상도 아니다.
+        return {"delivered": False, "signed": False, "status": None, "retryable": False,
+                "error": "공유 비밀(EUM_CHANNEL_SECRET)이 없어 보내지 않았습니다",
+                "duration_ms": 0}
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     ts, sig = sign(body, secret)
     headers = {
@@ -175,9 +205,9 @@ def run(participant_id, transcript, ref=None, send=False, deliver_fn=None, retry
     """
     payload, cls = build_payload(participant_id, transcript, ref)
     secret = _secret()
-    if not send or len(secret) < 16:
+    if not send or len(secret) < MIN_SECRET:
         note = ("전송하지 않았습니다(dry-run). 공유 비밀(EUM_CHANNEL_SECRET)을 등록하고 send=true 로 보내면 이음 소통창에 접수됩니다."
-                if len(secret) < 16 else "send=true 로 보내면 이음 소통창에 접수됩니다.")
+                if len(secret) < MIN_SECRET else "send=true 로 보내면 이음 소통창에 접수됩니다.")
         return {"ok": True, "mode": "dry-run", "payload": payload, "classification": cls, "note": note}
     url = target_url()
     ok, reason = _urlguard.check(url, label="eum_request_url", allow_insecure=False, allowlist=_hosts())
@@ -196,6 +226,10 @@ if __name__ == "__main__":     # pragma: no cover — 네트워크 미사용 셀
     assert classify("할머니가 식사를 안 하세요")[0] == "senior_concern"
     assert classify("현관 문이 잠겨 있어요")[0] == "onsite_issue"
     assert classify("그냥 여쭤볼게요")[0] == "other"
+    assert classify("어르신이 커피를 드시고 싶다고 하세요")[0] == "senior_concern"   # 「피를」 오탐 아님
+    assert classify("요즘 한숨을 자주 쉬세요")[0] == "other"                        # 「숨을」 오탐 아님
+    assert classify("코피가 조금 났어요")[0] == "emergency"                         # 과차단 아님
+    assert deliver("https://eum.example.org/x", {"a": 1}, "short")["signed"] is False
     p, c = build_payload("u-par-1", "연락처 010-1234-5678 로 전화 주세요 일정 변경", "r1")
     assert "1234-5678" not in p["summary"], p
     r = run("u-par-1", "내일 늦을 것 같아요")

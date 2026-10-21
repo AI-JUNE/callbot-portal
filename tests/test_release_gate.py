@@ -724,6 +724,146 @@ class TestSpeechRules(unittest.TestCase):
             self.assertTrue(note.strip(), "사유가 비어 있다: %s" % symbol)
 
 
+class TestKeywordTables(unittest.TestCase):
+    """34차 게이트 — 문자열 낱말표도 발화를 판정한다.
+
+    33차가 정규식만 세고 「문자열 리스트 키워드표는 범위 밖」이라고 적어 뒀고,
+    34차 결함이 그 범위 밖에서 나왔다(`_eum_request._RULES` 의 `피가`·`숨을` 이
+    「커**피를**」·「한**숨을**」 에서 걸려 긴급으로 올라갔다).
+    """
+
+    def _repo(self):
+        return verify.api_sources()
+
+    def _all(self, extra):
+        srcs = self._repo()
+        srcs.update(extra)
+        return srcs
+
+    def test_unregistered_keyword_table_fails(self):
+        src = "WORDS = ('쓰러', '의식', '숨이')\n"
+        ok, msg = verify.check_keyword_tables(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("newthing.py:WORDS", msg)
+        self.assertIn("KEYWORD_TABLES", msg)
+
+    def test_an_unregistered_single_syllable_keyword_fails(self):
+        """이번 결함의 이웃 — 1글자 낱말을 몰래 끼워 넣으면 통과하지 못한다."""
+        srcs = self._repo()
+        srcs["_eum_request.py"] = srcs["_eum_request.py"].replace(
+            '"다툼", "불편"', '"다툼", "불편", "말"')
+        ok, msg = verify.check_keyword_tables(srcs)
+        self.assertFalse(ok)
+        self.assertIn("1글자", msg)
+        self.assertIn("말", msg)
+
+    def test_registered_single_syllable_keywords_pass(self):
+        """금지가 아니라 검토 강제다 — 사유가 적힌 1글자는 통과한다."""
+        ok, msg = verify.check_keyword_tables(self._repo())
+        self.assertTrue(ok, msg)
+        self.assertIn("1글자 등록 %d건" % len(verify.KEYWORD_SHORT), msg)
+
+    def test_a_removed_single_syllable_registration_is_stale(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = srcs["_eum_request.py"].replace('"돈", ', "")
+        ok, msg = verify.check_keyword_tables(srcs)
+        self.assertFalse(ok)
+        self.assertIn("1글자 등록부 잔재", msg)
+
+    def test_label_tables_are_not_checked_for_single_syllables(self):
+        """표시용 표는 판정에 쓰이지 않으므로 느슨해도 된다(과차단 방지)."""
+        srcs = self._all({"newthing.py": "T = ('가', '나', '다')\n"})
+        verify.KEYWORD_TABLES[("newthing.py", "T")] = ("label", "시험용")
+        try:
+            ok, msg = verify.check_keyword_tables(srcs)
+            self.assertTrue(ok, msg)
+        finally:
+            del verify.KEYWORD_TABLES[("newthing.py", "T")]
+
+    def test_sentences_and_prompts_are_out_of_scope(self):
+        """범위를 좁힌 사실을 고정한다 — 질문지·안내 문구는 낱말표가 아니다."""
+        for src in ("Q = ('요즘 기분은 어떠세요?', '식사는 하셨어요?', '잠은 잘 주무세요?')\n",
+                    "T = ('환불 금액 산정을 도와드립니다', '재배달 접수를 도와드립니다',"
+                    " '주문 조회를 도와드립니다')\n"):
+            ok, msg = verify.check_keyword_tables(self._all({"newthing.py": src}))
+            self.assertTrue(ok, msg)
+
+    def test_a_table_built_inside_a_function_is_out_of_scope(self):
+        src = ("def f():\n    words = ('쓰러', '의식', '숨이')\n    return words\n")
+        ok, msg = verify.check_keyword_tables(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_a_table_without_hangul_is_out_of_scope(self):
+        src = "X = ('a', 'bb', 'ccc')\n"
+        ok, msg = verify.check_keyword_tables(self._all({"newthing.py": src}))
+        self.assertTrue(ok, msg)
+
+    def test_a_dict_table_is_in_scope(self):
+        """`wellbeing._RULES` 는 사전이다 — 모양이 달라도 같은 위험이다."""
+        src = "X = {'a': ['쓰러', '의식'], 'b': ['숨이']}\n"
+        ok, msg = verify.check_keyword_tables(self._all({"newthing.py": src}))
+        self.assertFalse(ok)
+        self.assertIn("newthing.py:X", msg)
+
+    def test_stale_registry_entry_fails(self):
+        """표가 사라지고 등록부만 남는 드리프트. 다른 검사가 대신 울어 주지
+        않도록 1글자·가림 등록이 없는 파일로 본다(검사 하나가 하나를 지킨다)."""
+        srcs = self._repo()
+        srcs["settlement.py"] = "X = 1\n"
+        ok, msg = verify.check_keyword_tables(srcs)
+        self.assertFalse(ok)
+        self.assertIn("등록부 잔재", msg)
+        self.assertIn("settlement.py:CSV_COLUMNS", msg)
+
+    def test_losing_the_decoy_mask_fails(self):
+        """등록부만 남고 오탐 가림이 사라지는 드리프트를 잡는다(= 34차 결함 복귀)."""
+        for fname, symbols in verify.KEYWORD_MASKS.items():
+            for symbol in symbols:
+                srcs = self._repo()
+                srcs[fname] = srcs[fname].replace(symbol, "GONE")
+                ok, msg = verify.check_keyword_tables(srcs)
+                self.assertFalse(ok, "%s %s" % (fname, symbol))
+                self.assertIn(symbol, msg)
+
+    def test_a_comment_does_not_count_as_the_mask(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = ("# _DECOY 와 def _mask_decoys 를 붙일 예정\n"
+                                   "_RULES = {'a': ['쓰러', '의식', '숨이']}\n")
+        ok, msg = verify.check_keyword_tables(srcs)
+        self.assertFalse(ok)
+        self.assertIn("_mask_decoys", msg)
+
+    def test_gate_reads_sources_without_executing_them(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "raise SystemExit('실행되면 안 된다')\nX = 1\n"
+        ok, msg = verify.check_keyword_tables(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_syntax_error_is_left_to_py_compile(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "def broken(:\n"
+        ok, msg = verify.check_keyword_tables(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_keyword_tables(self._repo())
+        self.assertTrue(ok, msg)
+        self.assertIn("%d개" % len(verify.KEYWORD_TABLES), msg)
+
+    def test_registry_matches_reality(self):
+        srcs = self._repo()
+        for (fname, symbol), (purpose, note) in verify.KEYWORD_TABLES.items():
+            self.assertIn(fname, srcs, "등록부가 없는 파일을 가리킨다: %s" % fname)
+            self.assertIn(symbol, verify._keyword_tables(srcs[fname]),
+                          "%s 에 %s 가 없다" % (fname, symbol))
+            self.assertIn(purpose, ("match", "mask", "label"), symbol)
+            self.assertTrue(note.strip(), "사유가 비어 있다: %s" % symbol)
+        for (fname, symbol, word), note in verify.KEYWORD_SHORT.items():
+            self.assertEqual(verify.KEYWORD_TABLES[(fname, symbol)][0], "match")
+            self.assertIn(word, verify._keyword_tables(srcs[fname])[symbol])
+            self.assertTrue(note.strip(), "1글자 사유가 비어 있다: %s" % word)
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -739,7 +879,8 @@ class TestGateRuns(unittest.TestCase):
         self.assertEqual(rc, 0, buf.getvalue())
         out = buf.getvalue()
         for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
-                     "spoken_rules", "mem_caps", "history_caps", "speech_rules"):
+                     "spoken_rules", "mem_caps", "history_caps", "speech_rules",
+                     "keyword_tables"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

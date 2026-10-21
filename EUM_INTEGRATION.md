@@ -79,12 +79,32 @@
 AICC 는 「STT 된 글을 분류·정리해 서명 웹훅으로 넘기는 것」까지 맡고, 알림·조치·회신·이력은 이음(`/staff/requests`, `/me`)이 맡는다.
 
 - [x] `api/_eum_request.py` — 규칙 분류(emergency·schedule_change·onsite_issue·senior_concern·other, **긴급 우선**), 요약 개인정보 가림(`monitoring.scrub`)·500자, 서명·전송.
+      · 2026-10-21 보강: 분류 낱말이 부분 일치라 **다른 낱말 안에서 걸려 긴급을 과대보고**하고 있었다 —
+        「커**피를** 드시고 싶다고」가 `피를`(출혈), 「한**숨을** 쉬세요」가 `숨을`(호흡곤란),
+        「**무사고**로 끝났습니다」가 `사고`, 「**돈**가스 드셨어요」가 `돈`(금전문제)으로 읽혔다.
+        긴급 채널이 일상 대화로 울리면 담당자가 그 채널을 믿지 않게 된다 — 놓치는 쪽만 위험한 것이 아니다.
+        이제 오탐 낱말(`_DECOY`: 커피·한숨·무사고·무의식·돈가스·돈까스)을 **분류 직전에만** 가린다.
+        이음에 보내는 `summary` 는 손대지 않는다(담당자가 읽는 글은 원문 그대로다).
+        과차단은 만들지 않았다 — 「코피가」·「교통사고가」·「커피 드시다 쓰러지셨어요」는 그대로 `emergency`.
+        재발 방지는 릴리스 게이트 15단계 `keyword_tables`(한글 낱말표 등록부·1글자 낱말 검토 강제·가림 배선).
 - [x] `POST /api/wellbeing/request` — 함수 한도 때문에 wellbeing 의 하위 동작. 본문 `{participant_id, transcript, ref?, send?}`.
       · 기본은 **dry-run**(분류 결과·보낼 본문만 돌려줌). `EUM_CHANNEL_SECRET`(16자 이상) 등록 + `send:true` 일 때만 이음으로 전송.
       · 전송 실패는 502 `EUM_DELIVERY_FAILED` 로 드러낸다. 재시도·실패 보관은 안부 웹훅과 같은 `deliver_with_retry`.
       · 전화를 걸지 않으므로 실발신 차단(501)과 무관.
+      · `ref` 는 **그대로 이음 본문에 실리므로** `participant_id` 와 같은 규격만 받는다(`^[A-Za-z0-9_.:-]{1,64}$`).
+        어긋나면 400(`code=INVALID_REQUEST`, `details[].field=request`). 비우면 우리가 `vr_<12자>` 로 만든다.
+      · 전송 최종 실패는 `GET /api/wellbeing?op=failures` 에 남고, 기록에 **`kind`(`eum.request`)와 `ref`** 가 붙는다
+        (2026-10-21). 그 전에는 안부 웹훅 기록 모양만 적혀 `raw_ref=null, senior_id=null` 로 쌓여
+        **무엇이 실패했는지 알 수 없었다** — 두 경로가 같은 50건 보관함을 나눠 쓰기 때문이다.
+        응답에 종류별 집계(`kinds`)도 함께 나온다(실측 건수다 — 꾸민 수치가 아니다).
 - [x] 이음 수신 `POST https://eum.gowon.co.kr/api/channel/aicc/request` — 헤더 `X-Channel-Id: phone` · `X-Channel-Timestamp` · `X-Channel-Signature: sha256=HMAC("<ts>.<body>")`, 비밀은 이음 `CHANNEL_SECRET` 과 **같은 값**. 응답 200·400·401·404·429·503 (이음 `docs/CHANNEL_API.md` 6절).
-- [x] 테스트 `tests/test_eum_request.py`(분류·가림·dry-run 스위치·서명 꼴·허용 호스트·라우트 대역 3건).
+- [x] 테스트 `tests/test_eum_request.py`(분류·가림·dry-run 스위치·서명 꼴·허용 호스트·라우트 대역 3건)
+      \+ `tests/test_eum_request_deliver.py` **39건**(2026-10-21 신규). 그 전까지 **이음에 실제로 닿는 유일한 함수**
+      (`deliver()`)가 한 줄도 검증되지 않았다(모듈 커버리지 69%, 미커버 32줄이 전부 그 함수였다 → **99%**).
+      덮는 것: 200·비2xx·3xx·`HTTPError`(4xx/5xx)·타임아웃·리다이렉트 이탈·같은 호스트 리다이렉트·
+      `geturl` 장애·허용 호스트 변경·**서명 불가 시 미발송**(fail-closed, 상대 서버를 두드리지 않는다)·
+      헤더 4종과 서명이 **실제로 보낸 본문**에 대해 이음 `verifyChannelIntake` 와 같은 값·
+      사유에 URL·토큰·비밀 미노출·분류 오탐·`ref` 형식·실패 보관 식별. 네트워크 미사용(urlopen 대역).
 - [ ] **[승인 필요]** 운영 연결: Vercel 에 `EUM_CHANNEL_SECRET`(= 이음 CHANNEL_SECRET) 등록. 그 전까지는 dry-run 만 동작한다.
 - [ ] 실회선 음성 인입(참여자가 대표번호로 말하기) — CPaaS 실회선 개통 뒤 `voice.py` 인입 → STT → 이 동작 호출로 결선.
 
