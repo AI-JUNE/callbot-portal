@@ -87,6 +87,15 @@ AICC 는 「STT 된 글을 분류·정리해 서명 웹훅으로 넘기는 것�
         이음에 보내는 `summary` 는 손대지 않는다(담당자가 읽는 글은 원문 그대로다).
         과차단은 만들지 않았다 — 「코피가」·「교통사고가」·「커피 드시다 쓰러지셨어요」는 그대로 `emergency`.
         재발 방지는 릴리스 게이트 15단계 `keyword_tables`(한글 낱말표 등록부·1글자 낱말 검토 강제·가림 배선).
+      · 2026-10-22 보강: **분류 입력이 잘려 있었다** — 요약을 먼저 만들고(가림 + 500자)
+        그 잘린 글로 분류했다. 라우트는 `transcript` 를 4000자까지 받으므로 최대 3500자가
+        분류에서 통째로 빠졌고, 음성 요청은 용건이 뒤에 오는 일이 흔하다 —
+        「…(앞말 500자)… 어르신이 쓰러지셨어요」가 `other` 로 접수됐다(담당자에게 알림이 가지 않는다).
+        이제 분류는 `clean_text`(자르지 않은 가림 전문)를 본다. **이음에 보내는 `summary` 는
+        그대로 500자**이고 내용도 바뀌지 않았다. 요약 밖에서 걸린 근거는
+        `classification.evidence_outside_summary`, 잘렸다는 사실은 `classification.truncated`
+        로 드러낸다(둘 다 우리 응답에만 있고 이음 본문 4칸은 불변).
+        회귀 `tests/test_eum_request_truncation.py` 21건 · 릴리스 게이트 16단계 `judge_inputs`.
 - [x] `POST /api/wellbeing/request` — 함수 한도 때문에 wellbeing 의 하위 동작. 본문 `{participant_id, transcript, ref?, send?}`.
       · 기본은 **dry-run**(분류 결과·보낼 본문만 돌려줌). `EUM_CHANNEL_SECRET`(16자 이상) 등록 + `send:true` 일 때만 이음으로 전송.
       · 전송 실패는 502 `EUM_DELIVERY_FAILED` 로 드러낸다. 재시도·실패 보관은 안부 웹훅과 같은 `deliver_with_retry`.
@@ -97,6 +106,11 @@ AICC 는 「STT 된 글을 분류·정리해 서명 웹훅으로 넘기는 것�
         (2026-10-21). 그 전에는 안부 웹훅 기록 모양만 적혀 `raw_ref=null, senior_id=null` 로 쌓여
         **무엇이 실패했는지 알 수 없었다** — 두 경로가 같은 50건 보관함을 나눠 쓰기 때문이다.
         응답에 종류별 집계(`kinds`)도 함께 나온다(실측 건수다 — 꾸민 수치가 아니다).
+      · 2026-10-22: 구분은 됐지만 **축출은 여전히 꼬리 절단**이라 한쪽의 실패 폭주가
+        다른 쪽 기록을 전부 밀어냈다(이음이 50번 연속 실패하면 안부 웹훅 실패가 사라진다).
+        이제 버릴 때마다 **그때 가장 많은 종류**의 가장 오래된 기록을 고른다 — 한 종류만
+        쌓이면 종전대로 오래된 것부터고, 섞이면 몫이 자연히 나뉜다. 상한 50건은 그대로다.
+        버린 건수는 `GET ?op=failures` 의 `dropped`(종류별 + 합계, 실측)로 드러낸다.
 - [x] 이음 수신 `POST https://eum.gowon.co.kr/api/channel/aicc/request` — 헤더 `X-Channel-Id: phone` · `X-Channel-Timestamp` · `X-Channel-Signature: sha256=HMAC("<ts>.<body>")`, 비밀은 이음 `CHANNEL_SECRET` 과 **같은 값**. 응답 200·400·401·404·429·503 (이음 `docs/CHANNEL_API.md` 6절).
 - [x] 테스트 `tests/test_eum_request.py`(분류·가림·dry-run 스위치·서명 꼴·허용 호스트·라우트 대역 3건)
       \+ `tests/test_eum_request_deliver.py` **39건**(2026-10-21 신규). 그 전까지 **이음에 실제로 닿는 유일한 함수**
@@ -105,6 +119,9 @@ AICC 는 「STT 된 글을 분류·정리해 서명 웹훅으로 넘기는 것�
       `geturl` 장애·허용 호스트 변경·**서명 불가 시 미발송**(fail-closed, 상대 서버를 두드리지 않는다)·
       헤더 4종과 서명이 **실제로 보낸 본문**에 대해 이음 `verifyChannelIntake` 와 같은 값·
       사유에 URL·토큰·비밀 미노출·분류 오탐·`ref` 형식·실패 보관 식별. 네트워크 미사용(urlopen 대역).
+      \+ `tests/test_eum_request_truncation.py` **21건** · `tests/test_failure_store_fairness.py` **17건**
+      (2026-10-22 신규). 앞은 잘린 분류 입력(4000자 경계·이음 본문 불변·오탐 가림 유지·개인정보),
+      뒤는 실패 보관함의 종류별 몫(밀어내기 금지·상한 유지·버린 건수 노출·전송 실패 502).
 - [ ] **[승인 필요]** 운영 연결: Vercel 에 `EUM_CHANNEL_SECRET`(= 이음 CHANNEL_SECRET) 등록. 그 전까지는 dry-run 만 동작한다.
 - [ ] 실회선 음성 인입(참여자가 대표번호로 말하기) — CPaaS 실회선 개통 뒤 `voice.py` 인입 → STT → 이 동작 호출로 결선.
 

@@ -15,6 +15,9 @@ STT 는 기존 `/api/stt`(speech.py) 가 맡고, 이 모듈은 받은 글을 분
    긴급 낱말이 하나라도 있으면 다른 유형보다 앞선다 — 놓치는 쪽이 더 위험하다.
  - **개인정보**: 요약은 `monitoring.scrub()` 을 지나 연락처·주민번호 꼴을 가린 뒤 500자로 자른다.
    참여자 키는 이음이 준 익명 키만 받는다.
+ - **분류 입력은 자르지 않은 전문**(`clean_text`). 이음에 보내는 요약만 500자로 자른다 —
+   잘린 글로 분류하면 뒤쪽 긴급 신호를 통째로 놓친다. 요약 밖에서 걸린 근거는
+   `classification.evidence_outside_summary` 로 드러낸다(잘렸다는 사실은 `truncated`).
  - **실전송은 스위치로만**: 공유 비밀(`EUM_CHANNEL_SECRET`)이 없거나 `send` 가 거짓이면 보내지 않고
    페이로드만 돌려준다(dry-run). 전송 실패는 숨기지 않는다(호출부가 502 로 드러낸다).
  - **SSRF**: 보낼 주소는 `_urlguard` 를 지나고, 허용 호스트 기본값은 이음 운영 도메인 하나다.
@@ -92,7 +95,11 @@ def _mask_decoys(t):
 
 
 def classify(text):
-    """(label, 근거 낱말 목록). 같은 글이면 항상 같은 답이다."""
+    """(label, 근거 낱말 목록). 같은 글이면 항상 같은 답이다.
+
+    **자르지 않은 글**을 넣어야 한다(`clean_text`). 500자로 자른 요약을 넣으면
+    뒤쪽에 있는 긴급 신호가 분류에서 사라진다.
+    """
     t = _mask_decoys(re.sub(r"\s+", " ", str(text or "")))
     for label, words in _RULES:
         hit = [w for w in words if w in t]
@@ -101,10 +108,21 @@ def classify(text):
     return "other", []
 
 
+def clean_text(text):
+    """연락처·주민번호 꼴을 가린 **전문**(자르지 않는다).
+
+    분류는 이 글을 본다. 자른 글을 보면 뒤쪽 긴급 신호를 통째로 놓친다
+    (`classify` 주석 참고).
+    """
+    return _scrub(re.sub(r"\s+", " ", str(text or "")).strip())
+
+
 def clean_summary(text):
-    """연락처·주민번호 꼴을 가리고 500자로 자른다(원문 발화를 그대로 보내지 않는다)."""
-    s = _scrub(re.sub(r"\s+", " ", str(text or "")).strip())
-    return s[:SUMMARY_MAX]
+    """연락처·주민번호 꼴을 가리고 500자로 자른다(원문 발화를 그대로 보내지 않는다).
+
+    **이음에 보내는 글**이다. 분류 입력으로 쓰지 마라 — `clean_text` 를 쓴다.
+    """
+    return clean_text(text)[:SUMMARY_MAX]
 
 
 def build_payload(participant_id, transcript, ref=None):
@@ -117,17 +135,28 @@ def build_payload(participant_id, transcript, ref=None):
         # 실린다**. 길이·문자 검증이 없으면 발화 원문·개인정보가 요약 마스킹을
         # 비켜 이 칸으로 새어 나간다 — 그래서 participant_id 와 같은 규격만 받는다.
         raise ValueError("ref 형식이 올바르지 않습니다")
-    summary = clean_summary(transcript)
+    full = clean_text(transcript)
+    summary = full[:SUMMARY_MAX]
     if len(summary) < 2:
         raise ValueError("요청 내용(transcript)이 비어 있습니다")
-    label, evidence = classify(summary)
+    # 분류는 **전문**을 본다. 요약은 500자에서 잘리는데, 음성 요청은 용건이
+    # 뒤에 오는 일이 흔하다 — 잘린 글로 분류하면 「…(앞말 500자)… 어르신이
+    # 쓰러지셨어요」가 `other` 로 접수된다(긴급 낱말이 잘려 나간 자리에 있다).
+    # 라우트가 받는 transcript 는 4000자까지라 최대 3500자가 분류에서 빠졌다.
+    label, evidence = classify(full)
     payload = {
         "participant_id": pid,
         "kind_label": label,
         "summary": summary,
         "ref": rf or ("vr_" + uuid.uuid4().hex[:12]),
     }
-    return payload, {"label": label, "label_ko": LABEL_KO[label], "evidence": evidence}
+    # 담당자가 읽는 요약에 근거 낱말이 없을 수 있다(잘린 뒤쪽에서 걸린 경우).
+    # 그 사실을 숨기지 않고 분류 결과에 적는다 — 이음 본문은 손대지 않는다.
+    masked_summary = _mask_decoys(summary)
+    outside = [w for w in evidence if w not in masked_summary]
+    return payload, {"label": label, "label_ko": LABEL_KO[label], "evidence": evidence,
+                     "truncated": len(full) > SUMMARY_MAX,
+                     "evidence_outside_summary": outside}
 
 
 def _secret():
@@ -232,6 +261,13 @@ if __name__ == "__main__":     # pragma: no cover — 네트워크 미사용 셀
     assert deliver("https://eum.example.org/x", {"a": 1}, "short")["signed"] is False
     p, c = build_payload("u-par-1", "연락처 010-1234-5678 로 전화 주세요 일정 변경", "r1")
     assert "1234-5678" not in p["summary"], p
+    assert c["truncated"] is False and c["evidence_outside_summary"] == [], c
+
+    # 잘린 뒤쪽의 긴급 신호 — 요약은 500자로 잘려도 분류는 전문을 본다
+    long_p, long_c = build_payload("u-par-2", "안녕하세요 " * 200 + "어르신이 쓰러지셨어요")
+    assert long_c["label"] == "emergency", long_c
+    assert long_c["truncated"] and long_c["evidence_outside_summary"] == ["쓰러"], long_c
+    assert len(long_p["summary"]) == SUMMARY_MAX
     r = run("u-par-1", "내일 늦을 것 같아요")
     assert r["mode"] == "dry-run" and r["payload"]["kind_label"] == "schedule_change"
     ts, sg = sign(b'{"a":1}', "x" * 16, 1000)

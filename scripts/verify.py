@@ -18,6 +18,10 @@
  10. spoken_numbers— 고객이 듣게 되는 수치(프롬프트 금액·데모 툴 결과)가 박혀 있지 않은가
  11. spoken_rules  — 시나리오 프롬프트가 "조회하지 않은 값은 말하지 않는다"를 지시하는가
  12. mem_caps     — 인스턴스 메모리 저장소에 보관 상한이 있는가(등록부 대조)
+ 13. history_caps — run_turn 호출부가 대화 이력 상한을 두는가(등록부 대조)
+ 14. speech_rules — 발화 판정 정규식이 등록부에 있고 거절 판정이 짝으로 있는가
+ 15. keyword_tables— 한글 낱말표가 등록부에 있고 1글자 낱말에 사유가 적혔는가
+ 16. judge_inputs — 판정 함수에 **잘린 글**(`s[:N]`)을 넘기지 않는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -1099,6 +1103,139 @@ def check_keyword_tables(sources):
                              % (len(seen), len(shorts)))
 
 
+# --------------------------------------------------------------------------
+# 16) 판정 입력 (35차) — 판정 함수에 **잘린 글**을 넘기지 않는다
+#
+# 15단계까지는 판정 **규칙**(정규식·낱말표)을 봤다. 35차 결함은 규칙이 아니라
+# 규칙에 넣는 **글**이 틀려서 났다: `_eum_request.build_payload` 가 이음에
+# 보낼 요약을 먼저 만들고(`clean_summary` = 가림 + 500자 절단) 그 **잘린 글**로
+# 분류했다. 라우트는 4000자까지 받으므로 최대 3500자가 분류에서 통째로 빠져
+# 있었고, 음성 요청은 용건이 뒤에 오는 일이 흔하다 — 「…(앞말 500자)…
+# 어르신이 쓰러지셨어요」가 `other` 로 접수됐다. 규칙은 멀쩡했다.
+#
+# 리뷰에서 보이지 않는 모양이다. 절단은 `s[:MAX]` 한 칸이고 분류 호출은 그
+# 다음 줄이라, 두 줄을 **같이** 읽어야만 보인다.
+#
+# 그래서 센다: 등록된 판정 함수(`JUDGE_INPUTS`)를 부를 때, 같은 함수 안에서
+# **윗쪽을 자른 슬라이스**(`x[:N]`)로 묶인 이름을 인자로 넘기면 실패시킨다.
+#
+# 범위는 좁다(28·30~34차와 같은 이유 — 과차단되면 사람이 게이트를 끈다):
+#  · 등록부에 적은 판정 함수 이름만 본다(자동 수집하지 않는다).
+#  · 같은 함수 본문 안의 **직접 대입**만 따라간다(별칭·속성·전역은 범위 밖).
+#  · 아래쪽만 자르는 슬라이스(`x[2:]`)와 인덱싱(`x[0]`)은 절단이 아니다.
+# 등록부는 양방향이다 — 적어 둔 판정 함수가 그 파일에서 사라지면 잔재로 운다.
+# --------------------------------------------------------------------------
+JUDGE_INPUTS = {
+    ("_eum_request.py", "classify"):
+        "요청 유형 분류 — 잘린 요약이 아니라 전문(clean_text)을 본다. 뒤쪽 긴급 신호를 놓친다",
+    ("wellbeing.py", "score_answers"):
+        "안부 4항목 채점 — 답변을 자르고 채점하면 뒤쪽 부정·위험신호가 사라진다",
+    ("wellbeing.py", "_negated"):
+        "부정문 판정 — 부정 표현은 문장 **뒤**에 온다(…지 못해요). 자르면 긍정으로 읽는다",
+    ("_escalation.py", "evaluate"):
+        "에스컬레이션 판단 — 상담원 요청·민감 낱말은 발화 끝에 오는 일이 흔하다",
+}
+
+
+def _called_name(node):
+    import ast
+    f = node.func
+    if isinstance(f, ast.Name):
+        return f.id
+    return f.attr if isinstance(f, ast.Attribute) else ""
+
+
+def _truncating_producers(tree):
+    """같은 파일에서 **잘라서 돌려주는** 함수 이름들.
+
+    35차 결함은 절단이 호출된 함수 **안**에 있었다(`clean_summary` =
+    가림 + 500자). 호출부에는 슬라이스가 보이지 않는다 — 슬라이스만 보면
+    실제 결함을 놓친다. 등록부를 또 만들지 않고 `return …[:N]` 을 센다.
+    """
+    import ast
+    out = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef):
+            continue
+        for r in ast.walk(fn):
+            if isinstance(r, ast.Return) and r.value is not None and _cuts(r.value, ()):
+                out.add(fn.name)
+                break
+    return out
+
+
+def _cuts(node, producers):
+    """이 식이 **윗쪽을 자른** 값인가 — 직접 슬라이스이거나 자르는 함수의 결과."""
+    import ast
+    for sub in ast.walk(node):
+        if (isinstance(sub, ast.Subscript) and isinstance(sub.slice, ast.Slice)
+                and sub.slice.upper is not None):
+            return True
+        if isinstance(sub, ast.Call) and _called_name(sub) in producers:
+            return True
+    return False
+
+
+def _truncating_names(fn, producers):
+    """함수 본문에서 잘린 값으로 묶인 이름들."""
+    import ast
+    out = set()
+    for sub in ast.walk(fn):
+        if not isinstance(sub, ast.Assign) or not _cuts(sub.value, producers):
+            continue
+        for t in sub.targets:
+            if isinstance(t, ast.Name):
+                out.add(t.id)
+    return out
+
+
+def _judge_calls(fn, names, producers):
+    """함수 안의 판정 호출 중 **잘린 값**을 받는 것 → [(함수명, 인자 표기, 줄)]."""
+    import ast
+    cut = _truncating_names(fn, producers)
+    hits = []
+    for sub in ast.walk(fn):
+        if not isinstance(sub, ast.Call) or _called_name(sub) not in names:
+            continue
+        called = _called_name(sub)
+        for a in list(sub.args) + [k.value for k in sub.keywords]:
+            if isinstance(a, ast.Name) and a.id in cut:
+                hits.append((called, a.id, sub.lineno))
+            elif not isinstance(a, ast.Name) and _cuts(a, producers):
+                hits.append((called, "인자", sub.lineno))
+    return hits
+
+
+def check_judge_inputs(sources):
+    import ast
+    msgs, seen = [], set()
+    for name, text in sorted(sources.items()):
+        wanted = {f for (fn, f) in JUDGE_INPUTS if fn == name}
+        if not wanted:
+            continue
+        try:
+            tree = ast.parse(text)
+        except Exception:                      # noqa: BLE001
+            continue                           # 문법 오류는 py_compile 게이트가 잡는다
+        defined = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        for f in sorted(wanted & defined):
+            seen.add((name, f))
+        producers = _truncating_producers(tree)
+        for node in ast.walk(tree):
+            # 자르는 함수 **안**도 본다 — 거기서 판정하면 같은 결함이다.
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for called, arg, line in _judge_calls(node, wanted, producers):
+                msgs.append("%s:%d %s() 에 잘린 값 `%s` 을 넘긴다 — %s"
+                            % (name, line, called, arg, JUDGE_INPUTS[(name, called)]))
+    stale = sorted(set(JUDGE_INPUTS) - seen)
+    if stale:
+        msgs.append("등록부 잔재(판정 함수 없음): %s"
+                    % ", ".join("%s:%s" % k for k in stale))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "판정 함수 %d개의 입력 확인" % len(seen))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -1122,6 +1259,7 @@ def main():
     hc_ok, hc_msg = check_history_caps(srcs)
     sp_ok, sp_msg = check_speech_rules(srcs)
     kt_ok, kt_msg = check_keyword_tables(srcs)
+    ji_ok, ji_msg = check_judge_inputs(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -1139,6 +1277,7 @@ def main():
         {"step": "history_caps", "ok": hc_ok, "detail": hc_msg},
         {"step": "speech_rules", "ok": sp_ok, "detail": sp_msg},
         {"step": "keyword_tables", "ok": kt_ok, "detail": kt_msg},
+        {"step": "judge_inputs", "ok": ji_ok, "detail": ji_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

@@ -864,6 +864,194 @@ class TestKeywordTables(unittest.TestCase):
             self.assertTrue(note.strip(), "1글자 사유가 비어 있다: %s" % word)
 
 
+class TestJudgeInputs(unittest.TestCase):
+    """35차 게이트 — 판정 함수에 **잘린 글**을 넘기지 않는가.
+
+    15단계까지는 판정 *규칙*을 봤다. 35차 결함은 규칙이 아니라 규칙에 넣는
+    *글*이 틀려서 났다 — `_eum_request.build_payload` 가 500자로 자른 요약으로
+    분류해 뒤쪽 긴급 신호를 통째로 놓쳤다. 두 줄을 같이 읽어야만 보인다.
+    """
+
+    def _repo(self):
+        return verify.api_sources()
+
+    DEFECT = ("SUMMARY_MAX = 500\n"
+              "def clean_summary(t):\n"
+              "    return scrub(t)[:SUMMARY_MAX]\n"
+              "def build_payload(t):\n"
+              "    summary = clean_summary(t)\n"
+              "    label, ev = classify(summary)\n"
+              "    return label\n"
+              "def classify(t):\n    return t\n")
+
+    def test_the_35th_defect_is_caught(self):
+        """절단이 **호출된 함수 안**에 있어도 잡는다 — 그게 실제 결함의 모양이다."""
+        srcs = self._repo()
+        srcs["_eum_request.py"] = self.DEFECT
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertFalse(ok)
+        self.assertIn("classify", msg)
+        self.assertIn("summary", msg)
+
+    def test_inline_call_is_caught(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = self.DEFECT.replace(
+            "    summary = clean_summary(t)\n    label, ev = classify(summary)\n",
+            "    label, ev = classify(clean_summary(t))\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertFalse(ok)
+        self.assertIn("classify", msg)
+
+    def test_untruncated_helper_result_passes(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = self.DEFECT.replace(
+            "    summary = clean_summary(t)\n    label, ev = classify(summary)\n",
+            "    label, ev = classify(clean_text(t))\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_defect_inside_a_truncating_helper_is_also_caught(self):
+        """자르는 함수 **안**에서 판정해도 같은 결함이다 — 검사에서 빼지 않는다."""
+        srcs = self._repo()
+        srcs["_eum_request.py"] = (
+            "SUMMARY_MAX = 500\n"
+            "def clean_summary(t):\n"
+            "    s = scrub(t)[:SUMMARY_MAX]\n"
+            "    classify(s)\n"
+            "    return scrub(t)[:SUMMARY_MAX]\n"
+            "def classify(t):\n    return t\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertFalse(ok)
+        self.assertIn("classify", msg)
+
+    def test_main_reports_this_check_not_a_stub(self):
+        """배선이 끊겨도(상수 통과) 단계 이름은 찍힌다 — 메시지까지 맞춰 둔다."""
+        import io as _io
+        import contextlib
+        _ok, msg = verify.check_judge_inputs(verify.api_sources())
+        buf = _io.StringIO()
+        argv = sys.argv[:]
+        sys.argv = ["verify.py"]
+        try:
+            with contextlib.redirect_stdout(buf):
+                verify.main()
+        finally:
+            sys.argv = argv
+        self.assertIn(msg, buf.getvalue())
+
+    def test_direct_slice_is_caught(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = (
+            "SUMMARY_MAX = 500\n"
+            "def build_payload(t):\n"
+            "    s = clean_text(t)[:SUMMARY_MAX]\n"
+            "    return classify(s)\n"
+            "def classify(t):\n    return t\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertFalse(ok)
+        self.assertIn("`s`", msg)
+
+    def test_keyword_argument_is_caught(self):
+        srcs = self._repo()
+        srcs["_escalation.py"] = (
+            "def go(t):\n"
+            "    cut = t[:200]\n"
+            "    return policy.evaluate(text=cut)\n"
+            "def evaluate(text=''):\n    return text\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertFalse(ok)
+        self.assertIn("evaluate", msg)
+
+    def test_untruncated_input_passes(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = (
+            "SUMMARY_MAX = 500\n"
+            "def build_payload(t):\n"
+            "    full = clean_text(t)\n"
+            "    summary = full[:SUMMARY_MAX]\n"
+            "    return classify(full), summary\n"
+            "def classify(t):\n    return t\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_lower_bound_slice_is_not_truncation(self):
+        """`x[2:]`·`x[0]` 은 윗쪽을 자르지 않는다 — 과차단하면 게이트가 꺼진다."""
+        srcs = self._repo()
+        srcs["_eum_request.py"] = (
+            "def build_payload(t):\n"
+            "    tail = t[2:]\n"
+            "    first = t[0]\n"
+            "    return classify(tail), first\n"
+            "def classify(t):\n    return t\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_unregistered_function_is_out_of_scope(self):
+        """등록부에 적은 판정 함수만 본다 — 자동 수집하면 과차단된다."""
+        srcs = self._repo()
+        srcs["_eum_request.py"] = (
+            "def build_payload(t):\n"
+            "    s = t[:500]\n"
+            "    return shorten(s)\n"
+            "def classify(t):\n    return t\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_other_file_with_same_function_name_is_out_of_scope(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = (
+            "def go(t):\n"
+            "    s = t[:500]\n"
+            "    return classify(s)\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_truncation_in_another_function_is_not_borrowed(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = (
+            "def cut(t):\n"
+            "    s = t[:500]\n"
+            "    return s\n"
+            "def build_payload(t):\n"
+            "    s = clean_text(t)\n"
+            "    return classify(s)\n"
+            "def classify(t):\n    return t\n")
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_missing_judge_function_is_registry_drift(self):
+        srcs = self._repo()
+        srcs["_eum_request.py"] = "X = 1\n"
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    def test_gate_reads_sources_without_executing_them(self):
+        srcs = self._repo()
+        srcs["newthing.py"] = "raise SystemExit('실행되면 안 된다')\nX = 1\n"
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertTrue(ok, msg)
+
+    def test_syntax_error_is_left_to_py_compile(self):
+        srcs = self._repo()
+        srcs["wellbeing.py"] = "def broken(:\n"
+        ok, msg = verify.check_judge_inputs(srcs)
+        self.assertFalse(ok)          # 파싱 못 한 파일은 등록부 잔재로 드러난다
+        self.assertIn("잔재", msg)
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_judge_inputs(self._repo())
+        self.assertTrue(ok, msg)
+        self.assertIn("%d개" % len(verify.JUDGE_INPUTS), msg)
+
+    def test_registry_matches_reality(self):
+        srcs = self._repo()
+        for (fname, func), note in verify.JUDGE_INPUTS.items():
+            self.assertIn(fname, srcs, "등록부가 없는 파일을 가리킨다: %s" % fname)
+            self.assertIn("def %s(" % func, srcs[fname], "%s 에 %s 가 없다" % (fname, func))
+            self.assertTrue(note.strip(), "사유가 비어 있다: %s" % func)
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -880,7 +1068,7 @@ class TestGateRuns(unittest.TestCase):
         out = buf.getvalue()
         for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
                      "spoken_rules", "mem_caps", "history_caps", "speech_rules",
-                     "keyword_tables"):
+                     "keyword_tables", "judge_inputs"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

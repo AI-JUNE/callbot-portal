@@ -480,6 +480,18 @@ def failure_kinds():
     return out
 
 
+# 상한 초과로 버린 실패 기록 수(종류별). 조용한 삭제 금지 — `?op=failures` 로
+# 드러난다. 값이 든 리터럴이라 `mem_caps` 대상이 아니고 자라지도 않는다(키 3개).
+FAILED_DROPPED = {"wellbeing.result": 0, "eum.request": 0, "unknown": 0}
+
+
+def failure_dropped():
+    """버려진 실패 기록 수(종류별 + 합계). 실측값이다."""
+    out = dict(FAILED_DROPPED)
+    out["total"] = sum(FAILED_DROPPED.values())
+    return out
+
+
 def _callback_host(url):
     """실패 기록용 — 경로·쿼리(토큰이 실릴 수 있다)를 버리고 호스트만 남긴다."""
     try:
@@ -489,8 +501,32 @@ def _callback_host(url):
 
 
 def _remember_failure(entry):
+    """실패를 보관한다. 상한을 넘으면 **가장 많이 차지한 종류**부터 버린다.
+
+    34차가 한계 ④로 적어 둔 자리다. 보관함은 50칸 하나뿐인데 쓰는 경로가
+    둘이다(안부 결과 웹훅 · 이음 3R 현장요청). 예전처럼 꼬리를 잘라 내면
+    한쪽의 실패 폭주가 **다른 쪽 기록을 전부 밀어낸다** — 이음 콜백이 50번
+    연속 실패하는 동안 안부 웹훅 실패는 흔적도 없이 사라지고, 담당자는
+    「안부는 잘 나갔구나」로 읽는다. 실패를 드러내려고 만든 장치가 실패를
+    가리는 모양이고, 그건 34차가 `kind` 칸으로 고친 결함과 같은 뿌리다.
+
+    그래서 종류별 몫을 지킨다: 버릴 때마다 지금 **가장 많은 종류**의 가장
+    오래된 기록을 고른다. 한 종류만 쌓이면 예전과 똑같이 오래된 것부터
+    버리고, 섞여 있으면 자연히 반반으로 수렴한다(상수 하나 더 두지 않는다).
+    버린 건수는 종류별로 세어 `?op=failures` 에 드러낸다 — 조용히 지우지 않는다.
+    """
     FAILED.insert(0, entry)
-    del FAILED[_MAX_FAILED:]
+    while len(FAILED) > _MAX_FAILED:
+        counts = failure_kinds()
+        # 동률이면 이름 순 — 같은 입력이면 같은 것을 버린다(판정이 흔들리지 않게).
+        victim_kind = min(counts, key=lambda k: (-counts[k], k))
+        for i in range(len(FAILED) - 1, -1, -1):
+            if (FAILED[i].get("kind") or RECORD_KINDS[2]) == victim_kind:
+                del FAILED[i]
+                break
+        else:                                   # pragma: no cover - counts 가 FAILED 에서 나온다
+            del FAILED[-1]
+        FAILED_DROPPED[victim_kind] = FAILED_DROPPED.get(victim_kind, 0) + 1
 
 
 def deliver_with_retry(url, payload, timeout=WEBHOOK_TIMEOUT, secret=None,
@@ -775,10 +811,12 @@ class handler(BaseHTTPRequestHandler):
         if op == "failures":
             return self._send({
                 "ok": True, "failures": FAILED, "kinds": failure_kinds(),
+                "dropped": failure_dropped(),
                 "note": "전송 최종 실패 보관(최근 %d건, 인스턴스 메모리). 안부 결과 웹훅"
                         "(wellbeing.result)과 이음 3R 현장요청(eum.request)이 같은 보관함을 "
-                        "쓰므로 `kind` 로 구분합니다. 호스트만 남기며 경로·토큰은 기록하지 "
-                        "않습니다." % _MAX_FAILED})
+                        "쓰므로 `kind` 로 구분하며, 상한을 넘으면 그때 가장 많은 종류부터 "
+                        "버립니다(한쪽이 다른 쪽을 밀어내지 않도록). 버린 건수는 `dropped` "
+                        "입니다. 호스트만 남기며 경로·토큰은 기록하지 않습니다." % _MAX_FAILED})
         if op == "result":
             ref = (q.get("ref", [""])[0] or "").strip()
             # 오류 봉투는 손으로 조립하지 않고 _errors.send 를 거친다 — 그래야
@@ -937,4 +975,14 @@ if __name__ == "__main__":     # pragma: no cover
                                                  {"delivered": False, "status": 400})[1])
     assert len(tries2) == 1, "4xx 는 재시도하지 않는다"
     assert "token=abc" not in json.dumps(FAILED, ensure_ascii=False)
+
+    # 종류별 몫 — 한 경로의 실패 폭주가 다른 경로의 기록을 밀어내지 않는다
+    del FAILED[:]
+    _remember_failure({"kind": "wellbeing.result", "ref": "wb_keep"})
+    for i in range(_MAX_FAILED * 2):
+        _remember_failure({"kind": "eum.request", "ref": "er_%d" % i})
+    assert len(FAILED) == _MAX_FAILED
+    assert any(f["ref"] == "wb_keep" for f in FAILED), "안부 실패가 밀려났다"
+    assert failure_dropped()["total"] == _MAX_FAILED + 1, failure_dropped()
+    assert failure_dropped()["wellbeing.result"] == 0, failure_dropped()
     print("SELF-TEST OK:", json.dumps(r["payload"], ensure_ascii=False)[:160])
