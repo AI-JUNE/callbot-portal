@@ -119,8 +119,23 @@ class TestSealOpen(Base):
         self.assertEqual(pii_vault.unseal(env, "REC-0001/audio"), "s3://bucket/rec.wav")
 
     def test_ciphertext_hides_plaintext(self):
-        env = pii_vault.seal("010-1234-5678 김민수", "REC-0001/audio")
-        for leak in ("010", "1234", "5678", "김민수"):
+        """암호문에 평문 조각이 남지 않는다 — **원시 바이트**로 본다.
+
+        예전에는 봉투 문자열(base64url)에서 「010」·「1234」 같은 3~4자
+        조각을 찾았다. base64 알파벳은 숫자를 포함하므로 **무작위 암호문이
+        우연히 그 조각을 포함**한다(실제로 2026-10-23 야간 실행에서 터졌다).
+        뜻은 맞는데 동전 던지기였다 — 적색이 우연히 뜨는 회귀는 사람이
+        무시하기 시작하고, 그러면 회귀가 없는 것과 같다.
+        검사하려는 성질은 "평문 바이트가 암호문에 남지 않는다"이므로
+        인코딩을 벗기고 바이트로 본다(우연 일치 확률이 사라진다).
+        """
+        src = "010-1234-5678 김민수"
+        env = pii_vault.seal(src, "REC-0001/audio")
+        raw = pii_vault._b64d(env.split(".")[3])       # 암호문 본문만
+        for leak in ("010", "1234", "5678", "김민수", src):
+            self.assertNotIn(leak.encode("utf-8"), raw, leak)
+        # 봉투 문자열에도 평문이 그대로 실리지 않는다(길어서 우연 일치 없음)
+        for leak in ("010-1234-5678", "김민수", src):
             self.assertNotIn(leak, env, leak)
 
     def test_unicode_and_empty_and_bytes(self):

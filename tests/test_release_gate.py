@@ -1052,6 +1052,172 @@ class TestJudgeInputs(unittest.TestCase):
             self.assertTrue(note.strip(), "사유가 비어 있다: %s" % func)
 
 
+class TestCounterExposure(unittest.TestCase):
+    """36차 게이트 — 손실·오류를 **세는 칸**이 응답에도 있는가.
+
+    같은 결함을 네 번 고쳤다(26·31·35차, 그리고 36차). 세는 쪽과 내보내는
+    쪽이 다른 파일이고, 빠뜨려도 응답은 멀쩡하게 200 으로 나간다 — 사라지는
+    숫자가 하필 '유실'과 '오류'라서 운영자는 아무 일도 없었다고 읽는다.
+    """
+
+    STORE = ("class Q:\n"
+             "    def stats(self):\n"
+             "        s = {'queued': 0}\n"
+             "        s['total'] = 1\n"
+             "        s['dropped'] = self.dropped\n"
+             "        s['summary_dropped'] = self.summary_dropped\n"
+             "        s['record_errors'] = self.record_errors\n"
+             "        s['capacity'] = 500\n"
+             "        return s\n")
+    ROUTE = ("KEYS = ('queued', 'total', 'dropped', 'summary_dropped',\n"
+             "        'record_errors')\n")
+
+    def _srcs(self, store=None, route=None):
+        return {"store.py": store if store is not None else self.STORE,
+                "route.py": route if route is not None else self.ROUTE}
+
+    def _reg(self):
+        return {("store.py", "stats"): ("route.py", "KEYS", "사유")}
+
+    def _run(self, srcs, registry=None):
+        old = verify.COUNTER_EXPOSURE
+        verify.COUNTER_EXPOSURE = registry or self._reg()
+        try:
+            return verify.check_counter_exposure(srcs)
+        finally:
+            verify.COUNTER_EXPOSURE = old
+
+    def test_a_fully_exposed_store_passes(self):
+        ok, msg = self._run(self._srcs())
+        self.assertTrue(ok, msg)
+
+    def test_the_36th_defect_is_caught(self):
+        """결함의 실제 모양 — 세기는 하는데 노출 목록에 없다."""
+        route = self.ROUTE.replace(" 'summary_dropped',\n        ", "")
+        ok, msg = self._run(self._srcs(route=route))
+        self.assertFalse(ok)
+        self.assertIn("summary_dropped", msg)
+
+    def test_an_errors_counter_counts_too(self):
+        route = self.ROUTE.replace(",\n        'record_errors'", "")
+        ok, msg = self._run(self._srcs(route=route))
+        self.assertFalse(ok)
+        self.assertIn("record_errors", msg)
+
+    def test_a_prefix_named_counter_counts_too(self):
+        """`dropped_waiting` 처럼 **앞**에 오는 이름도 손실 카운터다."""
+        store = self.STORE.replace("        s['capacity'] = 500\n",
+                                   "        s['dropped_waiting'] = 2\n")
+        ok, msg = self._run(self._srcs(store=store))
+        self.assertFalse(ok)
+        self.assertIn("dropped_waiting", msg)
+
+    def test_a_counter_from_a_dict_literal_is_seen(self):
+        store = self.STORE.replace("s = {'queued': 0}",
+                                   "s = {'queued': 0, 'evicted': 1}")
+        ok, msg = self._run(self._srcs(store=store))
+        self.assertFalse(ok)
+        self.assertIn("evicted", msg)
+
+    def test_a_counter_returned_directly_is_seen(self):
+        store = ("class Q:\n"
+                 "    def stats(self):\n"
+                 "        return {'total': 1, 'audit_dropped': 2}\n")
+        ok, msg = self._run(self._srcs(store=store))
+        self.assertFalse(ok)
+        self.assertIn("audit_dropped", msg)
+
+    def test_an_exposed_counter_the_store_never_produces_is_caught(self):
+        """반대 방향 — 영원히 0 을 내보내는 칸은 거짓 안심이다."""
+        route = self.ROUTE.replace("'queued',", "'queued', 'ghost_dropped',")
+        ok, msg = self._run(self._srcs(route=route))
+        self.assertFalse(ok)
+        self.assertIn("ghost_dropped", msg)
+
+    # --- 과차단 경계(범위를 넓히면 사람이 게이트를 끈다) -------------------
+    def test_non_loss_keys_are_not_required(self):
+        """`total`·`capacity`·`scope` 는 손실 칸이 아니다 — 요구하지 않는다."""
+        route = "KEYS = ('dropped', 'summary_dropped', 'record_errors')\n"
+        ok, msg = self._run(self._srcs(route=route))
+        self.assertTrue(ok, msg)
+
+    def test_dynamic_keys_are_not_counted(self):
+        """`s[r['state']] = …` 같은 동적 키는 이름을 알 수 없다 — 보지 않는다."""
+        store = self.STORE.replace("        s['capacity'] = 500\n",
+                                   "        s[row['state']] = 1\n")
+        ok, msg = self._run(self._srcs(store=store))
+        self.assertTrue(ok, msg)
+
+    def test_loss_names_elsewhere_in_the_file_are_ignored(self):
+        """등록한 stats() 밖은 보지 않는다(함수 하나만 본다)."""
+        store = self.STORE + ("    def other(self):\n"
+                              "        d = {}\n"
+                              "        d['mystery_dropped'] = 1\n"
+                              "        return d\n")
+        ok, msg = self._run(self._srcs(store=store))
+        self.assertTrue(ok, msg)
+
+    def test_unregistered_stores_are_not_checked(self):
+        srcs = self._srcs()
+        srcs["other.py"] = self.STORE
+        ok, msg = self._run(srcs)
+        self.assertTrue(ok, msg)
+
+    # --- 등록부 잔재 ------------------------------------------------------
+    def test_a_registry_entry_without_the_file_is_stale(self):
+        ok, msg = self._run({"route.py": self.ROUTE})
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    def test_a_registry_entry_without_the_stats_function_is_stale(self):
+        ok, msg = self._run(self._srcs(store="class Q:\n    pass\n"))
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    def test_a_registry_entry_without_the_exposure_symbol_is_stale(self):
+        ok, msg = self._run(self._srcs(route="OTHER = ('a',)\n"))
+        self.assertFalse(ok)
+        self.assertIn("잔재", msg)
+
+    # --- 실저장소 ---------------------------------------------------------
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_counter_exposure(verify.api_sources())
+        self.assertTrue(ok, msg)
+        self.assertIn("%d곳" % len(verify.COUNTER_EXPOSURE), msg)
+
+    def test_registry_matches_reality(self):
+        srcs = verify.api_sources()
+        for (store, func), (route, symbol, why) in verify.COUNTER_EXPOSURE.items():
+            self.assertIn(store, srcs, "등록부가 없는 파일을 가리킨다: %s" % store)
+            self.assertIn(route, srcs, "등록부가 없는 파일을 가리킨다: %s" % route)
+            self.assertIn("def %s(" % func, srcs[store])
+            self.assertIn("%s = (" % symbol, srcs[route])
+            self.assertTrue(why.strip(), "사유가 비어 있다: %s" % symbol)
+
+    def test_the_real_escalation_defect_would_be_caught_today(self):
+        """저장소 파일 그대로 — 노출 목록에서 한 칸만 빼면 실패한다."""
+        srcs = verify.api_sources()
+        srcs["ops_stats.py"] = srcs["ops_stats.py"].replace(
+            '"summary_dropped", "record_errors")', '"record_errors")')
+        ok, msg = verify.check_counter_exposure(srcs)
+        self.assertFalse(ok)
+        self.assertIn("summary_dropped", msg)
+
+    def test_main_reports_this_check_not_a_stub(self):
+        import io as _io
+        import contextlib
+        _ok, msg = verify.check_counter_exposure(verify.api_sources())
+        buf = _io.StringIO()
+        argv = sys.argv[:]
+        sys.argv = ["verify.py"]
+        try:
+            with contextlib.redirect_stdout(buf):
+                verify.main()
+        finally:
+            sys.argv = argv
+        self.assertIn(msg, buf.getvalue())
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -1068,7 +1234,7 @@ class TestGateRuns(unittest.TestCase):
         out = buf.getvalue()
         for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
                      "spoken_rules", "mem_caps", "history_caps", "speech_rules",
-                     "keyword_tables", "judge_inputs"):
+                     "keyword_tables", "judge_inputs", "counter_exposure"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

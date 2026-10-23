@@ -150,12 +150,17 @@ class EscalationQueue:
         self._evict()
         tid = "ESC-%04d" % next(self._seq)
         s = _summary(summary)
-        if s is None:
+        # 36차: 버린 사실을 **그 티켓에도** 적는다. 집계(`summary_dropped`)만
+        # 있으면 장부를 보는 사람은 "요약이 빈 티켓"이 (a) 모델이 요약을 주지
+        # 않은 것인지 (b) 가릴 수 없어 우리가 버린 것인지 구별하지 못한다.
+        # 빈 칸이 두 가지 뜻을 가지면 그 칸은 읽을 수 없다.
+        dropped = s is None
+        if dropped:
             self.summary_dropped += 1
             s = ""
         tk = {
             "id": tid, "session_id": _label(session_id), "reason": _label(reason),
-            "summary": s, "scenario": _label(scenario),
+            "summary": s, "summary_dropped": dropped, "scenario": _label(scenario),
             "state": "queued", "ts": time.time(),
         }
         self._tickets[tid] = tk

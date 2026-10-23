@@ -976,7 +976,11 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
         <!-- B145: 음성엔진(STT/TTS) 프로바이더 health 카드 — /api/stt · /api/tts?health=1 읽기전용 조회(실호출·과금 없음) -->
         <div class="card" style="margin-bottom:16px"><h3>🎙️ 음성엔진 프로바이더 상태 <span class="r"><button onclick="speechHealthLoad(true)">🔄 새로고침</button> <span id="shGate" style="color:var(--dim);font-size:11px"></span></span></h3><div id="shBody" style="padding:12px 18px" aria-live="polite"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">읽기전용 상태 조회 · 실호출·과금 없음. 비-sim 프로바이더 활성화는 <b>[승인 필요]</b></div></div>
         <!-- B146: 에스컬레이션 큐 · 녹취/감사 sim 현황 — /api/ops_stats 읽기전용 집계(통화 원문·개인정보 미포함) -->
-        <div class="card" style="margin-bottom:16px"><h3>🧑‍💼 상담원 연결 큐 · 녹취/감사 현황 <span class="r"><button onclick="opsSimLoad(true)">🔄 새로고침</button> <span id="osGate" style="color:var(--dim);font-size:11px"></span></span></h3><div id="osBody" style="padding:12px 18px" aria-live="polite"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">프로세스 단위 sim 집계 · 통화 원문·개인정보 미포함. <b>인스턴스 메모리</b>라서 서버가 <b>재시작하면 대기 중 티켓은 사라집니다</b>(다중 인스턴스 합산도 아닙니다) — 「유실」은 보관 상한으로 버린 티켓, 「기록실패」는 전환을 큐에 적지 못한 횟수입니다. 영속 큐·실녹취·실 CTI 연동은 <b>[승인 필요]</b></div></div>
+        <div class="card" style="margin-bottom:16px"><h3>🧑‍💼 상담원 연결 큐 · 녹취/감사 현황 <span class="r"><button onclick="opsSimLoad(true)">🔄 새로고침</button> <span id="osGate" style="color:var(--dim);font-size:11px"></span></span></h3><div id="osBody" style="padding:12px 18px" aria-live="polite"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">프로세스 단위 sim 집계 · 통화 원문·개인정보 미포함. <b>인스턴스 메모리</b>라서 서버가 <b>재시작하면 대기 중 티켓은 사라집니다</b>(다중 인스턴스 합산도 아닙니다) — 「유실」은 보관 상한으로 버린 티켓(그중 <b>아직 처리 전</b>이던 것이 「대기중 유실」 — 0이 아니면 기다리던 고객이 장부에서 사라졌다는 뜻입니다), 「전이기록 유실」은 상한으로 버린 상태 전이 기록, 「요약 버림」은 <b>개인정보를 가릴 수 없어</b> 싣지 않은 요약 수, 「기록실패」는 전환을 큐에 적지 못한 횟수입니다. 영속 큐·실녹취·실 CTI 연동은 <b>[승인 필요]</b></div></div>
+        <!-- 36차: 상담사 전환 티켓 목록 — /api/ops_stats?op=escalations 읽기전용 조회.
+             집계 숫자만으로는 "누가 무엇 때문에 기다리는지" 알 수 없어 큐를 사람이 볼 수 있게 한다.
+             서버가 준 값만 그린다(하드코딩 티켓 없음). 상태 전이·배정은 여기서 하지 않는다(실 CTI 는 [승인 필요]). -->
+        <div class="card" style="margin-bottom:16px"><h3>🎫 상담사 전환 티켓 <span class="tag pos">실측</span> <span class="r"><label for="etState" class="sr-only">상태 필터</label><select id="etState" onchange="etLoad(true)" style="font-size:12px"><option value="open">대기·배정 중</option><option value="">전체</option><option value="queued">대기</option><option value="assigned">배정</option><option value="resolved">완료</option><option value="abandoned">이탈</option></select> <button onclick="etLoad(true)">🔄 새로고침</button> <span id="etScope" style="color:var(--dim);font-size:11px"></span></span></h3><div id="etBody" style="padding:12px 18px" aria-live="polite" role="status"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">봇이 고객에게 <b>“상담사에게 연결해 드리겠습니다”라고 말한 기록</b>입니다 — 오래 기다린 순서로 보여 줍니다. 요약은 저장 전에 <b>연락처·주민번호·카드·계좌·이메일 마스킹</b>을 거칩니다 — <b>성명은 가려지지 않습니다</b>(패턴으로 알아볼 수 없어 지금은 가리지 않습니다. 열람은 감사 기록에 남습니다). 마스킹 자체가 불가능했던 요약은 싣지 않고 「요약 버림」으로 표시합니다. 통화 참조는 원문 통화ID 가 아니라 <b>지문</b>입니다. 이 화면은 <b>읽기 전용</b>이라 배정·종결을 하지 않습니다 — 실 CTI 연동과 영속 큐는 <b>[승인 필요]</b>이고, 지금은 인스턴스 메모리라 <b>재시작하면 대기 티켓이 사라집니다</b>.</div></div>
         <!-- B160: 실측 통화 지표 — /api/ops_stats 의 measured 블록만 그린다. 이 인스턴스가 실제 처리한 통화만 집계하며 데모 수치와 섞지 않는다. 하드코딩 수치 없음 -->
         <div class="card" style="margin-bottom:16px"><h3>📐 실측 통화 지표 <span class="tag pos">실측</span> <span class="r"><button onclick="cmLoad(true)">🔄 새로고침</button> <span id="cmScope" style="color:var(--dim);font-size:11px"></span></span></h3><div id="cmBody" style="padding:12px 18px" aria-live="polite" role="status"><div style="color:var(--dim);font-size:12px">불러오는 중…</div></div><div class="hint" style="padding:0 18px 12px">위쪽 KPI(<u>샘플 데이터</u>)와 달리 <b>이 서버 인스턴스가 실제 처리한 통화</b>만 셉니다. 표본이 없으면 비율을 비워 둡니다(0%로 표시하지 않습니다). 통화 원문·전화번호는 집계에 포함되지 않습니다. 인스턴스 메모리 기준이라 다중 인스턴스 합산·영속 집계는 <b>[승인 필요]</b></div></div>
         <div class="card" style="margin-bottom:16px"><h3>🗂️ 콜 대기열 보드 <span class="r" style="color:var(--dim);font-size:11px">대기 → 봇 처리 → 상담원 → 완료 · 2.5초 갱신</span></h3><div id="queueBoard" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:12px 16px"></div></div>
@@ -1587,7 +1591,7 @@ function show(v){if(!titles[v]||!document.getElementById('view-'+v))return;curVi
   $('#title').textContent=(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);$('#crumb').textContent=titles[v][1];try{document.title='AICC Portal · '+(typeof tr==='function'?tr(titles[v][0]):titles[v][0]);}catch(e){}
   try{if(typeof srSay==='function')srSay((typeof tr==='function'?tr(titles[v][0]):titles[v][0])+' 화면으로 이동했습니다.');}catch(e){}
   document.querySelectorAll('.nav a').forEach(a=>{a.classList.remove('on');a.removeAttribute('aria-current');if(a.dataset.v===v){a.classList.add('on');a.setAttribute('aria-current','page');}});if(typeof renderFavs==='function')renderFavs();if(typeof navA11y==='function')navA11y();if(typeof tblSortInit==='function')tblSortInit();if(typeof tblFilterInit==='function')tblFilterInit();
-  if(v==='home')renderDash();if(v==='hist'){renderHist();renderHistLog();}if(v==='agents'){renderAgents();renderAgQueue();renderSched();}if(monTimer){clearInterval(monTimer);monTimer=null;}if(window._monCardTimer){clearInterval(window._monCardTimer);window._monCardTimer=null;}if(homeTimer){clearInterval(homeTimer);homeTimer=null;}if(agAssignTimer){clearInterval(agAssignTimer);agAssignTimer=null;}if(v==='agents')agAssignTimer=setInterval(agAssignTick,2200);if(v==='monitor'){if(typeof monFetchStats==='function')monFetchStats();renderMon();renderSLA();monTimer=setInterval(monTick,2500);}if(v==='home'&&!window._arOff)homeTimer=setInterval(homeRefresh,3500);if(v==='calls')renderCalls();if(v==='board'){renderBoard();renderJourney();renderSankey();}if(v==='kms')renderKms();if(v==='qamgmt'){renderQamgmt();renderCoachCal();}if(window._cpaasTimer&&v!=='cpaas'){clearInterval(window._cpaasTimer);window._cpaasTimer=null;}if(v==='cpaas')renderCpaas();if(v==='mmhist')renderMmhist();if(v==='docs')renderDocs();if(v==='svccfg')svcCount();if(v==='syslog')renderLogs();if(v==='report')renderSchedInfo();if(v==='report')renderReport();if(v==='builder')renderBuilder(curScn);if(v==='qa')renderQa();if(v==='assistdesk'){renderAssistDesk();renderAdeskHist();renderMsgs();renderScripts();}if(v==='nlu'){renderNluData();renderLblQueue();}if(v==='sllm')sllmLoadPrompt();if(v==='ta')renderTaViz();if(v==='agentmgmt')renderAgentMgmt();if(v==='rag')renderRag();if(v==='abtest'){renderAbtest();abLoadPrompts();}if(v==='alerts'){renderAlerts();renderRules();}if(v==='reason')renderReason();if(v==='exportc')renderExportC();if(v==='agents'){renderLeader();renderSched();}if(v==='home'){renderSparks();renderHealth();renderCKpi();}if(v==='monitor'){renderMonGauge();renderSLA();if(typeof speechHealthLoad==='function')speechHealthLoad();if(typeof opsSimLoad==='function')opsSimLoad();if(typeof cmLoad==='function')cmLoad();if(typeof monCardsAuto==='function')monCardsAuto(true);}if(v==='kb'&&typeof filterKb==='function')filterKb();if(v!=='assistdesk'&&typeof adeskStop==='function')adeskStop(true);if(typeof STAT!=='undefined'&&STAT[v])STAT[v]();if(typeof CHR!=='undefined'&&CHR[v])CHR[v]();if(typeof updateActive==='function'){updateActive();renderNoti();}if(typeof syncBotNav==='function')syncBotNav();if(window.innerWidth<=820){document.querySelector('.side').classList.remove('open');var _sc=document.getElementById('scrim');if(_sc)_sc.classList.remove('on');var _hb2=document.querySelector('.hamb');if(_hb2)_hb2.setAttribute('aria-expanded','false');}}
+  if(v==='home')renderDash();if(v==='hist'){renderHist();renderHistLog();}if(v==='agents'){renderAgents();renderAgQueue();renderSched();}if(monTimer){clearInterval(monTimer);monTimer=null;}if(window._monCardTimer){clearInterval(window._monCardTimer);window._monCardTimer=null;}if(homeTimer){clearInterval(homeTimer);homeTimer=null;}if(agAssignTimer){clearInterval(agAssignTimer);agAssignTimer=null;}if(v==='agents')agAssignTimer=setInterval(agAssignTick,2200);if(v==='monitor'){if(typeof monFetchStats==='function')monFetchStats();renderMon();renderSLA();monTimer=setInterval(monTick,2500);}if(v==='home'&&!window._arOff)homeTimer=setInterval(homeRefresh,3500);if(v==='calls')renderCalls();if(v==='board'){renderBoard();renderJourney();renderSankey();}if(v==='kms')renderKms();if(v==='qamgmt'){renderQamgmt();renderCoachCal();}if(window._cpaasTimer&&v!=='cpaas'){clearInterval(window._cpaasTimer);window._cpaasTimer=null;}if(v==='cpaas')renderCpaas();if(v==='mmhist')renderMmhist();if(v==='docs')renderDocs();if(v==='svccfg')svcCount();if(v==='syslog')renderLogs();if(v==='report')renderSchedInfo();if(v==='report')renderReport();if(v==='builder')renderBuilder(curScn);if(v==='qa')renderQa();if(v==='assistdesk'){renderAssistDesk();renderAdeskHist();renderMsgs();renderScripts();}if(v==='nlu'){renderNluData();renderLblQueue();}if(v==='sllm')sllmLoadPrompt();if(v==='ta')renderTaViz();if(v==='agentmgmt')renderAgentMgmt();if(v==='rag')renderRag();if(v==='abtest'){renderAbtest();abLoadPrompts();}if(v==='alerts'){renderAlerts();renderRules();}if(v==='reason')renderReason();if(v==='exportc')renderExportC();if(v==='agents'){renderLeader();renderSched();}if(v==='home'){renderSparks();renderHealth();renderCKpi();}if(v==='monitor'){renderMonGauge();renderSLA();if(typeof speechHealthLoad==='function')speechHealthLoad();if(typeof opsSimLoad==='function')opsSimLoad();if(typeof cmLoad==='function')cmLoad();if(typeof etLoad==='function')etLoad();if(typeof monCardsAuto==='function')monCardsAuto(true);}if(v==='kb'&&typeof filterKb==='function')filterKb();if(v!=='assistdesk'&&typeof adeskStop==='function')adeskStop(true);if(typeof STAT!=='undefined'&&STAT[v])STAT[v]();if(typeof CHR!=='undefined'&&CHR[v])CHR[v]();if(typeof updateActive==='function'){updateActive();renderNoti();}if(typeof syncBotNav==='function')syncBotNav();if(window.innerWidth<=820){document.querySelector('.side').classList.remove('open');var _sc=document.getElementById('scrim');if(_sc)_sc.classList.remove('on');var _hb2=document.querySelector('.hamb');if(_hb2)_hb2.setAttribute('aria-expanded','false');}}
 document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',()=>show(a.dataset.v)));
 /* B90: 사이드 내비 키보드 접근성 — .nav a 는 href 가 없어 탭 포커스가 불가능했음(키보드 사용자는 화면 전환 자체가 불가).
    role=link + tabindex=0 부여, Enter/Space 로 활성화. 즐겨찾기 nav 는 동적 생성이라 show() 에서 재적용. */
@@ -1865,7 +1869,7 @@ function opsSimLoad(force,quiet){
   if(!d||!d.ok){_htmlSet(b,'<div style="color:var(--dim);font-size:12px">엔드포인트 조회 불가 — 로컬·데모 환경이거나 API 미배포입니다.</div>');if(g)g.textContent='';return;}
   if(g){var gt=d.gates||{},on=[];if(gt.recording_live)on.push('RECORDING_LIVE');if(gt.cpaas_live)on.push('CPAAS_LIVE');if(gt.speech_live)on.push('SPEECH_LIVE');
    g.textContent=on.length?('게이트 ON: '+on.join(' · ')):'게이트 전부 OFF · sim';}
-  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['record_errors','기록실패']])+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['purged','파기'],['total','누적'],['dropped','유실']]));
+  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['dropped_waiting','대기중 유실'],['audit_dropped','전이기록 유실'],['summary_dropped','요약 버림'],['record_errors','기록실패']])+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['purged','파기'],['total','누적'],['dropped','유실']]));
  };
  try{fetch('/api/ops_stats?period='+encodeURIComponent(p),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(fin).catch(function(){fin(null);});}
  catch(e){fin(null);}
@@ -1939,6 +1943,74 @@ function cmLoad(force,quiet){
   .then(function(r){return r.ok?r.json():null;}).then(fin).catch(function(){fin(null);});}
  catch(e){fin(null);}
 }
+/* 36차: 상담사 전환 티켓 목록 — /api/ops_stats?op=escalations 읽기전용.
+   원칙: 서버가 준 값만 그린다(하드코딩 티켓 없음). 잘렸으면 잘렸다고 말하고,
+   요약이 비어 있으면 그 이유(가릴 수 없어 버림)를 구별해 보여준다. */
+var _etLoaded=false;
+var ET_STATE={queued:['대기','neu'],assigned:['배정','pos'],resolved:['완료','pos'],abandoned:['이탈','neg']};
+var ET_REASON={request:'상담원 요청',sensitive:'민감 주제',low_confidence:'낮은 신뢰도',repeated_fallback:'연속 폴백',guard:'가드 차단'};
+function _etAge(sec){
+ if(typeof sec!=='number'||!isFinite(sec)||sec<0)return '—';
+ if(sec<60)return sec+'초';
+ if(sec<3600)return Math.floor(sec/60)+'분';
+ if(sec<86400)return Math.floor(sec/3600)+'시간';
+ return Math.floor(sec/86400)+'일';
+}
+function _etRow(t){
+ var st=ET_STATE[t.state]||[t.state||'—','neu'];
+ var sum=t.summary_dropped?'<span style="color:#b26b16">요약 버림 — 개인정보를 가릴 수 없어 싣지 않았습니다</span>'
+  :(t.summary?_osEsc(t.summary):'<span style="color:var(--dim)">요약 없음</span>');
+ return '<tr><td style="white-space:nowrap"><code>'+_osEsc(t.id)+'</code></td>'
+  +'<td><span class="tag '+st[1]+'">'+_osEsc(st[0])+'</span></td>'
+  +'<td>'+_osEsc(ET_REASON[t.reason]||t.reason||'—')+'</td>'
+  +'<td>'+_osEsc(t.scenario||'—')+'</td>'
+  +'<td style="white-space:nowrap"><code style="font-size:11px">'+_osEsc(t.call_ref||'—')+'</code></td>'
+  +'<td style="white-space:nowrap">'+_osEsc(_etAge(t.age_sec))+'</td>'
+  +'<td style="font-size:11.5px">'+sum+'</td></tr>';
+}
+function _etRender(d){
+ if(!d||!d.ok)return '<div role="alert" style="font-size:12px;color:var(--dim)">전환 티켓을 불러오지 못했습니다.</div>';
+ if(d.source==='unavailable')
+  return '<div role="alert" style="font-size:12px;color:var(--dim)">전환 큐가 응답하지 않아 티켓을 표시할 수 없습니다. 잠시 후 새로고침해 주세요.</div>';
+ var ts=d.tickets||[];
+ if(!ts.length){
+  var f=(d.filter&&d.filter.state)||'';
+  return '<div style="font-size:12px;color:var(--dim)">'
+   +(f?'이 상태의 전환 티켓이 없습니다. 상태 필터를 「전체」로 바꿔 보세요.'
+      :'아직 상담사 전환 티켓이 없습니다. 「콜봇 데모」에서 「상담사 바꿔 주세요」라고 말하면 여기에 쌓입니다.')
+   +'</div>';
+ }
+ var out='<div style="overflow:auto"><table><thead><tr><th>티켓</th><th>상태</th><th>사유</th><th>시나리오</th><th>통화 참조</th><th>경과</th><th>요약(마스킹됨)</th></tr></thead><tbody>'
+  +ts.map(_etRow).join('')+'</tbody></table></div>';
+ if(d.truncated)
+  out+='<div role="alert" style="font-size:11px;color:#b26b16;margin-top:8px">⚠️ '+_osNum(d.matched)+'건 중 '+_osNum(d.count)+'건만 표시했습니다(목록 상한). 상태 필터를 좁혀 주세요.</div>';
+ return out;
+}
+function etLoad(force,quiet){
+ var b=document.getElementById('etBody');if(!b)return;
+ if(_etLoaded&&!force)return;_etLoaded=true;
+ if(!quiet)b.innerHTML='<div style="color:var(--dim);font-size:12px">불러오는 중…</div>';
+ var sel=document.getElementById('etState'),st=sel?sel.value:'open';
+ var fin=function(d,http){
+  var sc=document.getElementById('etScope');
+  if(d===null){
+   _htmlSet(b,'<div role="alert" style="color:var(--dim);font-size:12px">'
+    +(http===401||http===403?'권한이 없거나 세션이 만료됐습니다. 페이지를 새로고침해 주세요.'
+     :http===429?'요청이 많아 잠시 제한됐습니다. 잠시 후 새로고침해 주세요.'
+     :http?('조회 실패 (HTTP '+http+') — 잠시 후 다시 시도해 주세요.')
+      :'엔드포인트 조회 불가 — 로컬·데모 환경이거나 API 미배포입니다.')+'</div>');
+   if(sc)sc.textContent='';return;}
+  if(sc)sc.textContent=(typeof d.matched==='number'?(d.matched+'건'):'')
+   +(d.scope==='instance'?' · 인스턴스 기준':'')+(d.volatile?' · 재시작 시 소멸':'');
+  _htmlSet(b,_etRender(d));
+ };
+ var u='/api/ops_stats?op=escalations&order=oldest'+(st?('&state='+encodeURIComponent(st)):'');
+ try{fetch(u,{cache:'no-store'}).then(function(r){
+   if(!r.ok){fin(null,r.status);return null;}
+   return r.json().then(function(j){fin(j);});
+  }).catch(function(){fin(null,0);});}
+ catch(e){fin(null,0);}
+}
 /* B147: view-monitor 카드 자동 갱신(30초) — 기존 자동갱신 토글(cb_autoref) 존중. 읽기전용 GET만 재조회 */
 function _htmlSet(el,h){try{if(el&&el.innerHTML!==h)el.innerHTML=h;}catch(e){}}
 function _monClock(){var d=new Date(),p=function(n){return (n<10?'0':'')+n;};return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
@@ -1949,6 +2021,7 @@ function monCardsTick(){
  try{if(typeof speechHealthLoad==='function')speechHealthLoad(true,true);}catch(e){}
  try{if(typeof opsSimLoad==='function')opsSimLoad(true,true);}catch(e){}
  try{if(typeof cmLoad==='function')cmLoad(true,true);}catch(e){}
+ try{if(typeof etLoad==='function')etLoad(true,true);}catch(e){}
  var l=document.getElementById('monAutoLbl');if(l)l.textContent='자동 갱신 30초 · '+_monClock();
 }
 function monCardsAuto(start){

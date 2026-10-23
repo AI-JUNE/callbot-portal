@@ -21,12 +21,19 @@
 - B160: **실측 블록(`measured`)** 추가 — `call_metrics` 가 이 인스턴스에서 실제로 처리한
   통화만 세어 둔 값. 데모 수치와 **섞지 않고 별도 블록**으로 내보낸다. 표본 0건이면
   비율은 `null`(0.0 으로 내리지 않는다). 헤드라인 수치는 여전히 `data_source="demo"`.
+- 36차: `?op=escalations` — **전환 티켓 목록**(읽기 전용). 집계 숫자만으로는
+  "누가 무엇 때문에 기다리는지" 알 수 없어 32~35차가 네 번 미룬 자리다.
+  내보내는 칸은 화이트리스트(`TICKET_KEYS`)뿐이고 전부 저장소가 마스킹한 값이다.
+  같은 회차에 `ESCALATION_KEYS` 결함도 고쳤다 — 큐가 세던 `audit_dropped`·
+  `summary_dropped` 가 어디에도 나오지 않았다(세어 두고 보여주지 않으면 센 것이
+  아니다). 재발 방지는 릴리스 게이트 17단계 `counter_exposure`.
 - 실 CTI·실통계 연동은 [승인 필요] — 여기서는 sim 집계만.
 
 사용:
   from ops_stats import get_ops_summary
   get_ops_summary()                    # dict (오늘)
   get_ops_summary(period="week")      # 주간(데모)
+  get_escalations(state="open")       # 전환 티켓(실측 · 읽기 전용)
 
 셀프테스트:
   python api/ops_stats.py
@@ -59,8 +66,15 @@ DEMO_PERIODS = {
 # 26차: 상한으로 버린 티켓(`dropped`·그중 처리 전이던 `dropped_waiting`)과
 # 기록 실패(`record_errors`)를 함께 내보낸다 — 세어 두고 보여주지 않으면
 # 센 것이 아니다(큐는 인스턴스 메모리라 유실이 실제로 일어난다).
+# 36차 결함 수정: `audit_dropped`·`summary_dropped` 가 **세어지기만 하고**
+# 어디에도 나오지 않았다. 큐는 둘 다 센다(`_escalation.stats()`) — 전이 기록을
+# 상한으로 버린 수, 마스킹이 불가능해 싣지 않은 요약 수. 세어 두고 보여주지
+# 않으면 센 것이 아니다(26·31·35차가 같은 자리에서 반복한 규약이고, 바로 옆
+# `RECORDING_KEYS` 는 `audit_dropped` 를 이미 내보내고 있었다 — 절반만 지켜진
+# 규칙이다). 재발 방지는 릴리스 게이트 17단계 `counter_exposure`.
 ESCALATION_KEYS = ("queued", "assigned", "resolved", "abandoned", "total",
-                   "dropped", "dropped_waiting", "record_errors")
+                   "dropped", "dropped_waiting", "audit_dropped",
+                   "summary_dropped", "record_errors")
 # 숫자가 아닌 '성질' 칸 — 소스를 못 읽어도 구현의 성질은 변하지 않으므로 기본값이 있다.
 ESCALATION_META = {"scope": "instance", "volatile": True}
 # 31차: 녹취 장부도 상한이 생겼다(인스턴스 메모리). 버린 건수를 내보내지 않으면
@@ -156,6 +170,146 @@ def gate_flags():
 
 # HTTP 계층 입력검증용 화이트리스트 — 데모 기간 정의와 같은 출처를 쓴다
 PERIODS = tuple(DEMO_PERIODS.keys())
+
+# --------------------------------------------------------------------------
+# 전환 티켓 조회(36차) — `GET /api/ops_stats?op=escalations`
+#
+# 왜 여기인가: 큐(`_escalation.QUEUE`)는 "상담사에게 연결해 드리겠습니다"라고
+# 고객에게 **말한 약속**의 유일한 기록인데 **사람이 볼 수 있는 곳이 없었다**
+# (32~35차가 네 번 미룬 자리다). 집계 숫자(`escalation.queued=3`)만으로는
+# 누가 무엇 때문에 기다리는지 알 수 없다. 새 함수 파일은 만들지 않는다 —
+# Vercel Hobby 12개 한도가 이미 꽉 찼으므로 기존 라우트의 하위 동작이다.
+#
+# 내보내는 것은 **저장소가 이미 마스킹해 둔 칸**뿐이고, 그중에서도 아래
+# 화이트리스트에 적은 칸만 나간다(저장소에 칸이 하나 늘어도 자동으로 새지
+# 않는다). 이 경로는 읽기 전용이다 — 상태 전이·배정은 여기서 하지 않는다
+# (실 CTI 연동은 [승인 필요]).
+# --------------------------------------------------------------------------
+OPS = ("summary", "escalations")          # ?op= 화이트리스트(기본 summary)
+TICKET_STATES = ("queued", "assigned", "resolved", "abandoned")
+# `open` = 아직 사람이 집어가지 않은 것(queued+assigned). 운영자가 가장 자주
+# 묻는 질문이라 이름을 따로 둔다 — 정의는 `_escalation.OPEN_STATES` 가 갖는다.
+TICKET_FILTER_STATES = TICKET_STATES + ("open",)
+TICKET_ORDERS = ("oldest", "newest")      # 기본은 큐 순서(오래 기다린 사람 먼저)
+TICKET_LIMIT_DEFAULT = 50
+TICKET_LIMIT_MAX = 200
+# 티켓 1건에서 내보내는 칸(화이트리스트). `session_id` 는 통화 참조라
+# 바깥 이름을 `call_ref` 로 바꿔 둔다(세션 쿠키·로그인 세션으로 오해 방지).
+TICKET_KEYS = ("id", "state", "reason", "scenario", "call_ref",
+               "summary", "summary_dropped", "ts", "age_sec")
+_TICKET_FIELD_MAX = 200                   # 저장소 상한과 별개의 2차 방어선
+_FALLBACK_OPEN_STATES = ("queued", "assigned")
+
+
+def _esc_module():
+    """`_escalation` 모듈(없으면 None). 조회 하나가 대시보드를 죽이지 않는다."""
+    try:
+        return __import__("_escalation")
+    except Exception:          # pragma: no cover - 모듈 부재 폴백
+        return None
+
+
+def _cell(v):
+    """티켓 한 칸 — 문자열로 접고 길이를 다시 막는다.
+
+    저장소가 이미 `_label`/`_summary` 로 마스킹·절단했다. 여기서 또 막는 것은
+    그 규약이 깨졌을 때 **HTTP 로 새지 않게** 하려는 2차 방어선이다.
+    """
+    if v is None:
+        return ""
+    try:
+        s = v if isinstance(v, str) else str(v)
+    except Exception:
+        return "-"
+    return s[:_TICKET_FIELD_MAX]
+
+
+def _ticket_view(tk, now):
+    """티켓 dict → 화이트리스트 칸만. 어떤 입력에도 예외를 내지 않는다."""
+    tk = tk if isinstance(tk, dict) else {}
+    try:
+        ts = float(tk.get("ts") or 0)
+    except Exception:
+        ts = 0.0
+    age = None
+    if ts > 0:
+        age = int(now - ts)
+        if age < 0:                      # 시계 역행 — 음수 경과시간은 뜻이 없다
+            age = 0
+    return {
+        "id": _cell(tk.get("id")),
+        "state": _cell(tk.get("state")),
+        "reason": _cell(tk.get("reason")),
+        "scenario": _cell(tk.get("scenario")),
+        "call_ref": _cell(tk.get("session_id")),
+        "summary": _cell(tk.get("summary")),
+        # 빈 요약의 뜻을 말한다 — True 면 "가릴 수 없어 버렸다"(모델이 요약을
+        # 주지 않은 것과 다르다). 옛 티켓에 칸이 없으면 False.
+        "summary_dropped": bool(tk.get("summary_dropped")),
+        "ts": int(ts),
+        "age_sec": age,
+    }
+
+
+def get_escalations(state=None, limit=TICKET_LIMIT_DEFAULT, order="oldest"):
+    """전환 티켓 목록 — 읽기 전용. **실측이다**(데모 수치가 아니다).
+
+    큐를 못 읽으면 빈 목록 + `data_source="unavailable"` 로 사실대로 말한다 —
+    데모 티켓을 지어내지 않는다.
+    """
+    mod = _esc_module()
+    try:
+        limit = max(1, min(int(limit), TICKET_LIMIT_MAX))
+    except Exception:
+        limit = TICKET_LIMIT_DEFAULT
+    if order not in TICKET_ORDERS:
+        order = "oldest"
+    open_states = tuple(getattr(mod, "OPEN_STATES", _FALLBACK_OPEN_STATES) or
+                        _FALLBACK_OPEN_STATES)
+    raw = None
+    if mod is not None:
+        try:
+            raw = mod.QUEUE.list()         # ts 오름차순(큐 순서)
+        except Exception:
+            raw = None
+    now = time.time()
+    if raw is None:
+        tickets, matched, source = [], 0, "unavailable"
+    else:
+        source = "sim"
+        if state == "open":
+            wanted = open_states
+        elif state:
+            wanted = (state,)
+        else:
+            wanted = None
+        sel = [t for t in raw
+               if wanted is None or (t or {}).get("state") in wanted]
+        matched = len(sel)
+        if order == "newest":
+            sel = list(reversed(sel))
+        tickets = [_ticket_view(t, now) for t in sel[:limit]]
+    return {
+        "ok": True,
+        "ts": int(now),
+        "op": "escalations",
+        "mode": "sim",                     # 실 CTI 배정 없음(상태 전이만)
+        # 데모 블록과 달리 **이 인스턴스가 실제로 적은 티켓**이다.
+        "data_source": "measured" if source == "sim" else "unavailable",
+        "source": source,
+        "scope": "instance",               # 클러스터 합산 아님
+        "volatile": True,                  # 재시작하면 대기 티켓이 사라진다
+        "open_states": list(open_states),
+        "filter": {"state": state, "limit": limit, "order": order},
+        "matched": matched,                # 필터에 걸린 전체 건수(실측)
+        "count": len(tickets),             # 이번 응답에 실린 건수
+        # 잘랐으면 **잘랐다고 말한다** — 목록이 조용히 짧아지면 운영자는
+        # 큐가 작아진 것으로 읽는다(`?op=failures` 의 `dropped` 와 같은 규약).
+        "truncated": matched > len(tickets),
+        "stats": _norm_stats(_safe_stats("_escalation", "QUEUE"),
+                             ESCALATION_KEYS, ESCALATION_META),
+        "tickets": tickets,
+    }
 
 
 def get_ops_summary(baseline=None, period="today"):
@@ -256,12 +410,26 @@ class handler(BaseHTTPRequestHandler):
             # 로그는 _guard.deny → _errors.send 가 봉투의 code 와 함께 닫는다.
             return _guard.deny(self, _c, _m, rq)
         period = None
+        op = None
         try:
-            # 입력검증: period 는 화이트리스트. 미지정은 today, 그 외 값은 400.
+            # 입력검증: 전부 화이트리스트. 미지정은 기본값, 그 외 값은 400.
             q = parse_qs(urlparse(self.path).query)
-            period = _errors.query_choice(q, "period", PERIODS, default="today")
-            rq.set(period=period)
-            summary = get_ops_summary(period=period)
+            op = _errors.query_choice(q, "op", OPS, default="summary")
+            rq.set(op=op)
+            if op == "escalations":
+                # 전환 티켓 목록(36차). 읽기 전용 — 상태 전이는 하지 않는다.
+                state = _errors.query_choice(q, "state", TICKET_FILTER_STATES)
+                order = _errors.query_choice(q, "order", TICKET_ORDERS,
+                                             default="oldest")
+                limit = _errors.query_int(q, "limit",
+                                          default=TICKET_LIMIT_DEFAULT,
+                                          minimum=1, maximum=TICKET_LIMIT_MAX)
+                summary = get_escalations(state=state, limit=limit, order=order)
+            else:
+                period = _errors.query_choice(q, "period", PERIODS,
+                                              default="today")
+                rq.set(period=period)
+                summary = get_ops_summary(period=period)
         except Exception as e:
             # 표준 에러 봉투 + 모니터링(5xx만) + 구조화 로그를 한 번에 처리
             env = _errors.handle(self, e, route="/api/ops_stats", method="GET", rq=rq)
@@ -271,19 +439,29 @@ class handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             # 실패도 사실대로 남긴다 — 감사가 실패를 성공으로 적으면 조사 근거가 무너진다.
-            self._audit("GET", "error" if st >= 500 else "deny", st, rq, period)
+            self._audit("GET", "error" if st >= 500 else "deny", st, rq,
+                        period, op)
             return
         self._send(200, summary, rq)
         rq.finish(200)
         # 결과가 확정된 뒤에 기록한다(성공을 미리 적지 않는다).
-        self._audit("GET", "allow", 200, rq, period)
+        self._audit("GET", "allow", 200, rq, period, op)
 
-    def _audit(self, method, result, status, rq, period=None):
-        """관리 경로 접근 감사. 실패해도 요청에 전파하지 않는다(가용성 우선)."""
+    def _audit(self, method, result, status, rq, period=None, op=None):
+        """관리 경로 접근 감사. 실패해도 요청에 전파하지 않는다(가용성 우선).
+
+        `op` 를 함께 적는다 — 같은 경로가 집계 조회와 **전환 티켓 목록 조회**
+        둘을 맡으므로, 액션명만으로는 "누가 대기 중인 고객 목록을 열람했는지"를
+        감사에서 가려낼 수 없다(개인정보 열람 조사에서 그 구분이 핵심이다).
+        """
         if not _audit:
             return
         try:
-            extra = {} if period is None else {"period": period}
+            extra = {}
+            if period is not None:
+                extra["period"] = period
+            if op is not None:
+                extra["op"] = op
             _audit.record_request(self.headers, self.path, method, result, status,
                                   request_id=getattr(rq, "request_id", None), **extra)
         except Exception:
@@ -363,6 +541,37 @@ if __name__ == "__main__":     # pragma: no cover
         _b.__import__ = _real
     assert u["data_source"] == "unavailable" and u["calls"]["total"] == 0
     assert all(u[k] is None for k in MEASURED_RATE_KEYS)
+
+    # --- 36차: 손실·오류 카운터 노출 ---
+    for k in ("audit_dropped", "summary_dropped", "dropped", "dropped_waiting",
+              "record_errors"):
+        assert k in ESCALATION_KEYS, k
+
+    # --- 36차: 전환 티켓 조회 ---
+    import _escalation as _esc
+    _esc.QUEUE.__init__()
+    e0 = get_escalations()
+    assert e0["ok"] and e0["op"] == "escalations" and e0["tickets"] == []
+    assert e0["matched"] == 0 and e0["truncated"] is False
+    assert e0["scope"] == "instance" and e0["volatile"] is True
+    t1 = _esc.QUEUE.enqueue("call-aaa", "request", "고객 010-1234-5678 환불 문의")
+    _esc.QUEUE.enqueue("call-bbb", "sensitive", "소송 언급")
+    _esc.QUEUE.transition(t1["id"], "abandoned")
+    e1 = get_escalations()
+    assert e1["count"] == 2 and e1["data_source"] == "measured"
+    assert set(e1["tickets"][0]) == set(TICKET_KEYS), e1["tickets"][0]
+    assert "010-1234-5678" not in json.dumps(e1, ensure_ascii=False)
+    assert "session_id" not in json.dumps(e1, ensure_ascii=False)
+    assert e1["tickets"][0]["call_ref"] == "call-aaa"
+    assert [t["id"] for t in get_escalations(order="newest")["tickets"]] == \
+        [t["id"] for t in reversed(e1["tickets"])]
+    assert get_escalations(state="open")["count"] == 1
+    assert get_escalations(state="abandoned")["tickets"][0]["id"] == t1["id"]
+    cut = get_escalations(limit=1)
+    assert cut["count"] == 1 and cut["matched"] == 2 and cut["truncated"] is True
+    for bad in (0, -5, "x", None, 9999):
+        assert 1 <= get_escalations(limit=bad)["filter"]["limit"] <= TICKET_LIMIT_MAX, bad
+    _esc.QUEUE.__init__()
 
     # 직렬화 가능
     json.dumps(s, ensure_ascii=False)

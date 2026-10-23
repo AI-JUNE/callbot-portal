@@ -1236,6 +1236,134 @@ def check_judge_inputs(sources):
                         else "판정 함수 %d개의 입력 확인" % len(seen))
 
 
+# --------------------------------------------------------------------------
+# 17) 손실·오류 카운터 노출 (36차) — **세어 두고 보여주지 않으면 센 것이 아니다**
+#
+# 이 저장소는 같은 결함을 네 번 고쳤다: 26차(전환 티켓 `dropped`)·31차(녹취
+# `dropped_active`)·35차(실패 보관 `dropped`). 전부 "버린 사실을 세는 칸을
+# 만들었는데 HTTP 응답에 싣는 것을 잊었다"는 한 모양이다. 36차에 또 나왔다 —
+# `_escalation.stats()` 는 `audit_dropped`·`summary_dropped` 를 세는데
+# `ops_stats.ESCALATION_KEYS` 에 없어서 **어디에도 나오지 않았다**(바로 옆
+# `RECORDING_KEYS` 는 `audit_dropped` 를 이미 내보내고 있었다 — 절반만 지켜진
+# 규칙이다).
+#
+# 리뷰에서 보이지 않는 모양이다. 세는 쪽과 내보내는 쪽이 **다른 파일**이고,
+# 빠뜨려도 응답은 멀쩡하게 200 으로 나간다(없는 칸은 그냥 없다). 조용히
+# 사라지는 숫자가 하필 "유실"과 "오류"라서, 운영자는 아무 일도 없었다고 읽는다.
+#
+# 그래서 센다: 등록된 stats() 가 만드는 키 중 **손실·오류 이름**(dropped·
+# errors·evicted·failed·lost·skipped)은 등록된 노출 목록에 **반드시** 있어야
+# 한다. 양방향이다 — 노출 목록에만 있고 stats() 가 만들지 않는 손실 칸은
+# 영원히 0 을 내보내는 거짓 안심이므로 그쪽도 운다.
+#
+# 범위는 좁다(28·30~35차와 같은 이유 — 과차단되면 사람이 게이트를 끄고,
+# 그러면 게이트가 없는 것과 같다):
+#  · 등록부(`COUNTER_EXPOSURE`)에 적은 (저장소 파일, stats 함수)만 본다.
+#  · 키는 **문자열 리터럴**만 센다(`s[r["state"]]` 같은 동적 키는 범위 밖).
+#  · 손실·오류 이름이 아닌 칸(`total`·`capacity`·`scope`)은 보지 않는다.
+# --------------------------------------------------------------------------
+COUNTER_EXPOSURE = {
+    ("_escalation.py", "stats"):
+        ("ops_stats.py", "ESCALATION_KEYS",
+         "전환 큐 손실·오류 — /api/ops_stats 의 escalation 블록"),
+    ("_recording_audit.py", "stats"):
+        ("ops_stats.py", "RECORDING_KEYS",
+         "녹취 장부 손실 — /api/ops_stats 의 recording 블록"),
+}
+
+# 손실·오류를 뜻하는 이름(앞 또는 뒤 토큰). `dropped_waiting`(앞)·
+# `audit_dropped`(뒤) 가 둘 다 걸리도록 양쪽을 본다.
+_LOSS_WORDS = ("dropped", "errors", "evicted", "failed", "lost", "skipped")
+
+
+def _is_loss_counter(key):
+    parts = str(key or "").split("_")
+    return bool(parts) and (parts[0] in _LOSS_WORDS or parts[-1] in _LOSS_WORDS)
+
+
+def _stats_keys(tree, func_name):
+    """`stats()` 가 만드는 **문자열 리터럴 키**들.
+
+    세 가지 모양을 센다 — `s["x"] = …` · `s = {"x": …}` · `return {"x": …}`.
+    동적 키(`s[r["state"]]`)는 세지 않는다(과차단 방지).
+    """
+    import ast
+
+    def _dict_keys(node, out):
+        if not isinstance(node, ast.Dict):
+            return
+        for k in node.keys:
+            if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                out.add(k.value)
+
+    out = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef) or fn.name != func_name:
+            continue
+        for sub in ast.walk(fn):
+            if isinstance(sub, ast.Assign):
+                for t in sub.targets:
+                    if (isinstance(t, ast.Subscript)
+                            and isinstance(t.slice, ast.Constant)
+                            and isinstance(t.slice.value, str)):
+                        out.add(t.slice.value)
+                _dict_keys(sub.value, out)
+            elif isinstance(sub, ast.Return) and sub.value is not None:
+                _dict_keys(sub.value, out)
+    return out
+
+
+def _seq_strings(tree, symbol):
+    """모듈 전역 `SYMBOL = ("a", "b")` 의 문자열들(없으면 None)."""
+    import ast
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == symbol for t in node.targets):
+            continue
+        if not isinstance(node.value, (ast.Tuple, ast.List)):
+            return set()
+        return {e.value for e in node.value.elts
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+    return None
+
+
+def check_counter_exposure(sources):
+    import ast
+    msgs, seen = [], set()
+    trees = {}
+    for name, text in sources.items():
+        try:
+            trees[name] = ast.parse(text)
+        except Exception:                      # noqa: BLE001
+            pass                               # 문법 오류는 py_compile 게이트가 잡는다
+    for (store, func), (route, symbol, why) in sorted(COUNTER_EXPOSURE.items()):
+        st, rt = trees.get(store), trees.get(route)
+        if st is None or rt is None:
+            msgs.append("등록부 잔재(파일 없음): %s 또는 %s" % (store, route))
+            continue
+        produced = _stats_keys(st, func)
+        if not produced:
+            msgs.append("등록부 잔재(%s 에 %s() 가 없다)" % (store, func))
+            continue
+        exposed = _seq_strings(rt, symbol)
+        if exposed is None:
+            msgs.append("등록부 잔재(%s 에 %s 가 없다)" % (route, symbol))
+            continue
+        seen.add((store, func))
+        for k in sorted(produced):
+            if _is_loss_counter(k) and k not in exposed:
+                msgs.append("%s:%s() 가 세는 「%s」 가 %s:%s 에 없다 — 세어 두고 "
+                            "보여주지 않으면 센 것이 아니다(%s)"
+                            % (store, func, k, route, symbol, why))
+        for k in sorted(exposed):
+            if _is_loss_counter(k) and k not in produced:
+                msgs.append("%s:%s 의 「%s」 를 %s:%s() 가 만들지 않는다 — 영원히 "
+                            "0 을 내보내는 거짓 안심이다" % (route, symbol, k, store, func))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "손실·오류 카운터 노출 %d곳 확인" % len(seen))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -1260,6 +1388,7 @@ def main():
     sp_ok, sp_msg = check_speech_rules(srcs)
     kt_ok, kt_msg = check_keyword_tables(srcs)
     ji_ok, ji_msg = check_judge_inputs(srcs)
+    ce_ok, ce_msg = check_counter_exposure(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -1278,6 +1407,7 @@ def main():
         {"step": "speech_rules", "ok": sp_ok, "detail": sp_msg},
         {"step": "keyword_tables", "ok": kt_ok, "detail": kt_msg},
         {"step": "judge_inputs", "ok": ji_ok, "detail": ji_msg},
+        {"step": "counter_exposure", "ok": ce_ok, "detail": ce_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

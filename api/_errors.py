@@ -376,6 +376,22 @@ def query_choice(qs, key, choices, default=None, required=False):
     return v
 
 
+def query_int(qs, key, default=None, required=False, minimum=None, maximum=None):
+    """parse_qs 결과에서 정수를 뽑는다(쿼리 값은 리스트다).
+
+    판정은 `as_int` 한 곳에만 둔다 — 범위 밖·비정수 메시지가 본문 입력과
+    달라지면 호출부가 두 가지 규격을 설명해야 한다.
+    """
+    vals = qs.get(key) or []
+    v = (vals[0] if vals else "") or ""
+    v = v.strip()
+    if not v:
+        if required:
+            raise ValidationError.field(key, "필수 항목입니다")
+        return default
+    return as_int({key: v}, key, minimum=minimum, maximum=maximum)
+
+
 def query_str(qs, key, default="", max_len=1000, required=False, allow_empty=True):
     vals = qs.get(key) or []
     v = (vals[0] if vals else "") or ""
