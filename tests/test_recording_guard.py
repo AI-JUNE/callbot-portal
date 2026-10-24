@@ -454,8 +454,9 @@ class TestDefensiveBranches(GuardBase):
         out = voice.trigger_campaign(["01000000000"], scenario="care")
         self.assertEqual(out["queued"], 0)
         self.assertIn("dry-run", out["mode"])
-        self.addCleanup(lambda v=voice.LIVE: setattr(voice, "LIVE", v))
-        voice.LIVE = True
+        # 게이트는 **호출 시점에** 읽힌다(37차) — 환경변수로 켠다.
+        self.addCleanup(os.environ.pop, "CPAAS_LIVE", None)
+        os.environ["CPAAS_LIVE"] = "1"
         out = voice.trigger_campaign(["01000000000", "01011112222"], scenario="care")
         self.assertEqual((out["mode"], out["queued"]), ("live", 2))
         self.assertEqual(self.network_calls, [])

@@ -22,6 +22,8 @@
  14. speech_rules — 발화 판정 정규식이 등록부에 있고 거절 판정이 짝으로 있는가
  15. keyword_tables— 한글 낱말표가 등록부에 있고 1글자 낱말에 사유가 적혔는가
  16. judge_inputs — 판정 함수에 **잘린 글**(`s[:N]`)을 넘기지 않는가
+ 17. counter_exposure— 손실·오류 카운터를 세어 두고 응답에 싣는가(등록부 대조)
+ 18. live_gates    — `*_LIVE` 안전선을 요청마다 읽고 같은 규칙으로 판정하는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -1364,6 +1366,331 @@ def check_counter_exposure(sources):
                         else "손실·오류 카운터 노출 %d곳 확인" % len(seen))
 
 
+# --------------------------------------------------------------------------
+# 18) 실활성화 게이트 (37차) — **판정은 한 곳에서, 요청마다 다시 읽는다**
+#
+# `*_LIVE` 환경변수는 이 저장소의 안전선이다(실발신·실과금·실녹취). 37차에
+# 같은 안전선에서 결함 두 건이 나왔고, 둘 다 "게이트를 어떻게 읽는가"가 자리마다
+# 달랐던 것이다:
+#   (1) `voice.py` 만 게이트를 **import 시점에** 상수로 굳혀 두었다 — 웜
+#       인스턴스에서는 `CPAAS_LIVE=0` 으로 내려도 캠페인이 계속 `mode="live"`
+#       로 답했다(**비상정지가 듣지 않는다**). 같은 순간 `wellbeing` 은 501 로
+#       막으므로 한 인스턴스 안에서 라우트마다 게이트가 엇갈렸다.
+#       `_speech_providers.is_live()` 가 같은 이유로 이미 고쳐 두고 docstring 에
+#       이유까지 적어 둔 자리인데, 그 규약이 거기만 비켜 가 있었다.
+#   (2) `ops_stats.gate_flags()` 는 게이트 값을 **자기 규칙으로 다시 해석**했다
+#       (`"yes"` 까지 참). 그래서 `CPAAS_LIVE=true` 에서 콘솔은 「ON」, 코드는
+#       전부 OFF 였다 — 같은 화면의 다른 패널과 서로 다른 말을 했다.
+#
+# 둘 다 리뷰에서 보이지 않는다. 한 줄짜리 상수와 한 줄짜리 비교이고, 어느
+# 쪽도 테스트를 적색으로 만들지 않는다(기본값이 OFF 라 평상시 답이 같다).
+#
+# 그래서 센다:
+#   (a) 모듈 전역에서 게이트 판정을 **굳히지 않는다**. 환경 조회가 모듈 전역
+#       대입에 있으면 실패. 술어를 한 번 불러 두는 하위호환 스냅샷
+#       (`LIVE = live()`)만 등록부에 적고 허용한다.
+#   (b) 게이트를 읽는 파일은 등록부에 있어야 하고, 그 **비교 규칙**이 게이트의
+#       등록 규칙과 같아야 한다(한 글자라도 넓히거나 좁히면 실패).
+#   (c) 소유 술어가 실제로 존재하고 환경을 읽으며 같은 규칙을 쓴다.
+#   (d) 게이트 현황을 내보내는 자리(`ops_stats._GATE_OWNERS`)가 (c) 와 같은
+#       소유자·규칙을 가리킨다 — 화면이 코드와 다른 말을 하지 못한다.
+#
+# 범위는 좁다(28·30~36차와 같은 이유 — 과차단되면 사람이 게이트를 끄고,
+# 그러면 게이트가 없는 것과 같다):
+#  · 등록부(`LIVE_GATES`)에 적은 게이트 이름만 본다.
+#  · 읽는 자리는 **게이트 이름 문자열이 함수 호출 인자로 들어간 곳**만 본다
+#    (`os.environ.get(GATE)` 처럼 변수를 거치는 것은 소유 술어 검사로 덮는다).
+#  · 셀프테스트(`if __name__ == "__main__"`) 블록은 배포 코드가 아니라 뺀다.
+# --------------------------------------------------------------------------
+LIVE_GATES = {
+    # 게이트: (규칙 낱말, (소유 파일, 소유 술어), 사유)
+    "CPAAS_LIVE": (("1",), ("_sip_adapter.py", "is_live"),
+                   "실발신·실과금 — 켜는 것은 [승인 필요]"),
+    "SPEECH_LIVE": (("1",), ("_speech_providers.py", "is_live"),
+                    "STT/TTS 실호출·키 과금"),
+    "RECORDING_LIVE": (("1", "true", "on"), ("_recording_audit.py", "recording_live"),
+                       "녹취 — 고지 문안과 장부가 같은 규칙을 봐야 한다"),
+}
+# 게이트를 읽는 파일(복제 술어 포함). 새 라우트가 읽기 시작하면 여기에 적기
+# 전에는 통과하지 못한다 — 안전선을 읽는 자리는 사람이 알아야 한다.
+LIVE_GATE_READERS = {
+    ("_sip_adapter.py", "CPAAS_LIVE"): "게이트 소유 술어 is_live()",
+    ("voice.py", "CPAAS_LIVE"): "통화 웹훅·캠페인 — live()",
+    ("wellbeing.py", "CPAAS_LIVE"): "안부 실발신 차단(501) — live_mode()",
+    ("caller_id.py", "CPAAS_LIVE"): "발신번호 장부 현황 — cpaas_live()",
+    ("health.py", "CPAAS_LIVE"): "헬스 의존성 cpaas — _dep_cpaas()",
+    ("health.py", "SPEECH_LIVE"): "헬스 의존성 speech — _speech()",
+    ("disclosure.py", "RECORDING_LIVE"): "녹음 고지 요건 — 장부와 같은 규칙",
+    ("_recording_audit.py", "RECORDING_LIVE"): "게이트 소유 술어 recording_live()",
+}
+# 하위호환 스냅샷(모듈 로드 시점에 술어를 한 번 불러 둔 상수). 판정에는 술어를
+# 쓴다 — 여기 적힌 이름만 허용하고, 환경 조회를 직접 굳힌 것은 어떤 경우에도 막는다.
+LIVE_GATE_SNAPSHOTS = {
+    ("_sip_adapter.py", "CPAAS_LIVE"): "하위호환 상수 — 판정은 is_live()",
+    ("voice.py", "LIVE"): "하위호환 상수 — 판정은 live()",
+}
+# 게이트 현황을 HTTP 로 내보내는 자리 — 판정을 복제하지 않고 소유 술어를 부른다.
+LIVE_GATE_VIEWS = {
+    ("ops_stats.py", "_GATE_OWNERS"):
+        "콘솔 모니터 게이트 현황 — /api/ops_stats 의 gates 블록",
+}
+
+
+def _strip_selftest(tree):
+    """`if __name__ == "__main__":` 블록을 뺀 모듈 본문(셀프테스트는 배포 코드가 아니다)."""
+    import ast
+    body = []
+    for node in tree.body:
+        if (isinstance(node, ast.If) and isinstance(node.test, ast.Compare)
+                and isinstance(node.test.left, ast.Name)
+                and node.test.left.id == "__name__"):
+            continue
+        body.append(node)
+    return body
+
+
+def _parents(nodes):
+    import ast
+    out = {}
+    stack = list(nodes)
+    while stack:
+        cur = stack.pop()
+        for ch in ast.iter_child_nodes(cur):
+            out[ch] = cur
+            stack.append(ch)
+    return out
+
+
+def _rule_words(node, parents, gate):
+    """읽는 자리를 감싸는 **가장 가까운 비교식**의 비교 대상 낱말들.
+
+    `== "1"` → {"1"} · `in ("1","true","on")` → 셋. **비교 대상만** 본다 —
+    왼쪽(환경 조회·기본값 `"0"`·`""`·게이트 이름)은 규칙이 아니라 읽는 방법이고,
+    거기까지 세면 모든 읽는 자리가 거짓 드리프트로 걸린다(과차단 변이로 확인).
+    없으면 None(비교 없이 쓰는 자리).
+    """
+    import ast
+    cur = node
+    while cur in parents:
+        cur = parents[cur]
+        if isinstance(cur, ast.Compare):
+            words = set()
+            for c in cur.comparators:
+                for n in ast.walk(c):
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                        words.add(n.value)
+            words.discard(gate)
+            return words
+        if isinstance(cur, (ast.FunctionDef, ast.Module)):
+            break
+    return None
+
+
+def _in_function(node, parents):
+    import ast
+    cur = node
+    while cur in parents:
+        cur = parents[cur]
+        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return True
+    return False
+
+
+def _gate_reads(nodes, parents):
+    """[(게이트, 노드)] — 게이트 이름 문자열이 **함수 호출 인자**로 들어간 곳."""
+    import ast
+    out = []
+    for root in nodes:
+        for call in ast.walk(root):
+            if not isinstance(call, ast.Call):
+                continue
+            for arg in list(call.args) + [k.value for k in call.keywords]:
+                for n in ast.walk(arg):
+                    if (isinstance(n, ast.Constant) and isinstance(n.value, str)
+                            and n.value in LIVE_GATES):
+                        out.append((n.value, n))
+    return out
+
+
+def _owner_rule(tree, func_name):
+    """소유 술어의 (환경을 읽는가, 비교 규칙 낱말). 없으면 None."""
+    import ast
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef) or fn.name != func_name:
+            continue
+        reads_env = "os.environ" in ast.unparse(fn) if hasattr(ast, "unparse") else True
+        words = set()
+        for cmp_ in ast.walk(fn):
+            if not isinstance(cmp_, ast.Compare):
+                continue
+            for c in cmp_.comparators:
+                for n in ast.walk(c):
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                        words.add(n.value)
+        return reads_env, words
+    return None
+
+
+def _view_owners(tree, symbol):
+    """`SYMBOL = {"GATE": ("모듈", "술어", ("1",...))}` → {게이트: (파일, 술어, 낱말)}."""
+    import ast
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == symbol for t in node.targets):
+            continue
+        if not isinstance(node.value, ast.Dict):
+            return {}
+        out = {}
+        for k, v in zip(node.value.keys, node.value.values):
+            if not (isinstance(k, ast.Constant) and isinstance(k.value, str)):
+                continue
+            if not isinstance(v, (ast.Tuple, ast.List)) or len(v.elts) < 3:
+                continue
+            mod, attr, words = v.elts[0], v.elts[1], v.elts[2]
+            if not (isinstance(mod, ast.Constant) and isinstance(attr, ast.Constant)):
+                continue
+            if not isinstance(words, (ast.Tuple, ast.List)):
+                continue
+            out[k.value] = (
+                "%s.py" % mod.value, attr.value,
+                {e.value for e in words.elts
+                 if isinstance(e, ast.Constant) and isinstance(e.value, str)})
+        return out
+    return None
+
+
+def check_live_gates(sources):
+    import ast
+    msgs, seen_readers, seen_gates = [], set(), set()
+    trees = {}
+    for name, text in sources.items():
+        try:
+            trees[name] = ast.parse(text)
+        except Exception:                      # noqa: BLE001
+            pass                               # 문법 오류는 py_compile 게이트가 잡는다
+
+    for name in sorted(trees):
+        tree = trees[name]
+        body = _strip_selftest(tree)
+        parents = _parents(body)
+        # (a) 모듈 전역에서 판정을 굳히지 않는다.
+        for node in body:
+            if not isinstance(node, ast.Assign):
+                continue
+            frozen = [g for g, n in _gate_reads([node.value], _parents([node.value]))]
+            if not frozen:
+                continue
+            for t in node.targets:
+                if not isinstance(t, ast.Name):
+                    continue
+                msgs.append("%s:%d %s = … %s 환경 조회 — 게이트를 import 시점에 "
+                            "굳혔다. 웜 인스턴스에서는 **비상정지가 듣지 않는다**. "
+                            "함수로 옮겨 호출 시점에 읽을 것"
+                            % (name, node.lineno, t.id, frozen[0]))
+        for node in body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            fn = node.value.func
+            called = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", "")
+            # 술어를 한 번 불러 두는 스냅샷 — 등록부에 적힌 것만 허용한다.
+            pred_names = set()
+            for g, (_w, (ofile, oattr), _why) in LIVE_GATES.items():
+                if ofile == name:
+                    pred_names.add(oattr)
+            for (rfile, g) in LIVE_GATE_READERS:
+                if rfile != name:
+                    continue
+                for f2 in ast.walk(tree):
+                    if (isinstance(f2, ast.FunctionDef)
+                            and _gate_reads([f2], _parents([f2]))):
+                        pred_names.add(f2.name)
+            if called not in pred_names:
+                continue
+            for t in node.targets:
+                if isinstance(t, ast.Name) and (name, t.id) not in LIVE_GATE_SNAPSHOTS:
+                    msgs.append("%s:%d %s = %s() — 게이트 판정을 모듈 전역에 "
+                                "굳히는 스냅샷이다. 하위호환이 필요하면 "
+                                "scripts/verify.py LIVE_GATE_SNAPSHOTS 에 사유를 적을 것"
+                                % (name, node.lineno, t.id, called))
+        # (b) 읽는 파일과 비교 규칙
+        for gate, node in _gate_reads(body, parents):
+            seen_gates.add(gate)
+            key = (name, gate)
+            if key not in LIVE_GATE_READERS:
+                msgs.append("%s 가 %s 를 읽는다 — scripts/verify.py "
+                            "LIVE_GATE_READERS 에 사유를 적을 것(실활성화 안전선을 "
+                            "읽는 자리는 사람이 알아야 한다)" % (name, gate))
+                continue
+            seen_readers.add(key)
+            if not _in_function(node, parents):
+                continue                       # (a) 가 이미 보고했다
+            want = set(LIVE_GATES[gate][0])
+            got = _rule_words(node, parents, gate)
+            if got is None:
+                msgs.append("%s 의 %s 읽기에 비교가 없다 — 어떤 값을 참으로 보는지 "
+                            "코드에서 확인할 수 없다" % (name, gate))
+            elif got != want:
+                msgs.append("%s 의 %s 판정 규칙 %s 가 등록 규칙 %s 와 다르다 — "
+                            "자리마다 다르면 화면과 코드가 서로 다른 말을 한다"
+                            % (name, gate, sorted(got), sorted(want)))
+    # (c) 소유 술어
+    for gate, (words, (ofile, oattr), why) in sorted(LIVE_GATES.items()):
+        if gate not in seen_gates and (ofile, gate) not in LIVE_GATE_READERS:
+            msgs.append("등록부 잔재(%s 를 읽는 곳이 없다)" % gate)
+        tree = trees.get(ofile)
+        if tree is None:
+            msgs.append("등록부 잔재(소유 파일 없음): %s" % ofile)
+            continue
+        got = _owner_rule(tree, oattr)
+        if got is None:
+            msgs.append("등록부 잔재(%s 에 %s() 가 없다 — %s)" % (ofile, oattr, why))
+            continue
+        reads_env, got_words = got
+        if not reads_env:
+            msgs.append("%s:%s() 가 환경을 읽지 않는다 — 게이트 소유 술어가 아니다"
+                        % (ofile, oattr))
+        if got_words != set(words):
+            msgs.append("%s:%s() 의 규칙 %s 가 등록 규칙 %s 와 다르다"
+                        % (ofile, oattr, sorted(got_words), sorted(words)))
+    # (d) 게이트 현황을 내보내는 자리
+    for (vfile, vsym), why in sorted(LIVE_GATE_VIEWS.items()):
+        tree = trees.get(vfile)
+        if tree is None:
+            msgs.append("등록부 잔재(파일 없음): %s" % vfile)
+            continue
+        view = _view_owners(tree, vsym)
+        if not view:
+            msgs.append("등록부 잔재(%s 에 %s 가 없다 — %s)" % (vfile, vsym, why))
+            continue
+        for gate, (words, owner, _why) in sorted(LIVE_GATES.items()):
+            if gate not in view:
+                msgs.append("%s:%s 에 %s 가 없다 — 현황을 못 내보낸다(%s)"
+                            % (vfile, vsym, gate, why))
+                continue
+            vmod, vattr, vwords = view[gate]
+            if (vmod, vattr) != owner:
+                msgs.append("%s:%s 의 %s 소유자 %s.%s 가 등록 소유자 %s.%s 와 다르다 "
+                            "— 화면이 코드와 다른 판정을 부른다"
+                            % (vfile, vsym, gate, vmod, vattr, owner[0], owner[1]))
+            if vwords != set(words):
+                msgs.append("%s:%s 의 %s 폴백 규칙 %s 가 등록 규칙 %s 와 다르다 — "
+                            "폴백이 규칙을 넓히면 화면이 코드와 다른 말을 한다"
+                            % (vfile, vsym, gate, sorted(vwords), sorted(words)))
+    stale = sorted(set(LIVE_GATE_READERS) - seen_readers)
+    if stale:
+        msgs.append("등록부 잔재(읽는 곳 없음): %s"
+                    % ", ".join("%s 의 %s" % k for k in stale[:8]))
+    for (sfile, sname) in sorted(LIVE_GATE_SNAPSHOTS):
+        tree = trees.get(sfile)
+        if tree is None or not re.search(r"^%s\s*=" % re.escape(sname),
+                                         sources.get(sfile, ""), re.M):
+            msgs.append("등록부 잔재(스냅샷 없음): %s 의 %s" % (sfile, sname))
+    return (not msgs), (" / ".join(msgs[:8]) if msgs
+                        else "게이트 %d개 · 읽는 곳 %d곳 확인"
+                             % (len(LIVE_GATES), len(seen_readers)))
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -1389,6 +1716,7 @@ def main():
     kt_ok, kt_msg = check_keyword_tables(srcs)
     ji_ok, ji_msg = check_judge_inputs(srcs)
     ce_ok, ce_msg = check_counter_exposure(srcs)
+    lg_ok, lg_msg = check_live_gates(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -1408,6 +1736,7 @@ def main():
         {"step": "keyword_tables", "ok": kt_ok, "detail": kt_msg},
         {"step": "judge_inputs", "ok": ji_ok, "detail": ji_msg},
         {"step": "counter_exposure", "ok": ce_ok, "detail": ce_msg},
+        {"step": "live_gates", "ok": lg_ok, "detail": lg_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

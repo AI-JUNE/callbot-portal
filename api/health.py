@@ -205,7 +205,7 @@ def _dep_speech(speech):
     try:
         if not speech.get("speech_live"):
             return _dep("speech", "external_api", False, SIMULATED,
-                        "SPEECH_LIVE=0 — STT/TTS sim 고정(실호출 차단)")
+                        "SPEECH_LIVE OFF — STT/TTS sim 고정(실호출 차단)")
         stt = speech.get("stt", {}).get("active") or speech.get("stt", {}).get("requested")
         tts = speech.get("tts", {}).get("active") or speech.get("tts", {}).get("requested")
         return _dep("speech", "external_api", False, OK, "stt=%s, tts=%s" % (stt, tts))
@@ -218,8 +218,11 @@ def _dep_cpaas():
     live = _env_str("CPAAS_LIVE") == "1"
     provider = _env_str("CPAAS_PROVIDER", "sim") or "sim"
     if not live:
+        # 값을 되비추지 않는다 — 읽은 것은 "게이트가 꺼져 있다"는 판정뿐이다.
+        # 예전 문구(`CPAAS_LIVE=0`)는 `CPAAS_LIVE=true` 처럼 OFF 로 읽히는 다른
+        # 값에서도 "0 이다"라고 단언했다(읽지 않은 값을 적는 것은 거짓 보고다).
         return _dep("cpaas", "external_api", False, SIMULATED,
-                    "CPAAS_LIVE=0 — 실발신 차단(provider=%s)" % provider)
+                    "CPAAS_LIVE OFF — 실발신 차단(provider=%s)" % provider)
     return _dep("cpaas", "external_api", False, OK,
                 "provider=%s, 웹훅 토큰 %s" % (provider, "설정됨" if _bool_env("CPAAS_WEBHOOK_TOKEN") else "미설정"))
 

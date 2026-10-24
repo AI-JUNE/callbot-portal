@@ -246,11 +246,34 @@ class TestGates(Base):
         self.assertEqual(set(g), {"recording_live", "cpaas_live", "speech_live"})
         self.assertTrue(all(v is False for v in g.values()))
 
-    def test_truthy_and_falsy_spellings(self):
-        for raw, want in (("1", True), ("true", True), ("ON", True), ("Yes", True),
-                          ("0", False), ("off", False), ("", False), ("maybe", False)):
+    def test_spellings_follow_the_owner_not_this_route(self):
+        """37차 결함: 이 자리가 **자기 규칙으로** 게이트를 다시 해석했다.
+
+        예전에는 `("1","true","on","yes")` 를 참으로 봤는데 실제로 그 게이트로
+        동작하는 모듈은 `"1"` 정확 일치다 — `SPEECH_LIVE=true` 에서 화면은 ON,
+        코드는 OFF 였다. 이제 기대값을 **소유 술어에게 묻는다**(여기에 규칙을
+        베껴 적으면 같은 결함을 회귀가 다시 지키게 된다).
+        """
+        import _speech_providers as sp
+        for raw in ("1", "true", "TRUE", "ON", "Yes", "yes", "0", "off", "",
+                    "maybe", " 1 "):
             os.environ["SPEECH_LIVE"] = raw
-            self.assertIs(ops_stats.gate_flags()["speech_live"], want, raw)
+            self.assertIs(ops_stats.gate_flags()["speech_live"], sp.is_live(), raw)
+
+    def test_only_1_is_on_for_the_dialing_gate(self):
+        """실발신 게이트는 `"1"` 만 ON — 화면이 코드보다 넓게 읽지 않는다."""
+        for raw, want in (("1", True), ("true", False), ("on", False),
+                          ("yes", False), ("0", False), ("", False)):
+            os.environ["CPAAS_LIVE"] = raw
+            self.assertIs(ops_stats.gate_flags()["cpaas_live"], want, raw)
+
+    def test_recording_gate_keeps_its_own_wider_rule(self):
+        """녹취 게이트는 장부·고지가 쓰는 `("1","true","on")` 그대로 — 좁히지도 않는다."""
+        import _recording_audit as ra
+        for raw in ("1", "true", "ON", "on", "yes", "0", ""):
+            os.environ["RECORDING_LIVE"] = raw
+            self.assertIs(ops_stats.gate_flags()["recording_live"],
+                          ra.recording_live(), raw)
 
     def test_reading_gates_does_not_set_them(self):
         """읽기만 한다 — 조회가 실발신 스위치를 켜면 안 된다."""

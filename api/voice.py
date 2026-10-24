@@ -96,7 +96,34 @@ def greeting(tenant_id=None):
             pass
     return "안녕하세요, AI 상담원입니다. 이 통화는 인공지능이 응대합니다. 무엇을 도와드릴까요?"
 AGENT_SIP = os.environ.get("CALLBOT_AGENT_SIP", "sip:agent@pbx.local")
-LIVE = os.environ.get("CPAAS_LIVE", "0") == "1"
+
+
+def live():
+    """실발신 게이트를 **호출 시점에** 읽는다(기본 OFF).
+
+    규칙은 손대지 않았다 — 다른 라우트와 같은 `"1"` 정확 일치다
+    (`wellbeing.live_mode()`·`caller_id.cpaas_live()`·`_sip_adapter.is_live()`).
+    바뀐 것은 **읽는 시점**뿐이다.
+
+    예전에는 모듈 전역 상수였다. 서버리스 인스턴스는 웜으로 수 시간을 살기
+    때문에 그 사이 환경변수를 바꿔도 이미 뜬 인스턴스에는 반영되지 않는다 —
+    켜는 쪽은 불편할 뿐이지만 **끄는 쪽은 비상정지가 듣지 않는다**
+    (`CPAAS_LIVE` 를 0 으로 내려도 그 인스턴스의 캠페인은 계속
+    `mode="live"` 로 답하고 `GET /api/voice` 도 `live:true` 라고 답한다).
+    게다가 안부·발신번호 라우트는 호출 시점에 읽으므로 **같은 인스턴스
+    안에서 라우트마다 게이트가 엇갈린다**(안부는 501 로 막는데 여기는
+    `live:false`). `_speech_providers.is_live()` 가 같은 이유로 이미 고쳐
+    두고 docstring 에 이유까지 적어 둔 자리인데, 여기만 비켜 가 있었다.
+
+    앞뒤 공백도 버린 뒤에 비교한다 — `CPAAS_LIVE=" 1 "` 하나로 네 라우트가
+    둘씩 갈렸다(`_sip_adapter.is_live()` 의 같은 주석 참조).
+    """
+    return (os.environ.get("CPAAS_LIVE") or "0").strip() == "1"
+
+
+# 하위호환: 모듈 로드 시점 스냅샷. **판정에는 `live()` 를 쓴다**
+# (`_sip_adapter.CPAAS_LIVE` 와 같은 규약).
+LIVE = live()
 
 
 # --------------------------------------------------------------------------
@@ -695,7 +722,7 @@ def trigger_campaign(numbers, scenario="care", meta=None):
     calls = [{"to": n, "from": os.environ.get("CALLBOT_CALLER_ID", "070-0000-0000"),
               "webhook": "/api/voice", "metadata": {"scenario": scenario, **meta},
               "consent_required": True} for n in numbers]
-    if not LIVE:
+    if not live():
         return {"mode": "dry-run(무과금)", "queued": 0, "would_call": len(calls), "calls": calls}
     return {"mode": "live", "queued": len(calls), "calls": calls}
 
@@ -808,10 +835,10 @@ class handler(BaseHTTPRequestHandler):
         q = parse_qs(urlparse(self.path).query)
         rq.set(op=_label(q.get("op", [""])[0], _OPS))
         if q.get("op", [""])[0] == "log":
-            self._send({"ok": True, "live": LIVE, "recent": RECENT, "webhook": "/api/voice", "provider": CPAAS})
+            self._send({"ok": True, "live": live(), "recent": RECENT, "webhook": "/api/voice", "provider": CPAAS})
             return
         self._send({"ok": True, "endpoint": "voice-webhook", "provider": CPAAS,
-                    "live": LIVE, "engine": bool(run_turn), "stt": bool(transcribe),
+                    "live": live(), "engine": bool(run_turn), "stt": bool(transcribe),
                     # 실측 집계(만든 수치가 아니라 이 인스턴스가 실제로 처리한 건수).
                     # 거부·실패가 0 이 아니면 녹음 주소가 가드에 걸리고 있다는 뜻이다.
                     "recording": dict(RECORDING_STATS),
@@ -827,7 +854,7 @@ class handler(BaseHTTPRequestHandler):
         if not _ok:
             _audit_ev(self.headers, self.path, "POST", "deny", _c)
             return _guard.deny(self, _c, _m, rq)
-        _audit_ev(self.headers, self.path, "POST", "allow", 200, live=LIVE)
+        _audit_ev(self.headers, self.path, "POST", "allow", 200, live=live())
         try:
             # 입력검증: 본문 상한(256KiB). CPaaS 이벤트·폼은 작다 — 과대 본문은 413.
             try:

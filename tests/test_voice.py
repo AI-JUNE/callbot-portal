@@ -576,28 +576,38 @@ class TestVoiceML(VoiceBase):
 # ==========================================================================
 class TestSafety(VoiceBase):
     def test_campaign_is_dry_run_by_default(self):
-        voice.LIVE = False
+        os.environ.pop("CPAAS_LIVE", None)
         r = voice.trigger_campaign(["01011112222", "01033334444"], "care")
         self.assertEqual(r["queued"], 0)
         self.assertEqual(r["would_call"], 2)
         self.assertIn("dry-run", r["mode"])
 
     def test_campaign_marks_consent_required(self):
-        voice.LIVE = False
+        os.environ.pop("CPAAS_LIVE", None)
         r = voice.trigger_campaign(["01011112222"])
         self.assertTrue(r["calls"][0]["consent_required"])
 
     def test_campaign_over_http_is_dry_run(self):
-        voice.LIVE = False
+        os.environ.pop("CPAAS_LIVE", None)
         r = post({"op": "campaign", "numbers": ["01011112222"], "scenario": "care"},
                  headers=SAME_ORIGIN)
         self.assertEqual(r.status, 200)
         self.assertEqual(r.json()["queued"], 0)
 
-    def test_live_flag_defaults_off_in_source(self):
-        """기본값이 OFF 인지 소스로 확인 — 실발신은 승인 사항이다."""
-        src = open(os.path.join(ROOT, "api", "voice.py"), encoding="utf-8").read()
-        self.assertIn('os.environ.get("CPAAS_LIVE", "0") == "1"', src)
+    def test_live_flag_defaults_off(self):
+        """기본값이 OFF 이고 `"1"` 만 ON — 실발신은 승인 사항이다.
+
+        예전에는 소스에 특정 한 줄이 있는지로 확인했다(37차에 그 줄이 함수로
+        옮겨지면서 깨졌다). 확인하려는 성질은 **동작**이므로 동작으로 본다.
+        """
+        os.environ.pop("CPAAS_LIVE", None)
+        self.assertFalse(voice.live())
+        for raw in ("0", "", "true", "on", "yes", "01", "maybe"):
+            os.environ["CPAAS_LIVE"] = raw
+            self.assertFalse(voice.live(), raw)
+        for raw in ("1", " 1 "):
+            os.environ["CPAAS_LIVE"] = raw
+            self.assertTrue(voice.live(), raw)
 
     def test_call_log_masks_phone_number(self):
         """회귀: /api/voice?op=log 는 콘솔이 폴링하는 경로다. 원문 번호를 남기지 않는다."""

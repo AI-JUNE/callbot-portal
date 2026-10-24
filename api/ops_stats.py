@@ -155,17 +155,65 @@ def _measured(period):
     return raw
 
 
-def _flag(name):
-    """환경 플래그를 **읽기만** 한다(설정·활성화 없음)."""
+# --------------------------------------------------------------------------
+# 활성화 게이트 현황 (읽기 전용) — 37차 결함 수정
+#
+# 이 자리가 게이트 값을 **자기 규칙으로 다시 해석**하고 있었다
+# (`("1","true","on","yes")`). 그런데 그 게이트로 **실제로 동작하는** 모듈은
+# 다른 규칙을 쓴다 — `CPAAS_LIVE`·`SPEECH_LIVE` 는 `"1"` 정확 일치이고
+# `RECORDING_LIVE` 만 `("1","true","on")` 이다. 어느 쪽과도 같지 않았다
+# (`yes` 는 아무도 받지 않는다).
+#
+# 그래서 `CPAAS_LIVE=true` 를 넣으면 **콘솔 모니터는 「CPAAS_LIVE ON」,
+# 코드는 전부 OFF** 였다. 같은 화면의 발신번호 패널은 `caller_id.cpaas_live()`
+# 를 읽어 「실발신 게이트 OFF」라고 적는다 — 한 화면이 같은 환경변수를 두고
+# 서로 다른 말을 했다. 게이트 현황은 운영자가 "지금 실발신·과금이 일어나는가"를
+# 판단하는 자리다. 거기서 틀리면 켰다고 믿고 안 켜졌거나, 껐다고 믿고 안 꺼진다.
+#
+# 고친 방법: 판정을 **복제하지 않는다**. 그 게이트로 동작하는 모듈의 술어를
+# 부른다(36차 `OPEN_STATES` 와 같은 규약 — 정의는 소유자가 갖는다).
+# 재발 방지는 릴리스 게이트 18단계 `live_gates`.
+# --------------------------------------------------------------------------
+_GATE_OWNERS = {
+    # 게이트: (소유 모듈, 판정 술어, 그 술어의 규칙 낱말 — 폴백도 같은 규칙을 쓴다)
+    "RECORDING_LIVE": ("_recording_audit", "recording_live", ("1", "true", "on")),
+    "CPAAS_LIVE": ("_sip_adapter", "is_live", ("1",)),
+    "SPEECH_LIVE": ("_speech_providers", "is_live", ("1",)),
+}
+
+
+def _owner_flag(name):
+    """소유 모듈의 술어를 **호출 시점에** 읽는다. 못 읽으면 None(모름).
+
+    읽기 전용이다 — 술어는 어느 것도 환경변수를 쓰지 않는다(회귀로 고정).
+    """
+    mod, attr, _ = _GATE_OWNERS[name]
     try:
-        return str(os.environ.get(name, "")).strip().lower() in ("1", "true", "on", "yes")
+        return bool(getattr(__import__(mod), attr)())
+    except Exception:
+        return None
+
+
+def _flag(name):
+    """소유 모듈을 못 불러왔을 때의 폴백 — **그 게이트의 규칙 그대로** 읽는다.
+
+    여기서 규칙을 넓히면(예전의 `"yes"`) 화면이 코드와 다른 말을 한다.
+    환경 조회 자체가 터지면 OFF 로 답한다 — 장애가 스위치를 켜지 않는다.
+    """
+    words = _GATE_OWNERS[name][2]
+    try:
+        return str(os.environ.get(name, "")).strip().lower() in words
     except Exception:
         return False
 
 
 def gate_flags():
     """B146: 활성화 게이트 현황(읽기 전용). 값 변경 없음."""
-    return {n.lower(): _flag(n) for n in GATE_FLAGS}
+    out = {}
+    for n in GATE_FLAGS:
+        v = _owner_flag(n)
+        out[n.lower()] = _flag(n) if v is None else v
+    return out
 
 
 # HTTP 계층 입력검증용 화이트리스트 — 데모 기간 정의와 같은 출처를 쓴다
