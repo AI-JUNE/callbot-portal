@@ -3034,11 +3034,16 @@ function scRows(lines){
   if(!lines||!lines.length)return '<div class="summary">아직 집계된 과금 라인이 없습니다. 이 달에 관측된 실적이 없거나 테넌트 필터에 맞는 줄이 없습니다 — 다른 정산월을 고르거나 테넌트 ID 를 비우고 다시 조회하세요(없는 수치를 만들지 않습니다).</div>';
   return '<table><caption class="sr-only">테넌트 과금 라인</caption><thead><tr><th scope="col">기간</th><th scope="col">테넌트</th><th scope="col">건수</th><th scope="col">과금 단위</th><th scope="col">금액(원)</th><th scope="col">상태</th><th scope="col">비고</th></tr></thead><tbody>'
     +lines.map(function(l){return '<tr><td>'+scEsc(l.period)+'</td><td><code>'+scEsc(l.tenant_id)+'</code></td><td style="text-align:right">'+scNum(l.count)+'</td><td>'+scEsc(l.unit_label||l.unit)+'</td><td style="text-align:right"><b>'+scNum(l.amount_krw)+'</b></td><td>'+scStatusTag(l.status,l.demo)+'</td><td class="hint">'+scEsc(l.note||'')+'</td></tr>';}).join('')+'</tbody></table>';}
+/* 건수 칩 — 단위가 섞이면 한 숫자로 합치지 않는다(38차). 「통화 과금 단위 1,240」+「세션 수 310」 을
+   「건수 1,550」 으로 적으면 과금 수량처럼 보이지만 아무 뜻도 없는 숫자다. 서버가 단위별로 내려준다 */
+function scCountTags(t,units){var by=t.counts_by_unit,ks=by?Object.keys(by):[],u=units||{};
+  if(ks.length)return ks.map(function(k){return '<span class="tag neu">'+scEsc(u[k]||k)+' '+scNum(by[k])+'</span>';}).join('');
+  return (t.count===null||t.count===undefined)?'':'<span class="tag neu">건수 '+scNum(t.count)+'</span>';}
 function scRender(d){SC.d=d;var t=d.totals||{};
   document.getElementById('scSourceTag').textContent=d.demo?'데모 데이터':'출처 '+(d.source||'-');document.getElementById('scCountTag').textContent=scNum(t.lines||0)+'줄';
   var chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span class="tag neu">'+scEsc(d.month)+' 정산</span><span class="tag neu">초안(draft)</span>'
     +(d.demo?'<span class="tag bad">데모 데이터 — 실측 아님</span>':'<span class="tag ok">출처 '+scEsc(d.source)+'</span>')
-    +'<span class="tag neu">테넌트 '+scNum(t.tenants)+'</span><span class="tag neu">건수 '+scNum(t.count)+'</span>'
+    +'<span class="tag neu">테넌트 '+scNum(t.tenants)+'</span>'+scCountTags(t,d.units)
     +'<span class="tag '+(t.amount_complete?'ok':'neu')+'">금액 합계 '+scNum(t.amount_krw)+'원'+(t.amount_complete?'':' · 일부 미확정')+'</span></div>';
   var warn=d.demo?'<div class="summary" style="margin-bottom:10px"><b>데모 데이터입니다.</b> 아래 수치는 실측이 아니며 화면 확인용입니다. 실제 집계는 <code>SETTLEMENT_SOURCE</code> 설정 후 표시됩니다. <b>[승인 필요]</b></div>':'';
   if(d.source_note)warn+='<div class="summary" style="color:var(--red);margin-bottom:6px">'+scEsc(d.source_note)+'</div>';

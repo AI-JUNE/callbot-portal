@@ -30,6 +30,7 @@
 
 사용: python3 scripts/verify.py [--json]
 종료코드 0=통과, 1=실패.
+`--json` 은 콘솔 코드페이지와 무관하게 **UTF-8** 로 나간다(`_emit` 참조).
 """
 from __future__ import annotations
 
@@ -990,6 +991,9 @@ def check_speech_rules(sources):
 #      무게가 다르므로, 사유를 적고 회귀로 고정했다면 둬도 된다.
 #  (c) `KEYWORD_MASKS` 에 적힌 오탐 가림 기호는 그 파일에 **코드로** 있어야 한다
 #      (주석은 배선이 아니다 — 33차 (d)와 같은 규약).
+#  (d) 38차 — 한 파일에서 오탐으로 밝혀진 바깥 낱말(`KEYWORD_DECOY_HOSTS`)이
+#      다른 파일 `match` 표 안에 **조각으로** 들어 있으면 그 파일도 가림을
+#      배선해야 한다(아래 등록부 주석 참조).
 #
 # 범위는 좁다(28·30~33차와 같은 이유 — 과차단되면 사람이 게이트를 끈다):
 # 모듈 전역의 리터럴만 ast 로 보고, **짧은 낱말**(12자 이하·문장부호 없음)이
@@ -1006,7 +1010,10 @@ KEYWORD_TABLES = {
     ("wellbeing.py", "_RULES"):
         ("match", "안부 4항목 점수 규칙 — 부분 일치. 긍정 규칙은 _negated 로 뒤집는다"),
     ("wellbeing.py", "_CRITICAL"):
-        ("match", "위험신호 — 평균과 무관하게 high. 부정을 보지 않는다(과하게 올리는 쪽)"),
+        ("match", "위험신호 — 평균과 무관하게 high. 자해 암시만 부정을 보지 않고"
+                  "(CRITICAL_NO_DENIAL) 나머지는 _DENIAL 로 '없다는 말'을 가린다"),
+    ("wellbeing.py", "_DECOY"):
+        ("mask", "오탐 낱말(커피·열이틀) — 판정 직전에 가린다. 「한숨」은 빼 둔다"),
     ("wellbeing.py", "_LABEL"):
         ("label", "점수별 판정 라벨 — dimensions 근거 표시용"),
     ("_escalation.py", "HANDOFF_KEYWORDS"):
@@ -1038,10 +1045,41 @@ KEYWORD_SHORT = {
 # 오탐 가림 배선 — 사라지면 등록부만 남는다.
 KEYWORD_MASKS = {
     "_eum_request.py": ("_DECOY", "def _mask_decoys"),
-    "wellbeing.py": ("_POS_IDIOM", "def _negated"),
+    "wellbeing.py": ("_POS_IDIOM", "def _negated",
+                     "_DECOY", "_DENIAL", "def judge_text"),
 }
+# (d) 38차 — **오탐은 한 번 알면 전부에 적용된다.**
+#     34차가 `_eum_request` 에서 「커**피를**」·「한**숨을**」·「**무사고**」를
+#     가렸지만 `wellbeing._RULES` 의 `피가` 는 그대로 남아, 38차까지
+#     「커피가 식었어요」가 **거동 곤란·risk high** 로 나갔다. 같은 오탐을
+#     파일마다 다시 발견하게 두는 것이 결함이다 — 아래 바깥 낱말이 어느
+#     `match` 표 안에 **조각으로** 들어 있으면 그 파일도 가림을 배선해야 한다.
+#     판정: 조각 W 가 (바깥 낱말 + 조사) 안에 들어가고 W 가 바깥 낱말을
+#     포함하지 않으면 조각이다(`한숨도 못` 처럼 바깥 낱말을 통째로 품은
+#     낱말은 일부러 그 말을 보는 것이므로 오탐이 아니다).
+KEYWORD_DECOY_HOSTS = {
+    "커피": "「커피가」·「커피를」 안에 `피`(출혈)가 숨는다",
+    "한숨": "「한숨을」·「한숨이」 안에 `숨`(호흡곤란)이 숨는다",
+    "무사고": "「무사고」 안에 `사고`가 숨는다",
+    "돈가스": "「돈가스」 안에 `돈`(금전문제)이 숨는다",
+    "돈까스": "「돈까스」 안에 `돈`(금전문제)이 숨는다",
+    "열이틀": "「열이틀」 안에 `열이`(발열)가 숨는다",
+    "열이레": "「열이레」 안에 `열이`(발열)가 숨는다",
+}
+KW_PARTICLES = ("", "가", "를", "을", "이", "은", "도", "만", "과", "와", "에", "로")
 KW_MAX_LEN = 12
 RX_KW_PUNCT = re.compile(r"[?!.…·]")
+
+
+def _decoy_hosts_for(word):
+    """이 낱말이 **조각으로** 숨는 바깥 낱말들."""
+    out = []
+    for host in sorted(KEYWORD_DECOY_HOSTS):
+        if host in word:
+            continue                           # 바깥 낱말을 품었으면 의도된 일치
+        if any(word in (host + p) for p in KW_PARTICLES):
+            out.append(host)
+    return out
 
 
 def _keyword_tables(text):
@@ -1072,8 +1110,15 @@ def _keyword_tables(text):
 
 def check_keyword_tables(sources):
     msgs, seen, shorts = [], set(), set()
+    hosts_used = set()
     for name, text in sorted(sources.items()):
-        for symbol, words in sorted(_keyword_tables(text).items()):
+        tables = _keyword_tables(text)
+        # 이 파일이 가리는 바깥 낱말(쓰임이 mask 인 표의 낱말 전부)
+        masked = set()
+        for symbol, words in tables.items():
+            if KEYWORD_TABLES.get((name, symbol), ("", ""))[0] == "mask":
+                masked.update(words)
+        for symbol, words in sorted(tables.items()):
             key = (name, symbol)
             if key not in KEYWORD_TABLES:
                 msgs.append("%s:%s (한글 낱말표 — scripts/verify.py KEYWORD_TABLES 에 "
@@ -1089,6 +1134,19 @@ def check_keyword_tables(sources):
                     msgs.append("%s:%s 의 한글 1글자 낱말 「%s」 — 다른 낱말 안에서 "
                                 "걸린다(33·34차 결함의 모양). KEYWORD_SHORT 에 사유를 "
                                 "적거나 어절·조사 꼴로 바꿀 것" % (name, symbol, w))
+            for w in sorted(set(words)):
+                for host in _decoy_hosts_for(w):
+                    hosts_used.add(host)
+                    if host not in masked:
+                        msgs.append("%s:%s 의 「%s」 는 「%s」 안에서도 걸린다 — %s. "
+                                    "이미 다른 파일에서 오탐으로 밝혀진 낱말이다"
+                                    "(34·38차). 이 파일의 mask 표에 「%s」 를 넣을 것"
+                                    % (name, symbol, w, host,
+                                       KEYWORD_DECOY_HOSTS[host], host))
+    stale_hosts = sorted(set(KEYWORD_DECOY_HOSTS) - hosts_used)
+    if stale_hosts:
+        msgs.append("오탐 기록부 잔재(조각을 쓰는 match 표가 없다): %s"
+                    % ", ".join(stale_hosts))
     stale = sorted(set(KEYWORD_TABLES) - seen)
     if stale:
         msgs.append("등록부 잔재: %s" % ", ".join("%s:%s" % k for k in stale))
@@ -1101,8 +1159,8 @@ def check_keyword_tables(sources):
             if symbol not in code:
                 msgs.append("%s 의 오탐 가림 기호 %s 가 없다" % (fname, symbol))
     return (not msgs), (" / ".join(msgs) if msgs
-                        else "한글 낱말표 %d개 확인(1글자 등록 %d건)"
-                             % (len(seen), len(shorts)))
+                        else "한글 낱말표 %d개 확인(1글자 등록 %d건 · 오탐 기록부 %d건)"
+                             % (len(seen), len(shorts), len(KEYWORD_DECOY_HOSTS)))
 
 
 # --------------------------------------------------------------------------
@@ -1691,6 +1749,32 @@ def check_live_gates(sources):
                              % (len(LIVE_GATES), len(seen_readers)))
 
 
+def _emit(text, as_json=False):
+    """게이트 출력 — 소비자가 둘이다(사람이 읽는 콘솔 · JSON 을 파싱하는 기계).
+
+    38차 결함: `--json` 을 콘솔 인코딩으로 내보내고 있었다. Windows 콘솔은
+    cp949 라서 한글 `detail` 이 cp949 바이트로 나가고, UTF-8 로 읽는 소비자
+    (CI·`tests/test_live_gates.py`)는 `UnicodeDecodeError` 로 **게이트 결과를
+    아예 읽지 못했다**. JSON 은 RFC 8259 가 UTF-8 로 못박았으므로 콘솔
+    코드페이지와 무관하게 UTF-8 로 쓴다.
+
+    사람용 출력은 콘솔 인코딩을 그대로 쓴다(cp949 콘솔에서 한글이 보여야
+    한다). 다만 표현 못 하는 글자가 섞여도 게이트가 트레이스백으로 죽지는
+    않게 한다 — 게이트가 침묵하는 것보다 글자가 깨지는 것이 낫다.
+    """
+    buf = getattr(sys.stdout, "buffer", None)
+    if buf is None:                 # 가로챈 stdout(StringIO 등) — 그대로 쓴다
+        sys.stdout.write(text + "\n")
+        return
+    enc = "utf-8" if as_json else (getattr(sys.stdout, "encoding", None) or "utf-8")
+    try:
+        sys.stdout.flush()
+    except Exception:               # pragma: no cover - 닫힌 스트림
+        pass
+    buf.write((text + "\n").encode(enc, "backslashreplace"))
+    buf.flush()
+
+
 def main():
     ap = argparse.ArgumentParser(description="릴리스 게이트")
     ap.add_argument("--json", action="store_true")
@@ -1740,13 +1824,14 @@ def main():
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:
-        print(json.dumps({"ok": ok, "steps": steps}, ensure_ascii=False, indent=2))
+        _emit(json.dumps({"ok": ok, "steps": steps}, ensure_ascii=False, indent=2),
+              as_json=True)
     else:
         for s in steps:
-            print("%s %-14s %s" % ("PASS" if s["ok"] else "FAIL",
+            _emit("%s %-14s %s" % ("PASS" if s["ok"] else "FAIL",
                                    s["step"], s["detail"]))
-        print("---")
-        print("통과" if ok else "실패")
+        _emit("---")
+        _emit("통과" if ok else "실패")
     return 0 if ok else 1
 
 

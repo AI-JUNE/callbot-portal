@@ -4,6 +4,8 @@
 무엇을 하는가 — 기간(정산월)·테넌트·건수·과금 단위·금액을 한 줄씩 놓는다. AICC-Core 의
 과금 단위(`src/billing/usage.ts: BillableUnit`)와 같은 이름을 쓰고, 금액은 **아는 값만** 적는다.
 없는 값은 0 이 아니라 `null` 이다(0 원도 주장이고, 틀린 주장이 청구서로 가면 분쟁이 된다).
+같은 이유로 **합계는 같은 단위끼리만** 낸다 — 통화 과금 단위와 세션 수를 한 숫자로 더하면
+뜻이 없다(`totals`: `counts_by_unit`·`units_mixed`, 38차).
 
 출처 스위치 `SETTLEMENT_SOURCE` (기본 미설정)
   - 미설정 · `demo`  : **데모 데이터**. 모든 줄에 `demo=true`·비고 「데모 데이터」가 붙고 응답 머리에도
@@ -99,9 +101,27 @@ def ledger_lines(period, buckets, tenant_id=None):
 
 
 def totals(lines):
+    """합계 — **같은 단위끼리만** 더한다(38차 결함 수정).
+
+    그 전까지 `count` 는 모든 줄의 건수를 통째로 더했다. 줄의 단위는 서로
+    다르다(통화 과금 단위 ·세션 수 ·토큰 수 ·STT 초…) — 데모 표에서는
+    「건수 2,655」가 1,240 통화단위 + 310 세션 + 865 통화단위 + … 를 섞은
+    **아무 뜻도 없는 숫자**였는데, 정산 화면에 과금 수량처럼 서 있었다.
+    청구 근거 화면의 숫자는 틀리면 분쟁이 된다(이 모듈이 금액을 0 으로
+    채우지 않는 것과 같은 이유).
+
+    이제 단위별 합계(`counts_by_unit`)를 내보내고, 단위가 섞이면 `count` 는
+    0 이 아니라 **null** 이다(더할 수 없는 것에는 합계가 없다). 단위가 하나뿐인
+    표에서는 종전처럼 그 합계가 들어간다.
+    """
     known = [l["amount_krw"] for l in lines if l["amount_krw"] is not None]
+    by_unit = {}
+    for l in lines:
+        by_unit[l["unit"]] = by_unit.get(l["unit"], 0) + int(l["count"])
     return {"lines": len(lines), "tenants": len({l["tenant_id"] for l in lines}),
-            "count": sum(l["count"] for l in lines),
+            "count": (sum(by_unit.values()) if len(by_unit) <= 1 else None),
+            "counts_by_unit": by_unit,
+            "units_mixed": len(by_unit) > 1,
             "amount_krw": sum(known) if known else None,
             "amount_complete": bool(lines) and len(known) == len(lines)}
 

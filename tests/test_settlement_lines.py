@@ -135,8 +135,9 @@ class Pure(Base):
         out = sl.build("2026-08", {"SETTLEMENT_SOURCE": "ledger"}, buckets=[])
         self.assertFalse(out["demo"])
         self.assertEqual(out["lines"], [])
-        self.assertEqual(out["totals"], {"lines": 0, "tenants": 0, "count": 0, "amount_krw": None,
-                                         "amount_complete": False})
+        self.assertEqual(out["totals"], {"lines": 0, "tenants": 0, "count": 0,
+                                         "counts_by_unit": {}, "units_mixed": False,
+                                         "amount_krw": None, "amount_complete": False})
 
     def test_ledger_lines_amount_only_when_known(self):
         buckets = [{"tenant_id": "acme", "calls": 3, "minutes": 2.2, "revenue_krw": 1000},
