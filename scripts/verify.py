@@ -24,6 +24,7 @@
  16. judge_inputs — 판정 함수에 **잘린 글**(`s[:N]`)을 넘기지 않는가
  17. counter_exposure— 손실·오류 카운터를 세어 두고 응답에 싣는가(등록부 대조)
  18. live_gates    — `*_LIVE` 안전선을 요청마다 읽고 같은 규칙으로 판정하는가
+ 19. stale_state   — '진행 중'을 뜻하는 저장소에 시간 만료가 있고 배선돼 있는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -1329,11 +1330,21 @@ COUNTER_EXPOSURE = {
     ("_recording_audit.py", "stats"):
         ("ops_stats.py", "RECORDING_KEYS",
          "녹취 장부 손실 — /api/ops_stats 의 recording 블록"),
+    # 39차: 실측 수집기도 같은 규약으로 넣는다. 이 자리가 게이트 밖에 있던 동안
+    # `stale_opens`(종료 이벤트 유실로 만료시킨 관측치)가 새로 생겼다 —
+    # 노출 목록은 `_measured()` 의 폴백 스키마와 같은 등록부를 쓴다.
+    ("_call_metrics.py", "stats"):
+        ("ops_stats.py", "MEASURED_COLLECTOR_KEYS",
+         "실측 수집기 손실·오류 — /api/ops_stats 의 measured.collector 블록"),
 }
 
 # 손실·오류를 뜻하는 이름(앞 또는 뒤 토큰). `dropped_waiting`(앞)·
 # `audit_dropped`(뒤) 가 둘 다 걸리도록 양쪽을 본다.
-_LOSS_WORDS = ("dropped", "errors", "evicted", "failed", "lost", "skipped")
+# 39차에 `expired`·`stale` 을 넣었다 — **시간 만료도 손실이다**(종료 이벤트를
+# 못 받아 만료시킨 관측치·아무도 집어가지 않아 이탈 처리한 티켓). 그 숫자가
+# 보이지 않으면 운영자는 집계가 줄어든 이유를 알 수 없다.
+_LOSS_WORDS = ("dropped", "errors", "evicted", "failed", "lost", "skipped",
+               "expired", "stale")
 
 
 def _is_loss_counter(key):
@@ -1749,6 +1760,165 @@ def check_live_gates(sources):
                              % (len(LIVE_GATES), len(seen_readers)))
 
 
+# --------------------------------------------------------------------------
+# 19) 진행 중 상태의 시간 만료 (39차) — **상한만으로는 거짓말이 멈추지 않는다**
+#
+# `mem_caps`(12단계)는 저장소가 **무한히 자라지 않는가**를 본다. 그런데 "지금
+# 진행 중"을 뜻하는 저장소는 상한을 지켜도 거짓을 말할 수 있다 — 끝난 지 몇
+# 시간 지난 항목이 상한 안에 남아 있으면 그 숫자는 **현재 상태로 읽힌다**.
+#   · `_call_metrics._Store._open` → `calls.in_progress`(콘솔 「진행 중」 타일)
+#   · `_escalation.EscalationQueue._tickets` → `stats().queued`(「대기」 타일)
+# 둘 다 39차에 실제로 틀려 있었다. 종료 웹훅이 유실되거나(앞) 집어가는 배선이
+# 아직 없으면(뒤) 그 값은 인스턴스가 사는 동안 **단조 증가**한다. 30차가
+# `voice._Session` 에 `SESSION_TTL` 을 준 뒤에도 같은 눈금을 쓰는 두 저장소는
+# 받지 못했다 — 또 한 번의 '절반만 지켜진 규칙'이다.
+#
+# 리뷰에서 보이지 않는 모양이다. 만료는 **코드에 없는 것**이고, 테스트는 보통
+# 짧은 시간 안에서 돌아 평상시에는 답이 같다.
+#
+# 그래서 센다(등록된 저장소만):
+#  (a) 상한 등록부(`MEM_STORES`)에도 올라 있어야 한다 — 상한과 만료는 둘 다 필요하다.
+#  (b) 만료 기준 기호가 모듈 전역에 **양수**로 있어야 한다.
+#  (c) 그 기호를 읽는 **정리 함수**가 있어야 한다(판독 래퍼 한 홉까지 따라간다).
+#  (d) 그 정리 함수가 같은 파일의 **다른 자리에서 실제로 불려야** 한다
+#      (아무도 부르지 않는 정리 함수는 만료가 없는 것과 같다).
+#
+# 범위는 좁다(28·30~37차와 같은 이유 — 과차단되면 사람이 게이트를 끄고, 그러면
+# 게이트가 없는 것과 같다): 등록부에 적은 저장소만 보고, 만료 **값**이 적절한지는
+# 보지 않으며(정책이다), 호출 시점 판독(환경변수)은 `live_gates` 와 달리 요구하지
+# 않는다. 새 '진행 중' 저장소를 만들면서 등록을 빼면 걸리지 않는다(자동 수집은
+# 과차단이라 두지 않았다 — 한계로 적는다).
+# --------------------------------------------------------------------------
+STALE_STORES = {
+    ("voice.py", "_mem"):
+        ("SESSION_TTL", "sweep",
+         "통화 세션 — 마지막 접촉 후 만료(30차). 만료가 없으면 통화 원문의 "
+         "보관 기간이 '인스턴스 수명'이 된다"),
+    ("_call_metrics.py", "_Store._open"):
+        ("OPEN_TTL_SEC", "_sweep_open",
+         "진행 중 통화 관측치 — `calls.in_progress` 가 '지금 통화 중'을 말해야 "
+         "한다. 종료 웹훅 유실분이 영구히 남으면 동시 통화량이 과대보고된다"),
+    ("_escalation.py", "EscalationQueue._tickets"):
+        ("OPEN_TTL_SEC", "sweep",
+         "미처리 전환 티켓 — `queued` 가 '지금 기다리는 고객'을 말해야 한다. "
+         "배정 배선이 없는 동안 모든 티켓이 대기로 남았다"),
+}
+
+
+def _ast_names(node):
+    import ast
+    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+
+
+def _ast_called(node):
+    """호출된 이름들 — `f()`·`self.f()`·`cls.f()` 를 모두 이름으로 센다."""
+    import ast
+    out = set()
+    for n in ast.walk(node):
+        if not isinstance(n, ast.Call):
+            continue
+        f = n.func
+        if isinstance(f, ast.Name):
+            out.add(f.id)
+        elif isinstance(f, ast.Attribute):
+            out.add(f.attr)
+    return out
+
+
+def _positive_const(tree, symbol):
+    """모듈 전역 `SYMBOL = <양수>` 인가(없으면 None)."""
+    import ast
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == symbol for t in node.targets):
+            continue
+        v = node.value
+        if (isinstance(v, ast.Constant) and isinstance(v.value, (int, float))
+                and not isinstance(v.value, bool)):
+            return v.value > 0
+        return False
+    return None
+
+
+def check_stale_state(sources):
+    import ast
+    msgs, seen = [], set()
+    for (fname, store), (ttl, sweep, why) in sorted(STALE_STORES.items()):
+        text = sources.get(fname)
+        if text is None:
+            msgs.append("등록부 잔재(파일 없음): %s" % fname)
+            continue
+        try:
+            tree = ast.parse(text)
+        except Exception:                      # noqa: BLE001
+            continue                           # 문법 오류는 py_compile 게이트가 잡는다
+        if store not in {n for n, _l in _mem_targets(text)}:
+            msgs.append("등록부 잔재(저장소 없음): %s 의 %s" % (fname, store))
+            continue
+        seen.add((fname, store))
+        if (fname, store) not in MEM_STORES:
+            msgs.append("%s 의 %s 는 상한 등록부(MEM_STORES)에도 있어야 한다 — "
+                        "상한과 만료는 둘 다 필요하다(%s)" % (fname, store, why))
+        pos = _positive_const(tree, ttl)
+        if pos is None:
+            msgs.append("%s 에 만료 기준 %s 가 없다 — 등록부와 코드가 어긋났다(%s)"
+                        % (fname, ttl, why))
+            continue
+        if not pos:
+            msgs.append("%s 의 %s 가 양수가 아니다 — 만료가 사라지는 쪽으로 "
+                        "실패하지 않게 한다(%s)" % (fname, ttl, why))
+        reads = _reads_symbol(tree, sweep, ttl)
+        if reads is None:
+            msgs.append("%s 에 정리 함수 %s() 가 없다 — 상한만으로는 '진행 중'이 "
+                        "거짓을 말한다(%s)" % (fname, sweep, why))
+            continue
+        if not reads:
+            msgs.append("%s 의 %s() 가 만료 기준 %s 를 읽지 않는다(%s)"
+                        % (fname, sweep, ttl, why))
+        if not _called_elsewhere(tree, sweep):
+            msgs.append("%s 의 %s() 를 아무도 부르지 않는다 — 부르지 않는 정리 "
+                        "함수는 만료가 없는 것과 같다(%s)" % (fname, sweep, why))
+    stale = sorted(set(STALE_STORES) - seen)
+    return (not msgs), (" / ".join(msgs[:8]) if msgs
+                        else "진행 중 저장소 %d개 만료 확인" % len(seen))
+
+
+def _reads_symbol(tree, func_name, symbol):
+    """`func_name()` 이 `symbol` 을 읽는가. 없으면 None.
+
+    판독 래퍼를 **한 홉**까지 따라간다(`_sweep_open` → `open_ttl()` →
+    `OPEN_TTL_SEC`). 더 깊이 따라가지 않는다 — 과차단보다 얕은 그물이 낫고,
+    동작은 `tests/test_stale_state.py` 의 회귀가 지킨다.
+    """
+    import ast
+    funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+    targets = [f for f in funcs if f.name == func_name]
+    if not targets:
+        return None
+    by_name = {}
+    for f in funcs:
+        by_name.setdefault(f.name, []).append(f)
+    for f in targets:
+        if symbol in _ast_names(f):
+            return True
+        for callee in _ast_called(f):
+            if any(symbol in _ast_names(g) for g in by_name.get(callee, [])):
+                return True
+    return False
+
+
+def _called_elsewhere(tree, func_name):
+    """같은 파일의 **다른 함수**가 `func_name` 을 부르는가."""
+    import ast
+    for f in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
+        if f.name == func_name:
+            continue
+        if func_name in _ast_called(f):
+            return True
+    return False
+
+
 def _emit(text, as_json=False):
     """게이트 출력 — 소비자가 둘이다(사람이 읽는 콘솔 · JSON 을 파싱하는 기계).
 
@@ -1801,6 +1971,7 @@ def main():
     ji_ok, ji_msg = check_judge_inputs(srcs)
     ce_ok, ce_msg = check_counter_exposure(srcs)
     lg_ok, lg_msg = check_live_gates(srcs)
+    ss_ok, ss_msg = check_stale_state(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -1821,6 +1992,7 @@ def main():
         {"step": "judge_inputs", "ok": ji_ok, "detail": ji_msg},
         {"step": "counter_exposure", "ok": ce_ok, "detail": ce_msg},
         {"step": "live_gates", "ok": lg_ok, "detail": lg_msg},
+        {"step": "stale_state", "ok": ss_ok, "detail": ss_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

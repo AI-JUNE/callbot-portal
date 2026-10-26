@@ -72,9 +72,13 @@ DEMO_PERIODS = {
 # 않으면 센 것이 아니다(26·31·35차가 같은 자리에서 반복한 규약이고, 바로 옆
 # `RECORDING_KEYS` 는 `audit_dropped` 를 이미 내보내고 있었다 — 절반만 지켜진
 # 규칙이다). 재발 방지는 릴리스 게이트 17단계 `counter_exposure`.
+# 39차: `expired`(만료로 이탈 처리한 미처리 티켓)·`open_ttl_sec`(그 기준) 추가.
+# 전이 배선이 없는 동안 **모든** 티켓이 `queued` 로 남아 대기 숫자가 단조 증가했다 —
+# 이제 만료되므로, 어디로 갔는지 말하지 않으면 숫자가 조용히 줄어든 것으로 읽힌다.
 ESCALATION_KEYS = ("queued", "assigned", "resolved", "abandoned", "total",
                    "dropped", "dropped_waiting", "audit_dropped",
-                   "summary_dropped", "record_errors")
+                   "summary_dropped", "record_errors", "expired",
+                   "open_ttl_sec")
 # 숫자가 아닌 '성질' 칸 — 소스를 못 읽어도 구현의 성질은 변하지 않으므로 기본값이 있다.
 ESCALATION_META = {"scope": "instance", "volatile": True}
 # 31차: 녹취 장부도 상한이 생겼다(인스턴스 메모리). 버린 건수를 내보내지 않으면
@@ -121,6 +125,15 @@ def _norm_stats(raw, keys, meta=None):
 MEASURED_CALL_KEYS = ("total", "bot_completed", "transferred", "abandoned",
                       "failed", "in_progress")
 MEASURED_RATE_KEYS = ("auto_rate", "transfer_rate", "avg_duration_sec", "avg_turns")
+# 39차: 수집기 카운터 노출 목록. `_call_metrics.stats()` 가 만드는 칸과 **같아야**
+# 하고, 어긋나면 릴리스 게이트 `counter_exposure` 가 실패한다. 이 자리가 그
+# 게이트 밖에 있던 동안 `stale_opens`(종료 이벤트 유실로 만료시킨 관측치)처럼
+# 새로 세기 시작한 손실이 응답에서 빠질 수 있었다 — 세어 두고 보여주지 않으면
+# 센 것이 아니다(26·31·35·36차와 같은 규약).
+MEASURED_COLLECTOR_KEYS = ("errors", "orphan_finishes", "dropped", "stale_opens",
+                           "retention_sec", "open_ttl_sec", "scope")
+# 숫자가 아닌 '성질' 칸 — 수집기를 못 읽어도 구현의 성질은 변하지 않는다.
+MEASURED_COLLECTOR_DEFAULTS = {"scope": "instance"}
 
 # 소비자가 '봇 자동완결'을 과대해석하지 않도록 판정 정의를 함께 싣는다.
 MEASURED_DEFINITION = {
@@ -147,8 +160,8 @@ def _measured(period):
                 "window_sec": 0, "partial": True,
                 "calls": {k: 0 for k in MEASURED_CALL_KEYS},
                 **{k: None for k in MEASURED_RATE_KEYS},
-                "collector": {"errors": 0, "orphan_finishes": 0, "dropped": 0,
-                              "retention_sec": 0, "scope": "instance"},
+                "collector": {k: MEASURED_COLLECTOR_DEFAULTS.get(k, 0)
+                              for k in MEASURED_COLLECTOR_KEYS},
                 "definition": dict(MEASURED_DEFINITION)}
     raw = dict(raw)
     raw["definition"] = dict(MEASURED_DEFINITION)
@@ -589,11 +602,16 @@ if __name__ == "__main__":     # pragma: no cover
         _b.__import__ = _real
     assert u["data_source"] == "unavailable" and u["calls"]["total"] == 0
     assert all(u[k] is None for k in MEASURED_RATE_KEYS)
+    # 수집기가 죽은 폴백도 **같은 칸 구성**이다(콘솔이 없는 칸을 읽지 않는다)
+    assert set(u["collector"]) == set(MEASURED_COLLECTOR_KEYS), u["collector"]
 
     # --- 36차: 손실·오류 카운터 노출 ---
     for k in ("audit_dropped", "summary_dropped", "dropped", "dropped_waiting",
-              "record_errors"):
+              "record_errors", "expired"):
         assert k in ESCALATION_KEYS, k
+    # 39차: 실측 수집기 카운터도 같은 규약(게이트 `counter_exposure` 가 강제한다)
+    import _call_metrics as _cm
+    assert set(_cm.SINK.stats()) == set(MEASURED_COLLECTOR_KEYS), _cm.SINK.stats()
 
     # --- 36차: 전환 티켓 조회 ---
     import _escalation as _esc

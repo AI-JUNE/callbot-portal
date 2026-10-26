@@ -23,6 +23,20 @@
   수치가 합쳐지지 않는다. 그래서 이 값은 **회계·SLA 근거가 아니라 관측치**다.
   영속 집계(공유 저장소·실 CTI)는 [승인 필요] — 교체점은 `SINK` 하나다.
 
+2026-10-26(39차) 결함 수정 — **진행 중 관측치에 시간 만료가 없었다.**
+`finish()` 는 CPaaS 종료 웹훅이 와야 불린다. 그 웹훅이 유실되거나(네트워크·
+재시도 실패) 통화 도중 인스턴스가 바뀌면 그 관측치는 `_open` 에 **영구히**
+남았다 — 상한(`MAX_OPEN`) 축출만 있었고 그것도 500건을 다 채운 뒤의 일이다.
+그래서 `calls.in_progress` 는 웜 인스턴스가 사는 동안 **단조 증가**했고,
+콘솔 「진행 중」 타일은 그 값을 **지금 통화 중인 건수**로 그렸다(수 시간 전에
+끝난 통화가 거기 섞여 있다). 운영자가 동시 통화량을 보는 자리에서 틀리면
+회선·상담 인력 판단이 틀어진다 — 31차가 `voice._Session` 에 `SESSION_TTL` 을
+준 것과 같은 결함이고, 같은 눈금을 쓰는 이쪽만 받지 못했다(37차 보고서가
+다음 후보로 적어 둔 자리다).
+→ `OPEN_TTL_SEC`(마지막 접촉 후) 만료. 만료분을 **종료 통화로 옮기지 않는다** —
+  지속시간·종료사유를 지어내야 하기 때문이다(`orphan_finishes` 와 같은 판단:
+  모르는 것은 세기만 한다). 버린 사실은 `stale_opens` 로 드러낸다.
+
 사용:
     import _call_metrics as cm
     cm.start("call-1", scenario="refund")
@@ -51,10 +65,26 @@ MAX_RECORDS = 2000          # 메모리 상한(오래된 것부터 버린다)
 MAX_OPEN = 500              # 진행 중 통화 상한(종료 이벤트 유실 대비)
 RETENTION_SEC = 30 * 86400  # 보관 상한 — 이보다 오래된 관측치는 버린다
 MAX_TURNS = 500             # 턴 카운터 상한(비정상 루프 방어)
+# 진행 중 관측치 만료(초, 마지막 접촉 기준). `voice.SESSION_TTL` 과 **같은 눈금** —
+# 통화는 이보다 길지 않고, 세션이 이미 만료된 통화를 '진행 중'으로 셀 수는 없다.
+OPEN_TTL_SEC = 1800.0
 
 
 def _now():
     return time.time()
+
+
+def open_ttl():
+    """진행 중 관측치 만료 한도. **호출 시점에** 읽는다(배포 후 조정이 반영된다).
+
+    잘못된 값으로 만료가 **사라지는** 쪽으로 실패하지 않는다 — 해석 불가·0 이하는
+    기본값으로 되돌린다(`voice._session_limit` 와 같은 규약).
+    """
+    try:
+        v = float((os.environ.get("CALLBOT_METRICS_OPEN_TTL") or "").strip())
+        return v if v > 0 else OPEN_TTL_SEC
+    except Exception:
+        return OPEN_TTL_SEC
 
 
 def _salt():
@@ -98,53 +128,87 @@ class _Store(object):
     """관측 저장소. 인스턴스 메모리 · 락으로 보호."""
 
     def __init__(self):
-        self._lock = threading.Lock()
+        # 재진입 락 — `summary()` 가 락 안에서 `stats()` 를 부른다(카운터를
+        # 내보내는 자리를 한 곳으로 모으기 위해). 일반 Lock 이면 자기 자신에
+        # 걸려 멈춘다.
+        self._lock = threading.RLock()
         self._open = {}        # ref -> 진행 중 통화
         self._done = []        # 종료된 통화(오래된 것이 앞)
         self._since = None     # 첫 관측 시각(관측 창 계산용)
         self.errors = 0        # 수집 중 삼킨 예외 수(드러낸다)
         self.orphan_finishes = 0   # start 없이 도착한 종료 이벤트
         self.dropped = 0       # 상한·보관기간으로 버린 관측치
+        self.stale_opens = 0   # 종료 이벤트가 오지 않아 만료시킨 진행 중 관측치
 
     # -- 기록 -------------------------------------------------------------
+    def _sweep_open(self, now):
+        """만료된 진행 중 관측치 정리. **락을 들고 있는 상태에서** 부른다.
+
+        종료 통화(`_done`)로 옮기지 않는다 — 종료 시각·사유·지속시간을 지어내야
+        하기 때문이다(시작을 못 본 종료를 세지 않는 `orphan_finishes` 와 같은
+        판단: 모르는 것은 집계가 아니라 카운터로 남긴다).
+        """
+        ttl = open_ttl()
+        for ref in [k for k, r in self._open.items()
+                    if now - self._seen(r) > ttl]:
+            self._open.pop(ref, None)
+            self.stale_opens += 1
+
+    @staticmethod
+    def _seen(rec):
+        """마지막 접촉 시각. 옛 레코드(seen 없음)는 시작 시각으로 본다."""
+        try:
+            return float(rec.get("seen", rec.get("started")) or 0.0)
+        except Exception:              # pragma: no cover - 외부가 넣은 값 방어
+            return 0.0
+
     def start(self, call_id, scenario=None, tenant=None, ts=None):
         ref = digest(call_id)
         t = float(ts if ts is not None else _now())
         with self._lock:
             if self._since is None or t < self._since:
                 self._since = t
+            # 만료분을 먼저 걷는다 — 끝난 지 오래된 관측치가 상한 자리를 차지한
+            # 채 **방금 걸려 온 통화**를 축출하지 않게 한다.
+            self._sweep_open(t)
             cur = self._open.get(ref)
             if cur is not None:
                 # answered 재배달 — 새 통화로 세지 않는다(중복 집계 금지).
+                cur["seen"] = t
                 return ref
             if len(self._open) >= MAX_OPEN:
                 oldest = min(self._open, key=lambda k: self._open[k]["started"])
                 self._open.pop(oldest, None)
                 self.dropped += 1
-            self._open[ref] = {"started": t, "turns": 0, "outcome": None,
+            self._open[ref] = {"started": t, "seen": t, "turns": 0, "outcome": None,
                                "scenario": _label(scenario), "tenant": _label(tenant)}
         return ref
 
-    def mark_turn(self, call_id):
+    def mark_turn(self, call_id, ts=None):
         ref = digest(call_id)
+        t = float(ts if ts is not None else _now())
         with self._lock:
             rec = self._open.get(ref)
             if rec is None:
                 return False
             if rec["turns"] < MAX_TURNS:
                 rec["turns"] += 1
+            # 말이 오가는 동안은 진행 중이다 — 긴 통화를 만료시키지 않는다.
+            rec["seen"] = t
             return True
 
-    def mark_outcome(self, call_id, outcome):
+    def mark_outcome(self, call_id, outcome, ts=None):
         """종료 전에 확정되는 사유(예: 상담사 전환)를 미리 못 박는다."""
         if outcome not in OUTCOMES:
             raise ValueError("미지의 outcome: %r" % (outcome,))
         ref = digest(call_id)
+        t = float(ts if ts is not None else _now())
         with self._lock:
             rec = self._open.get(ref)
             if rec is None:
                 return False
             rec["outcome"] = outcome
+            rec["seen"] = t
             return True
 
     def finish(self, call_id, outcome=None, ts=None):
@@ -187,15 +251,38 @@ class _Store(object):
             self.dropped += len(self._done) - len(keep)
             self._done = keep
 
+    def stats(self):
+        """수집기 카운터 — **세어 둔 것을 내보내는 한 자리**.
+
+        노출 목록은 `ops_stats.MEASURED_COLLECTOR_KEYS` 이고, 둘이 어긋나면
+        릴리스 게이트 `counter_exposure` 가 실패한다(세어 두고 보여주지 않으면
+        센 것이 아니다 — 26·31·35·36차가 같은 자리에서 반복한 규약).
+        """
+        with self._lock:
+            return {
+                "errors": self.errors,              # 삼킨 수집 예외 — 0 이 아니면 조사 대상
+                "orphan_finishes": self.orphan_finishes,  # 시작을 못 본 종료 이벤트
+                "dropped": self.dropped,            # 상한·보관기간으로 버린 관측치
+                # 종료 이벤트가 오지 않아 만료시킨 진행 중 관측치 — 0 이 아니면
+                # 그만큼의 통화가 종료 표본에서 빠졌다(집계가 실제보다 적다).
+                "stale_opens": self.stale_opens,
+                "retention_sec": RETENTION_SEC,
+                "open_ttl_sec": int(open_ttl()),
+                "scope": "instance",                # 인스턴스 메모리 — 클러스터 합산 아님
+            }
+
     def summary(self, period="today", now=None):
         t = float(now if now is not None else _now())
         span = PERIOD_SEC.get(period if isinstance(period, str) else "", PERIOD_SEC["today"])
         with self._lock:
             self._prune(t)
+            # 종료 이벤트를 못 받은 관측치는 '진행 중'이 아니다 — 조회 시점에
+            # 만료분을 걷어야 `in_progress` 가 지금 통화 중인 건수를 말한다.
+            self._sweep_open(t)
             rows = [r for r in self._done if r["ended"] >= t - span]
             since = self._since
             open_n = len(self._open)
-            errors, orphans, dropped = self.errors, self.orphan_finishes, self.dropped
+            collector = self.stats()
         n = len(rows)
         counts = {k: 0 for k in OUTCOMES}
         for r in rows:
@@ -223,13 +310,7 @@ class _Store(object):
             "transfer_rate": (round(counts["transferred"] / n, 3) if n else None),
             "avg_duration_sec": (round(sum(r["dur"] for r in rows) / n, 1) if n else None),
             "avg_turns": (round(sum(r["turns"] for r in rows) / n, 2) if n else None),
-            "collector": {
-                "errors": errors,              # 삼킨 수집 예외 — 0 이 아니면 조사 대상
-                "orphan_finishes": orphans,    # 시작을 못 본 종료 이벤트
-                "dropped": dropped,            # 상한·보관기간으로 버린 관측치
-                "retention_sec": RETENTION_SEC,
-                "scope": "instance",           # 인스턴스 메모리 — 클러스터 합산 아님
-            },
+            "collector": collector,
         }
         return payload
 
@@ -241,6 +322,7 @@ class _Store(object):
             self.errors = 0
             self.orphan_finishes = 0
             self.dropped = 0
+            self.stale_opens = 0
 
 
 SINK = _Store()   # 교체점: 영속 집계·실 CTI 배선 시 여기만 갈아 끼운다 [승인 필요]
@@ -264,12 +346,12 @@ def start(call_id, scenario=None, tenant=None, ts=None):
     return _safe(SINK.start, call_id, scenario=scenario, tenant=tenant, ts=ts)
 
 
-def mark_turn(call_id):
-    return _safe(SINK.mark_turn, call_id)
+def mark_turn(call_id, ts=None):
+    return _safe(SINK.mark_turn, call_id, ts=ts)
 
 
-def mark_outcome(call_id, outcome):
-    return _safe(SINK.mark_outcome, call_id, outcome)
+def mark_outcome(call_id, outcome, ts=None):
+    return _safe(SINK.mark_outcome, call_id, outcome, ts=ts)
 
 
 def finish(call_id, outcome=None, ts=None):
@@ -279,6 +361,11 @@ def finish(call_id, outcome=None, ts=None):
 def summary(period="today", now=None):
     """집계 조회. 조회 자체는 실패를 숨기지 않는다(호출부가 ops_stats 한 곳)."""
     return SINK.summary(period=period, now=now)
+
+
+def stats():
+    """수집기 카운터만. 조회는 실패를 숨기지 않는다(`summary` 와 같은 규약)."""
+    return SINK.stats()
 
 
 def reset():
@@ -342,6 +429,21 @@ if __name__ == "__main__":     # pragma: no cover
 
     # 번호형 라벨은 라벨로 받지 않는다
     assert _label("01012345678") is None and _label("refund") == "refund"
+
+    # 종료 이벤트가 오지 않은 통화는 영구히 '진행 중'이 아니다(39차)
+    reset()
+    start("lost", ts=t0)
+    assert summary(now=t0 + 10)["calls"]["in_progress"] == 1
+    s = summary(now=t0 + OPEN_TTL_SEC + 1)
+    assert s["calls"]["in_progress"] == 0, s
+    assert s["collector"]["stale_opens"] == 1, s
+    assert s["sample_size"] == 0, s        # 지속시간·사유를 지어내지 않는다
+
+    # 말이 오가는 동안은 만료되지 않는다(긴 통화)
+    reset()
+    start("long", ts=t0)
+    mark_turn("long", ts=t0 + OPEN_TTL_SEC - 1)
+    assert summary(now=t0 + OPEN_TTL_SEC + 1)["calls"]["in_progress"] == 1
 
     reset()
     print("call_metrics selftest OK:", _json.dumps(summary(), ensure_ascii=False)[:140], "...")

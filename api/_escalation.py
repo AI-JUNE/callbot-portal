@@ -20,6 +20,19 @@
 숫자만 내보내면 소비자가 영속 큐로 오해한다. 재시작하면 대기 중 티켓은 사라지고,
 영속 저장소는 [승인 필요]다.
 
+2026-10-26(39차) 결함 수정 — **대기 중 티켓에 시간 만료가 없었다.**
+`queued`/`assigned` 를 벗어나게 하는 것은 `transition()` 뿐이고, 그것을 부르는
+배선은 **아직 없다**(실 상담원 배정·CTI 는 [승인 필요]). 그래서 이 인스턴스가
+사는 동안 만들어진 **모든** 전환 티켓이 `queued` 로 남았고, `stats().queued` 는
+단조 증가했다. 그 값이 콘솔 「상담원 연결 큐 · 대기」 타일과 36차가 만든 티켓
+목록에 **「지금 기다리는 고객」** 으로 그려진다 — 통화는 길어도 30분이면 끝나므로
+(`voice.SESSION_TTL`) 그보다 오래된 `queued` 티켓의 고객은 이미 전화를 끊었다.
+없는 대기열을 보여주면 운영자는 사람을 잘못 배치하고, 그 화면을 믿지 않게 된다.
+→ `OPEN_TTL_SEC` 을 넘긴 미처리 티켓은 **이 모듈의 제 어휘로** `abandoned` 로
+  전이한다(새 상태를 만들지 않는다 — `_VALID_NEXT` 가 이미 허용하는 전이다).
+  티켓을 지우지 않으므로 장부에서 사라지지 않고, 전이 기록의 actor 가
+  `timeout` 이라 **사람이 이탈 처리한 것과 구별된다**. 건수는 `expired` 로 센다.
+
 사용:
   from _escalation import EscalationPolicy, EscalationQueue
   pol = EscalationPolicy()
@@ -64,6 +77,26 @@ MAX_LABEL = 64          # 라벨류(세션·사유·시나리오·메모) 길이
 
 # 아직 사람이 집어가지 않은 상태 — 이 티켓이 사라지면 '기다리는 고객'이 사라진다.
 OPEN_STATES = ("queued", "assigned")
+
+# 미처리 티켓 만료(초). `voice.SESSION_TTL`·`_call_metrics.OPEN_TTL_SEC` 과 **같은
+# 눈금** — 통화가 그보다 오래 이어지지 않으므로, 그 시간을 넘긴 대기 티켓의
+# 고객은 이미 끊었다. 전이 배선(실 CTI)이 붙으면 그쪽이 먼저 집어간다.
+OPEN_TTL_SEC = 1800.0
+# 만료 전이의 actor — 사람이 이탈 처리한 것과 구별하기 위한 고정 라벨.
+TIMEOUT_ACTOR = "timeout"
+
+
+def open_ttl():
+    """미처리 티켓 만료 한도. **호출 시점에** 읽는다(배포 후 조정이 반영된다).
+
+    잘못된 값으로 만료가 **사라지는** 쪽으로 실패하지 않는다 — 해석 불가·0 이하는
+    기본값으로 되돌린다(`voice._session_limit`·`_call_metrics.open_ttl` 과 같은 규약).
+    """
+    try:
+        v = float((os.environ.get("CALLBOT_ESC_OPEN_TTL") or "").strip())
+        return v if v > 0 else OPEN_TTL_SEC
+    except Exception:
+        return OPEN_TTL_SEC
 
 
 def _label(v):
@@ -145,8 +178,42 @@ class EscalationQueue:
         self.summary_dropped = 0    # 마스킹 불가로 싣지 않은 요약 수
         self.record_errors = 0      # 호출부가 기록을 실패한 횟수(note_failure)
         self.last_error = ""        # 마지막 실패 사유(예외 타입명 등, 원문 아님)
+        self.expired = 0            # 만료로 이탈 처리한 미처리 티켓 수
+
+    def sweep(self, now=None):
+        """미처리 티켓 만료 — 대기 숫자가 **지금 기다리는 사람**을 말하게 한다.
+
+        티켓을 지우지 않는다(장부에서 사라지면 전환이 있었던 사실도 사라진다).
+        상태만 `abandoned` 로 옮기고, 전이 기록에 actor `timeout` 을 남겨
+        **사람이 이탈 처리한 것과 구별**한다. 전이 규칙(`_VALID_NEXT`)을
+        우회하지 않는다 — 허용되지 않는 상태는 건드리지 않는다.
+        """
+        now = time.time() if now is None else now
+        ttl = open_ttl()
+        n = 0
+        for tk in list(self._tickets.values()):
+            if tk.get("state") not in OPEN_STATES:
+                continue
+            try:
+                age = now - float(tk.get("ts") or 0)
+            except Exception:          # pragma: no cover - 외부가 넣은 값 방어
+                continue
+            if age <= ttl:
+                continue
+            if "abandoned" not in _VALID_NEXT.get(tk["state"], ()):
+                continue               # pragma: no cover - 방어(미처리 상태는 둘 다 허용)
+            old = tk["state"]
+            tk["state"] = "abandoned"
+            self.expired += 1
+            n += 1
+            self._log(tk["id"], old, "abandoned",
+                      "%s:미처리 %d초 초과" % (TIMEOUT_ACTOR, int(ttl)))
+        return n
 
     def enqueue(self, session_id, reason, summary="", scenario=""):
+        # 만료분을 먼저 걷는다 — 오래전에 끝난 통화의 티켓이 '대기 중'으로
+        # 남은 채 상한 자리를 지키지 않게 한다(`_evict` 는 종결분부터 버린다).
+        self.sweep()
         self._evict()
         tid = "ESC-%04d" % next(self._seq)
         s = _summary(summary)
@@ -207,6 +274,8 @@ class EscalationQueue:
         return dict(tk)
 
     def list(self, state=None):
+        # 조회도 만료를 반영한다 — 목록과 집계가 서로 다른 말을 하면 안 된다.
+        self.sweep()
         out = [dict(t) for t in self._tickets.values() if state is None or t["state"] == state]
         return sorted(out, key=lambda t: t["ts"])
 
@@ -217,6 +286,7 @@ class EscalationQueue:
         "인스턴스 메모리이고 재시작하면 대기 티켓이 사라진다"를 함께 말한다
         (`_call_metrics.summary().collector.scope` 와 같은 규약).
         """
+        self.sweep()                 # 대기 숫자는 만료를 반영한 값이어야 한다
         s = {"queued": 0, "assigned": 0, "resolved": 0, "abandoned": 0}
         for t in self._tickets.values():
             s[t["state"]] = s.get(t["state"], 0) + 1
@@ -226,7 +296,11 @@ class EscalationQueue:
         s["audit_dropped"] = self.audit_dropped
         s["summary_dropped"] = self.summary_dropped
         s["record_errors"] = self.record_errors
+        # 만료로 이탈 처리한 미처리 티켓 — 0 이 아니면 그만큼이 **아무도 집어가지
+        # 않은 채** 끝났다는 뜻이다(배정 배선이 없으면 전부 여기로 간다).
+        s["expired"] = self.expired
         s["capacity"] = MAX_TICKETS
+        s["open_ttl_sec"] = int(open_ttl())
         s["scope"] = "instance"      # 클러스터 합산 아님
         s["volatile"] = True         # 재시작 시 대기 티켓 소멸(영속 저장소 [승인 필요])
         s["started_ts"] = int(self._t0)
@@ -291,4 +365,18 @@ if __name__ == "__main__":     # pragma: no cover
     assert s3["dropped_waiting"] == 0, s3   # 대기 중인 티켓은 버리지 않았다
     q3.note_failure("RuntimeError")
     assert q3.stats()["record_errors"] == 1
+
+    # 39차: 아무도 집어가지 않은 티켓은 영원히 '대기 중'이 아니다
+    q4 = EscalationQueue()
+    t4 = q4.enqueue("sess-4", "request", "연결 요청")
+    t4["ts"] = 0                                   # 반환값은 사본 — 장부는 안 바뀐다
+    assert q4.stats()["queued"] == 1
+    q4._tickets[t4["id"]]["ts"] = time.time() - OPEN_TTL_SEC - 1
+    s4 = q4.stats()
+    assert s4["queued"] == 0 and s4["abandoned"] == 1 and s4["expired"] == 1, s4
+    assert s4["total"] == 1                        # 티켓을 지우지는 않는다
+    last = q4.audit_log()[-1]
+    assert last["to"] == "abandoned" and TIMEOUT_ACTOR in last["note"], last
+    # 종결된 티켓은 다시 세지 않는다(만료가 되풀이되지 않는다)
+    assert q4.stats()["expired"] == 1
     print("SELF-TEST OK:", q.stats())

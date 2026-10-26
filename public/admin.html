@@ -1859,6 +1859,16 @@ function _osTiles(title,d,defs){
  var cells=defs.map(function(x){return '<div style="background:var(--bg2,#f7f7f9);border:1px solid var(--line);border-radius:9px;padding:8px 10px"><div style="font-size:10.5px;color:var(--mut)">'+_osEsc(x[1])+'</div><div style="font-size:17px;font-weight:800;margin-top:2px">'+_osNum(d[x[0]])+'</div></div>';}).join('');
  return '<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:800;margin-bottom:6px">'+_osEsc(title)+' '+(na?'<span class="tag neu">소스 없음</span>':'<span class="tag pos">sim</span>')+'</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px">'+cells+'</div></div>';
 }
+/* 39차: 「대기」가 무엇을 뜻하는지 적는다 — 미처리 티켓은 일정 시간이 지나면
+   이탈(시간만료)로 넘어간다. 서버가 준 open_ttl_sec 만 쓴다(하드코딩 수치 없음). */
+function _osEscTtl(d){
+ if(!d||typeof d!=='object')return '';
+ var t=d.open_ttl_sec;
+ if(typeof t!=='number'||!isFinite(t)||t<=0)return '';
+ return '<div style="font-size:10.5px;color:var(--dim);margin:-6px 0 12px">'
+  +'「대기·배정」이 '+_osNum(Math.round(t/60))+'분을 넘기면 이탈(시간만료)로 넘어갑니다 — '
+  +'아직 배정 배선이 없어 집어가지 않은 티켓은 여기로 모입니다.</div>';
+}
 function opsSimLoad(force,quiet){
  var b=document.getElementById('osBody');if(!b)return;
  if(_osLoaded&&!force)return;_osLoaded=true;
@@ -1869,7 +1879,7 @@ function opsSimLoad(force,quiet){
   if(!d||!d.ok){_htmlSet(b,'<div style="color:var(--dim);font-size:12px">엔드포인트 조회 불가 — 로컬·데모 환경이거나 API 미배포입니다.</div>');if(g)g.textContent='';return;}
   if(g){var gt=d.gates||{},on=[];if(gt.recording_live)on.push('RECORDING_LIVE');if(gt.cpaas_live)on.push('CPAAS_LIVE');if(gt.speech_live)on.push('SPEECH_LIVE');
    g.textContent=on.length?('게이트 ON: '+on.join(' · ')):'게이트 전부 OFF · sim';}
-  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['dropped_waiting','대기중 유실'],['audit_dropped','전이기록 유실'],['summary_dropped','요약 버림'],['record_errors','기록실패']])+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['purged','파기'],['total','누적'],['dropped','유실']]));
+  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['dropped_waiting','대기중 유실'],['audit_dropped','전이기록 유실'],['summary_dropped','요약 버림'],['record_errors','기록실패'],['expired','시간만료']])+_osEscTtl(d.escalation)+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['purged','파기'],['total','누적'],['dropped','유실']]));
  };
  try{fetch('/api/ops_stats?period='+encodeURIComponent(p),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(fin).catch(function(){fin(null);});}
  catch(e){fin(null);}
@@ -1898,6 +1908,11 @@ function _cmRender(m){
  if(m.data_source==='unavailable')
   return '<div role="alert" style="font-size:12px;color:var(--dim)">수집기가 응답하지 않아 실측치를 표시할 수 없습니다. 잠시 후 새로고침해 주세요.</div>';
  var c=m.calls||{},n=(typeof m.sample_size==='number')?m.sample_size:0,out='';
+ var col=m.collector||{};
+ /* 39차: 「진행 중」은 종료 이벤트를 못 받은 통화가 영구히 쌓이던 자리였다.
+    서버가 만료 기준을 주면 그대로 적는다(하드코딩 수치 없음). */
+ var ttlSub=(typeof col.open_ttl_sec==='number'&&isFinite(col.open_ttl_sec)&&col.open_ttl_sec>0)
+  ?('종료 누락은 '+_osNum(Math.round(col.open_ttl_sec/60))+'분 후 만료'):'';
  if(n===0){
   out+='<div style="font-size:12px;color:var(--dim);margin-bottom:10px">'
    +'아직 관측된 통화가 없습니다. 「콜봇 데모」에서 시뮬레이션 통화를 실행하면 여기에 실측치가 쌓입니다.'
@@ -1909,15 +1924,14 @@ function _cmRender(m){
   +_cmTile('상담사 전환',_osNum(c.transferred),_cmPct(m.transfer_rate))
   +_cmTile('대화 미성립',_osNum(c.abandoned),'')
   +_cmTile('실패',_osNum(c.failed),'')
-  +_cmTile('진행 중',_osNum(c.in_progress),'')
+  +_cmTile('진행 중',_osNum(c.in_progress),ttlSub)
   +_cmTile('평균 통화',_cmSec(m.avg_duration_sec),'')
   +_cmTile('평균 턴',_cmAvg(m.avg_turns),'')
   +'</div>';
  if(m.partial)
   out+='<div style="font-size:11px;color:var(--mut);margin-top:9px">⚠️ 부분 표본 — 관측 구간 '+_osEsc(_cmWin(m.window_sec))+'. 선택한 기간 전체를 대표하지 않습니다.</div>';
- var col=m.collector||{};
- if(col.errors||col.orphan_finishes||col.dropped)
-  out+='<div role="alert" style="font-size:11px;color:#b26b16;margin-top:6px">수집 이상 — 오류 '+_osNum(col.errors)+' · 시작 누락 종료 '+_osNum(col.orphan_finishes)+' · 버림 '+_osNum(col.dropped)+'건. 집계가 실제보다 적게 잡혔을 수 있습니다.</div>';
+ if(col.errors||col.orphan_finishes||col.dropped||col.stale_opens)
+  out+='<div role="alert" style="font-size:11px;color:#b26b16;margin-top:6px">수집 이상 — 오류 '+_osNum(col.errors)+' · 시작 누락 종료 '+_osNum(col.orphan_finishes)+' · 버림 '+_osNum(col.dropped)+' · 종료 누락 만료 '+_osNum(col.stale_opens)+'건. 집계가 실제보다 적게 잡혔을 수 있습니다.</div>';
  var d=m.definition;
  if(d&&d.bot_completed)
   out+='<div style="font-size:10.5px;color:var(--dim);margin-top:8px">‘봇 완결’ 기준: '+_osEsc(d.bot_completed)+'</div>';

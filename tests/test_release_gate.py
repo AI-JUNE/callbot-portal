@@ -1198,10 +1198,24 @@ class TestCounterExposure(unittest.TestCase):
         """저장소 파일 그대로 — 노출 목록에서 한 칸만 빼면 실패한다."""
         srcs = verify.api_sources()
         srcs["ops_stats.py"] = srcs["ops_stats.py"].replace(
-            '"summary_dropped", "record_errors")', '"record_errors")')
+            '"summary_dropped", "record_errors"', '"record_errors"')
         ok, msg = verify.check_counter_exposure(srcs)
         self.assertFalse(ok)
         self.assertIn("summary_dropped", msg)
+
+    def test_the_real_measured_collector_defect_would_be_caught_today(self):
+        """39차: 실측 수집기 쪽도 한 칸만 빼면 실패한다(새로 등록한 세 번째 곳)."""
+        srcs = verify.api_sources()
+        srcs["ops_stats.py"] = srcs["ops_stats.py"].replace(
+            '"dropped", "stale_opens"', '"dropped"')
+        ok, msg = verify.check_counter_exposure(srcs)
+        self.assertFalse(ok)
+        self.assertIn("stale_opens", msg)
+
+    def test_time_expiry_counts_as_loss(self):
+        """39차: `expired`·`stale_*` 도 손실 이름이다(만료는 조용히 줄어든다)."""
+        for key in ("expired", "stale_opens", "tickets_expired"):
+            self.assertTrue(verify._is_loss_counter(key), key)
 
     def test_main_reports_this_check_not_a_stub(self):
         import io as _io
