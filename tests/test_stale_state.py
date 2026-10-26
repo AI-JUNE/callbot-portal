@@ -384,7 +384,11 @@ class TestExposure(unittest.TestCase):
         """세어 두고 보여주지 않으면 센 것이 아니다 — 콘솔에도 자리가 있어야 한다."""
         with open(os.path.join(ROOT, "public", "admin.html"), encoding="utf-8") as f:
             html = f.read()
-        self.assertIn("col.stale_opens", html)
+        # 값을 그리는 자리뿐 아니라 **보일지 말지를 정하는 조건**에도 있어야 한다.
+        # 조건에서 빠지면 '종료 누락 만료'만 쌓인 날에는 경고가 아예 안 뜬다.
+        self.assertIn("if(col.errors||col.orphan_finishes||col.dropped||col.stale_opens)",
+                      html)
+        self.assertIn("_osNum(col.stale_opens)", html)
         self.assertIn("['expired','시간만료']", html)
         self.assertIn("open_ttl_sec", html)
         # 하드코딩 수치 금지 — 만료 기준은 서버 값에서만 온다
@@ -556,6 +560,136 @@ class TestStaleStateGate(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("stale_state", out)
         self.assertIn(msg, out)
+
+
+# --------------------------------------------------------------------------
+# E) 로컬 E2E — **실제 소켓**으로 나가는 본문 확인
+#
+# 두 숫자는 함수 반환값이 아니라 **대시보드가 읽는 응답**이 계약이다. 라우팅·
+# 가드·직렬화를 다 거친 뒤에도 같은 말을 하는지 본다. 루프백(127.0.0.1) +
+# 임의 포트만 쓰고 과금 경로(LLM·STT·TTS·CPaaS)는 타지 않는다(읽기 전용 조회).
+# --------------------------------------------------------------------------
+_E2E_ENVS = ("CALLBOT_STRICT", "CALLBOT_API_KEY", "CALLBOT_ALLOWED_ORIGINS",
+             "CALLBOT_METRICS_OPEN_TTL", "CALLBOT_ESC_OPEN_TTL")
+
+
+class _Server(object):
+    """핸들러 하나를 루프백에 띄운다. 포트는 OS 가 고른다(충돌 없음)."""
+
+    def __init__(self, handler):
+        import http.server
+        import threading
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        self.origin = "http://127.0.0.1:%d" % self.httpd.server_address[1]
+        self._t = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self._t.start()
+
+    def get(self, path, origin=None):
+        import json
+        import urllib.error
+        import urllib.request
+        req = urllib.request.Request(self.origin + path, method="GET")
+        req.add_header("Origin", origin or self.origin)
+        req.add_header("Sec-Fetch-Site", "same-origin")
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                return r.status, json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8", "replace")
+            try:
+                return e.code, json.loads(raw)
+            except ValueError:
+                return e.code, {"raw": raw[:200]}
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self._t.join(timeout=5)
+
+
+class TestOpsStatsOverHttp(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._saved = {k: os.environ.get(k) for k in _E2E_ENVS}
+        for k in _E2E_ENVS:
+            os.environ.pop(k, None)
+        cls.srv = _Server(ops_stats.handler)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.close()
+        for k, v in cls._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def setUp(self):
+        cm.reset()
+        esc.QUEUE.__init__()
+
+    def tearDown(self):
+        cm.reset()
+        esc.QUEUE.__init__()
+
+    def _age_ticket(self, tid, seconds):
+        esc.QUEUE._tickets[tid]["ts"] -= seconds
+
+    def test_live_counters_and_ttl_are_in_the_response(self):
+        status, d = self.srv.get("/api/ops_stats")
+        self.assertEqual(status, 200)
+        col = d["measured"]["collector"]
+        self.assertIn("stale_opens", col)
+        self.assertGreater(col["open_ttl_sec"], 0)
+        e = d["escalation"]
+        self.assertIn("expired", e)
+        self.assertGreater(e["open_ttl_sec"], 0)
+
+    def test_stuck_call_and_ticket_do_not_show_as_live(self):
+        """종료 웹훅이 오지 않은 통화와 아무도 집어가지 않은 티켓."""
+        import time
+        cm.start("stuck", ts=time.time() - cm.OPEN_TTL_SEC - 5)
+        cm.start("talking")                           # 방금 걸려 온 통화
+        tk = esc.QUEUE.enqueue("s1", "request", "연결 요청")
+        self._age_ticket(tk["id"], esc.OPEN_TTL_SEC + 5)
+        status, d = self.srv.get("/api/ops_stats")
+        self.assertEqual(status, 200)
+        self.assertEqual(d["measured"]["calls"]["in_progress"], 1)
+        self.assertEqual(d["measured"]["collector"]["stale_opens"], 1)
+        # 종료 표본에 섞이지 않는다 — 지속시간·사유를 지어내지 않는다
+        self.assertEqual(d["measured"]["sample_size"], 0)
+        self.assertEqual(d["escalation"]["queued"], 0)
+        self.assertEqual(d["escalation"]["abandoned"], 1)
+        self.assertEqual(d["escalation"]["expired"], 1)
+
+    def test_ticket_view_over_http_says_abandoned(self):
+        tk = esc.QUEUE.enqueue("s1", "request", "연결 요청")
+        self._age_ticket(tk["id"], esc.OPEN_TTL_SEC + 5)
+        status, d = self.srv.get("/api/ops_stats?op=escalations&state=open")
+        self.assertEqual(status, 200)
+        self.assertEqual(d["matched"], 0)
+        status, allv = self.srv.get("/api/ops_stats?op=escalations")
+        self.assertEqual([t["state"] for t in allv["tickets"]], ["abandoned"])
+        self.assertEqual(allv["stats"]["expired"], 1)
+        # 목록이 전환 사실 자체를 지우지 않는다(상태만 바뀐다)
+        self.assertEqual(allv["matched"], 1)
+
+    def test_reading_twice_does_not_expire_a_live_call(self):
+        cm.start("live")
+        for _ in range(2):
+            status, d = self.srv.get("/api/ops_stats")
+            self.assertEqual(status, 200)
+            self.assertEqual(d["measured"]["calls"]["in_progress"], 1)
+            self.assertEqual(d["measured"]["collector"]["stale_opens"], 0)
+
+    def test_denied_request_does_not_touch_the_ledger(self):
+        """거부된 조회는 장부를 건드리지 않는다(만료도 일으키지 않는다)."""
+        tk = esc.QUEUE.enqueue("s1", "request")
+        self._age_ticket(tk["id"], esc.OPEN_TTL_SEC + 5)
+        status, _d = self.srv.get("/api/ops_stats", origin="https://evil.example")
+        self.assertIn(status, (401, 403))
+        self.assertEqual(esc.QUEUE._tickets[tk["id"]]["state"], "queued")
+        self.assertEqual(esc.QUEUE.expired, 0)
 
 
 if __name__ == "__main__":
