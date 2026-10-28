@@ -53,6 +53,7 @@ TAG_LEN = 32
 MAX_PLAINTEXT = 8 * 1024        # 통화 참조·짧은 메모용. 오디오 원문을 넣는 자리가 아니다
 _SHRED_MARK = "-"
 KID_ITERS = 200_000             # 지문 유도 비용 — key_id() 주석 참조(약 50ms, 프로세스당 1회)
+KID_CACHE_MAX = 32              # 지문 캐시 상한 — 회전 유예로도 넘지 않는다(넘으면 비운다)
 MIN_ENTROPY_BITS = 128          # 재료 품질 경고선. 이 아래면 status() 가 weak 로 알린다
 
 
@@ -130,7 +131,7 @@ def key_id(key: bytes) -> str:
     if cached:
         return cached
     kid = hashlib.pbkdf2_hmac("sha256", key, b"pii-vault/kid/v2", KID_ITERS).hex()[:8]
-    if len(_KID_CACHE) >= 32:        # 회전 유예로도 32개를 넘지 않는다 — 넘으면 비운다
+    if len(_KID_CACHE) >= KID_CACHE_MAX:   # 회전 유예로도 넘지 않는다 — 넘으면 비운다
         _KID_CACHE.clear()
     _KID_CACHE[key] = kid
     return kid

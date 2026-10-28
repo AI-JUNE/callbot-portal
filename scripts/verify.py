@@ -601,6 +601,14 @@ def check_spoken_rules(sources):
 # 않는다. 과차단되면 사람이 게이트를 끄고, 그러면 게이트가 없는 것과 같다
 # (28·30차와 같은 이유). 값이 든 리터럴(상수·등록부·요율표)도 자라지 않으므로
 # 대상이 아니다.
+#
+# 40차 결함 수정 — 이 게이트가 `ast.Assign` 만 보고 있었다. 파이썬에서
+# `_NUMBERS: dict = {}` 는 `Assign` 이 아니라 **`AnnAssign`** 이라, 형 주석을
+# 붙여 선언한 저장소는 **선언 자체가 보이지 않았다**. 그 눈 밖에 운영 장부
+# 10개가 있었다(발신번호·파트너·고객사·정산 버킷·고지 테넌트·변경 이력 3종·
+# 키 지문 캐시·백엔드 캐시). 지금은 전부 상한이 있지만, 게이트는 「저장소
+# 15개 상한 확인」이라고만 말했다 — **검사한 적이 없는 것을 통과로 보고**했다.
+# 한 글자 차이(`:`)로 게이트 밖으로 나가는 구멍이라 리뷰에서 보이지 않는다.
 # --------------------------------------------------------------------------
 MEM_STORES = {
     ("_audit.py", "_BUF"):
@@ -634,7 +642,42 @@ MEM_STORES = {
         ("MAX_RECORDS", "녹취 메타 — 상한 초과는 파기된 것부터 축출"),
     ("_recording_audit.py", "RecordingStore._audit"):
         ("MAX_AUDIT", "녹취 접근 감사 기록 — 오래된 것부터(audit_dropped 로 드러냄)"),
+    # 형 주석을 붙여 선언한 저장소(40차 확장분). 그 전까지 게이트 밖이었다.
+    ("caller_id.py", "_NUMBERS"):
+        ("MAX_NUMBERS", "발신번호 대장 — 등록 상한(초과 시 등록 거부)"),
+    ("caller_id.py", "_HISTORY"):
+        ("HISTORY_MAX", "발신번호 변경 이력 — 최근 N건(버린 줄은 history_stats.dropped)"),
+    ("partners.py", "_PARTNERS"):
+        ("MAX_PARTNERS", "파트너 대장 — 등록 상한(초과 시 등록 거부)"),
+    ("partners.py", "_ACCOUNTS"):
+        ("MAX_ACCOUNTS", "고객사 귀속 대장 — 등록 상한(초과 시 등록 거부)"),
+    ("partners.py", "_HISTORY"):
+        ("HISTORY_MAX", "파트너 변경 이력 — 최근 N건(버린 줄은 history_stats.dropped)"),
+    ("disclosure.py", "_TENANTS"):
+        ("MAX_TENANTS", "고지 문구 테넌트 설정 — 상한(초과 시 저장 거부)"),
+    ("disclosure.py", "_HISTORY"):
+        ("HISTORY_MAX", "고지 문구 변경 이력 — 최근 N건(버린 줄은 history_stats.dropped)"),
+    ("settlement.py", "_USAGE"):
+        ("MAX_USAGE_BUCKETS", "이용 실적 버킷 — 보관기간 정리 + 하드 상한"),
+    ("_pii_vault.py", "_KID_CACHE"):
+        ("KID_CACHE_MAX", "키 지문 캐시 — 회전 유예로도 넘지 않는 상한, 넘으면 비운다"),
 }
+
+
+def _assigned(node):
+    """`X = v` 와 `X: T = v` 를 같은 자리에서 본다 → (대상 노드들, 값).
+
+    형 주석이 붙은 대입은 ast 에서 `Assign` 이 아니라 `AnnAssign` 이다.
+    `Assign` 만 보면 `_NUMBERS: dict = {}` 같은 선언이 **통째로 보이지
+    않는다** — 40차에 그 눈 밖에서 운영 장부 10개가 발견됐다. 값이 없는
+    선언(`X: dict`)은 저장소가 만들어지지 않으므로 대상이 아니다.
+    """
+    import ast
+    if isinstance(node, ast.Assign):
+        return node.targets, node.value
+    if isinstance(node, ast.AnnAssign) and node.value is not None:
+        return [node.target], node.value
+    return [], None
 
 
 def _singleton_classes(tree):
@@ -648,9 +691,10 @@ def _singleton_classes(tree):
     defined = {n.name for n in tree.body if isinstance(n, ast.ClassDef)}
     out = set()
     for node in tree.body:
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+        _targets, value = _assigned(node)
+        if not isinstance(value, ast.Call):
             continue
-        func = node.value.func
+        func = value.func
         if isinstance(func, ast.Name) and func.id in defined:
             out.add(func.id)
     return out
@@ -685,9 +729,10 @@ def _mem_targets(text):
             bodies.append(node.body)
     for body in bodies:
         for node in body:
-            if not isinstance(node, ast.Assign) or not _empty(node.value):
+            targets, value = _assigned(node)
+            if value is None or not _empty(value):
                 continue
-            for t in node.targets:
+            for t in targets:
                 if isinstance(t, ast.Name):
                     out.append((t.id, node.lineno))
 
@@ -698,9 +743,10 @@ def _mem_targets(text):
         if not isinstance(node, ast.ClassDef) or node.name not in singles:
             continue
         for sub in ast.walk(node):
-            if not isinstance(sub, ast.Assign) or not _empty(sub.value):
+            targets, value = _assigned(sub)
+            if value is None or not _empty(value):
                 continue
-            for t in sub.targets:
+            for t in targets:
                 if (isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name)
                         and t.value.id == "self"):
                     out.append(("%s.%s" % (node.name, t.attr), sub.lineno))
@@ -1336,6 +1382,19 @@ COUNTER_EXPOSURE = {
     ("_call_metrics.py", "stats"):
         ("ops_stats.py", "MEASURED_COLLECTOR_KEYS",
          "실측 수집기 손실·오류 — /api/ops_stats 의 measured.collector 블록"),
+    # 40차: 관리 장부 변경 이력. 상한(100)을 넘기면 오래된 줄을 버리는데
+    # 세지도 내보내지도 않아, 화면이 받은 건수를 **전부**로 그렸다
+    # (콘솔은 「append-only」 라고 적고 있었다). 세는 쪽과 내보내는 쪽이 같은
+    # 파일이지만 규약은 같다 — 손실 칸이 빠지면 운다.
+    ("caller_id.py", "history_stats"):
+        ("caller_id.py", "HISTORY_KEYS",
+         "발신번호 변경 이력 손실 — /api/caller_id?op=history"),
+    ("partners.py", "history_stats"):
+        ("partners.py", "HISTORY_KEYS",
+         "파트너·귀속 변경 이력 손실 — /api/partners?op=history"),
+    ("disclosure.py", "history_stats"):
+        ("disclosure.py", "HISTORY_KEYS",
+         "AI 고지 문구 변경 이력 손실 — /api/disclosure?op=history"),
 }
 
 # 손실·오류를 뜻하는 이름(앞 또는 뒤 토큰). `dropped_waiting`(앞)·

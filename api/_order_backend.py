@@ -333,7 +333,11 @@ class HttpOrderBackend(OrderBackend):
         return self._req("POST", "/escalations", inp)
 
 
-_CACHE: dict = {}
+# 백엔드 싱글턴 홀더 — **자라지 않는다**(칸이 둘뿐이고 새 키를 넣지 않는다).
+# 빈 사전으로 두면 `mem_caps` 게이트가 '무한히 자라는 저장소'로 읽어 상한
+# 기호를 요구한다(40차에 그 게이트가 형 주석 선언까지 보게 되면서 드러났다).
+# 칸을 적어 두면 성질이 코드에 남는다.
+_CACHE: dict = {"key": None, "obj": None}
 
 
 def get_backend() -> OrderBackend:

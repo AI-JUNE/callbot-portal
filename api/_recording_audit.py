@@ -17,6 +17,11 @@
   - 복호는 `reveal()` 한 곳뿐이며 목적 화이트리스트·감사기록을 거친다.
   - 파기는 둘로 나뉜다.
       · `purge_due()`   보관기간 만료 → 봉투 자체를 버린다(hard_delete/anonymize).
+        **이것을 주기적으로 부르는 배선은 아직 없다**([승인 필요] — 되돌릴 수
+        없는 동작이라 호출 시점·주체 설계가 먼저다). 그래서 보관기간이 지난
+        레코드는 `active` 로 남는다. 2026-10-28(40차)부터 그 건수를
+        `stats().expired_unpurged` 로 드러낸다 — 숫자로 말하지 않으면 `active`
+        가 「보관기간 안에 있는 녹취」로 읽힌다.
       · `shred_record()` 만료 전 즉시 파기(정보주체 삭제요구 등) → 복호 재료만 지운
         **묘비**를 남긴다. 백업에 사본이 남아 있어도 복호 불가이고, 무엇이 있었다는
         사실은 감사에 남는다.
@@ -273,12 +278,44 @@ class RecordingStore:
         self._log(actor, record_id, "shred", reason or "-")
         return dict(rec)
 
-    def stats(self):
+    def overdue(self, now=None):
+        """보관기간이 지났는데 **아직 파기되지 않은** 레코드 → (건수, 가장 오래 지난 초).
+
+        **읽기만 한다 — 파기하지 않는다.** 파기는 되돌릴 수 없어서 호출 시점·주체
+        설계가 먼저이고([승인 필요]), 그래서 `purge_due()` 를 부르는 배선이 아직
+        없다. 그 사실을 숫자로 말하지 않으면 `active` 가 「보관기간 안에 있는
+        녹취」로 읽힌다 — 레코드마다 `expires_at` 을 계산해 두지만 그 값을 읽는
+        곳이 `purge_due()` 하나뿐이었으므로, **보관정책이 장식**이었다.
+        시간이 지나면 이 숫자는 `active` 전체가 된다.
+
+        모르는 것·못 한 것은 집계에 섞지 않고 카운터로 남긴다
+        (`_call_metrics.stale_opens`·`orphan_finishes` 와 같은 판단).
+        """
+        now = time.time() if now is None else now
+        n, oldest = 0, 0.0
+        for r in self._records.values():
+            if r.get("state") != "active":
+                continue
+            try:
+                exp = float(r.get("expires_at") or 0)
+            except Exception:          # pragma: no cover - 외부가 넣은 값 방어
+                continue
+            if exp <= 0 or exp > now:
+                continue
+            n += 1
+            over = now - exp
+            if over > oldest:
+                oldest = over
+        return n, int(oldest)
+
+    def stats(self, now=None):
         """현황 + **이 장부의 성질**.
 
         숫자만 내보내면 소비자는 영속 장부로 읽는다. `scope`·`volatile` 로
         "인스턴스 메모리이고 재시작하면 사라진다"를 함께 말한다
         (`_escalation.QUEUE.stats()` 와 같은 규약).
+
+        조회는 장부를 **바꾸지 않는다** — 보관 만료분도 세기만 한다(`overdue`).
         """
         s = {"active": 0, "purged": 0}
         for r in self._records.values():
@@ -287,6 +324,12 @@ class RecordingStore:
         s["dropped"] = self.dropped
         s["dropped_active"] = self.dropped_active
         s["audit_dropped"] = self.audit_dropped
+        # 보관기간이 지났는데 파기되지 않은 건수 + 가장 오래 지난 시간.
+        # 0 이 아니면 `active` 를 「보관 중」으로 읽을 수 없다는 뜻이다.
+        due, oldest = self.overdue(now)
+        s["expired_unpurged"] = due
+        s["oldest_expired_sec"] = oldest
+        s["retention_days"] = int(self.retention_days)
         s["capacity"] = MAX_RECORDS
         s["scope"] = "instance"      # 클러스터 합산 아님
         s["volatile"] = True         # 재시작 시 소멸(영속 저장소 [승인 필요])

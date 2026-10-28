@@ -1853,6 +1853,23 @@ function speechHealthLoad(force,quiet){
 var _osLoaded=false;
 function _osEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function _osNum(v){return (typeof v==='number'&&isFinite(v))?v.toLocaleString():'0';}
+/* 40차: 변경 이력 머리글 — 「최근 N건 · append-only」 는 거짓이었다. 한 응답에
+   limit 건만 싣고, 장부 자체도 상한(capacity)을 넘기면 오래된 줄을 버린다.
+   서버가 준 count·retained·dropped·capacity·truncated 만 쓴다(하드코딩 없음). */
+function _histNote(d){
+ d=(d&&typeof d==='object')?d:{};
+ var n=d.count,ret=d.retained,drop=d.dropped,cap=d.capacity;
+ var s='최근 '+_osNum(typeof n==='number'?n:0)+'건';
+ if(typeof ret==='number'&&typeof n==='number'&&ret>n)s+=' / 장부 보관 '+_osNum(ret)+'건';
+ if(typeof cap==='number'&&cap>0)s+=' · 보관 상한 '+_osNum(cap)+'건';
+ if(typeof drop==='number'&&drop>0){
+  s+=' · <b>상한 초과로 버린 '+_osNum(drop)+'건</b>(복구 불가 — 영속 보관은 [승인 필요])';
+ }else{
+  s+=' · 버려진 줄 없음(기록을 고치지는 않습니다)';
+ }
+ if(d.truncated)s+=' · 목록이 잘렸습니다(limit 을 늘려 더 볼 수 있습니다)';
+ return s;
+}
 function _osTiles(title,d,defs){
  if(!d||typeof d!=='object')return '<div style="font-size:12px;color:var(--dim);margin-bottom:10px">'+_osEsc(title)+' 집계를 불러오지 못했습니다.</div>';
  var na=d.source==='unavailable';
@@ -1869,6 +1886,23 @@ function _osEscTtl(d){
   +'「대기·배정」이 '+_osNum(Math.round(t/60))+'분을 넘기면 이탈(시간만료)로 넘어갑니다 — '
   +'아직 배정 배선이 없어 집어가지 않은 티켓은 여기로 모입니다.</div>';
 }
+/* 40차: 「보관 중」이 무엇을 뜻하는지 적는다 — 보관기간이 지난 메타도 파기 배선이
+   없어 그 안에 남아 있다. 서버가 준 retention_days·expired_unpurged·
+   oldest_expired_sec 만 쓴다(하드코딩 수치 없음). */
+function _osRecRet(d){
+ if(!d||typeof d!=='object')return '';
+ var days=d.retention_days,due=d.expired_unpurged,old=d.oldest_expired_sec;
+ if(typeof days!=='number'||!isFinite(days)||days<=0)return '';
+ var msg='보관기간 '+_osNum(days)+'일. ';
+ if(typeof due==='number'&&due>0){
+  msg+='그 기간이 지난 메타가 <b>'+_osNum(due)+'건</b> 남아 있습니다'
+   +((typeof old==='number'&&isFinite(old)&&old>0)?('(가장 오래된 것은 '+_osNum(Math.floor(old/86400))+'일 초과)'):'')
+   +' — 자동 파기 배선은 [승인 필요]라 「보관 중」에 그대로 포함됩니다.';
+ }else{
+  msg+='기간이 지난 메타는 없습니다. 자동 파기 배선은 [승인 필요]입니다.';
+ }
+ return '<div style="font-size:10.5px;color:var(--dim);margin:-6px 0 12px">'+msg+'</div>';
+}
 function opsSimLoad(force,quiet){
  var b=document.getElementById('osBody');if(!b)return;
  if(_osLoaded&&!force)return;_osLoaded=true;
@@ -1879,7 +1913,7 @@ function opsSimLoad(force,quiet){
   if(!d||!d.ok){_htmlSet(b,'<div style="color:var(--dim);font-size:12px">엔드포인트 조회 불가 — 로컬·데모 환경이거나 API 미배포입니다.</div>');if(g)g.textContent='';return;}
   if(g){var gt=d.gates||{},on=[];if(gt.recording_live)on.push('RECORDING_LIVE');if(gt.cpaas_live)on.push('CPAAS_LIVE');if(gt.speech_live)on.push('SPEECH_LIVE');
    g.textContent=on.length?('게이트 ON: '+on.join(' · ')):'게이트 전부 OFF · sim';}
-  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['dropped_waiting','대기중 유실'],['audit_dropped','전이기록 유실'],['summary_dropped','요약 버림'],['record_errors','기록실패'],['expired','시간만료']])+_osEscTtl(d.escalation)+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['purged','파기'],['total','누적'],['dropped','유실']]));
+  _htmlSet(b,_osTiles('상담원 연결 큐',d.escalation,[['queued','대기'],['assigned','배정'],['resolved','완료'],['abandoned','이탈'],['total','누적'],['dropped','유실'],['dropped_waiting','대기중 유실'],['audit_dropped','전이기록 유실'],['summary_dropped','요약 버림'],['record_errors','기록실패'],['expired','시간만료']])+_osEscTtl(d.escalation)+_osTiles('녹취·감사(메타)',d.recording,[['active','보관 중'],['expired_unpurged','보관기간 만료'],['purged','파기'],['total','누적'],['dropped','유실'],['dropped_active','보관중 유실'],['audit_dropped','감사기록 유실']])+_osRecRet(d.recording));
  };
  try{fetch('/api/ops_stats?period='+encodeURIComponent(p),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(fin).catch(function(){fin(null);});}
  catch(e){fin(null);}
@@ -3013,9 +3047,9 @@ function dcHistory(){dcBtns(true);dcBusy('변경 이력 조회 중…');
     if(!x.d){dcFail('서버 응답을 해석하지 못했습니다 (HTTP '+x.s+').');return;}
     if(x.s>=400){dcHttpErr(x);return;}
     var hs=(x.d.history||[]).slice().reverse();
-    if(!hs.length){dcSet('<div class="summary">변경 이력이 없습니다. 저장·복귀가 일어나면 순서대로 남습니다(추가만 되고 수정·삭제되지 않습니다).</div>');return;}
+    if(!hs.length){dcSet('<div class="summary">변경 이력이 없습니다. 저장·복귀가 일어나면 순서대로 남습니다(기록을 고치지는 않습니다).</div>');return;}
     var rows=hs.map(function(h){return '<tr><td>'+dcEsc(h.ts)+'</td><td><code>'+dcEsc(h.tenant_id)+'</code></td><td>'+dcEsc(h.op==='reset'?'기본 복귀':'저장')+'</td><td>v'+dcEsc(h.from_version)+' → v'+dcEsc(h.version)+'</td><td>'+dcEsc(h.actor||'-')+'</td><td style="white-space:pre-wrap">'+dcEsc(h.text||'')+'</td></tr>';}).join('');
-    dcSet('<div class="hint" style="margin-bottom:8px">최근 '+hs.length+'건 · append-only</div><table><thead><tr><th>시각(UTC)</th><th>테넌트</th><th>동작</th><th>버전</th><th>주체</th><th>문구</th></tr></thead><tbody>'+rows+'</tbody></table>');
+    dcSet('<div class="hint" style="margin-bottom:8px">'+_histNote(x.d)+'</div><table><thead><tr><th>시각(UTC)</th><th>테넌트</th><th>동작</th><th>버전</th><th>주체</th><th>문구</th></tr></thead><tbody>'+rows+'</tbody></table>');
   }).catch(function(e){dcFail('요청 실패: '+dcEsc(e));}).then(function(){dcBtns(false);},function(){dcBtns(false);});}
 (function(){var s=document.getElementById('view-disclosure');if(!s||!window.MutationObserver)return;var done=false;new MutationObserver(function(){if(done||s.classList.contains('hidden'))return;done=true;dcCounter();dcLoad();}).observe(s,{attributes:true,attributeFilter:['class']});})();
 /* ---- 정산 리포트(테넌트 과금 라인) — /api/settlement?op=lines. 서버 응답만 그린다. 데모면 모든 줄에 표식, 모르는 금액은 빈 칸 ---- */
@@ -3266,7 +3300,7 @@ function ciHistory(){ciBtns(true);ciBusy('변경 이력을 불러오는 중…')
     var hs=(x.d.history||[]).slice().reverse();
     if(!hs.length){ciSet('<div class="summary">변경 이력이 없습니다. 등록·승인·갱신·중지가 일어나면 순서대로 남습니다.</div>');return;}
     var rows=hs.map(function(h){return '<tr><td>'+ciEsc(h.ts)+'</td><td><code>'+ciEsc(h.id)+'</code></td><td>'+ciEsc(h.action)+'</td><td><code>'+ciEsc(h.detail)+'</code></td><td>'+ciEsc(h.actor||'-')+'</td></tr>';}).join('');
-    ciSet('<div class="hint" style="margin-bottom:8px">최근 '+hs.length+'건 · 번호는 마스킹되어 기록됩니다</div><table><thead><tr><th>시각(UTC)</th><th>ID</th><th>동작</th><th>번호(마스킹)</th><th>주체</th></tr></thead><tbody>'+rows+'</tbody></table>');
+    ciSet('<div class="hint" style="margin-bottom:8px">'+_histNote(x.d)+' · 번호는 마스킹되어 기록됩니다</div><table><thead><tr><th>시각(UTC)</th><th>ID</th><th>동작</th><th>번호(마스킹)</th><th>주체</th></tr></thead><tbody>'+rows+'</tbody></table>');
   }).catch(function(e){ciFail('요청 실패: '+ciEsc(e));}).then(function(){ciBtns(false);},function(){ciBtns(false);});}
 function ciFillEvidence(types){var s=document.getElementById('ciEvidence');if(!s||!types||!types.length)return;if(s.getAttribute('data-filled')==='1')return;
   s.innerHTML='<option value="">— 증빙 종류를 고르세요 —</option>'+types.map(function(t){return '<option value="'+ciEsc(t)+'">'+ciEsc(t)+'</option>';}).join('');s.setAttribute('data-filled','1');}

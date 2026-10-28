@@ -84,8 +84,14 @@ ESCALATION_META = {"scope": "instance", "volatile": True}
 # 31차: 녹취 장부도 상한이 생겼다(인스턴스 메모리). 버린 건수를 내보내지 않으면
 # 조용한 삭제가 된다 — `dropped_active` 가 0 이 아니면 **아직 보관기간이 남은**
 # 녹취 메타가 장부에서 사라졌다는 뜻이라 운영자가 알아야 한다.
+# 40차: `expired_unpurged`(보관기간이 지났는데 파기되지 않은 메타)·
+# `oldest_expired_sec`·`retention_days` 추가. 그 전까지 `active` 가 「보관 중」으로
+# 나갔고 콘솔이 그걸 그렸다 — 파기 배선이 없으므로 보관기간이 지난 것도 전부
+# 거기 섞인다(시간이 지나면 `active` 전체가 그렇게 된다). 파기는 켜지 않았다
+# ([승인 필요]) — 숫자로 드러내기만 한다.
 RECORDING_KEYS = ("active", "purged", "total",
-                  "dropped", "dropped_active", "audit_dropped")
+                  "dropped", "dropped_active", "audit_dropped",
+                  "expired_unpurged", "oldest_expired_sec", "retention_days")
 RECORDING_META = {"scope": "instance", "volatile": True}
 GATE_FLAGS = ("RECORDING_LIVE", "CPAAS_LIVE", "SPEECH_LIVE")
 

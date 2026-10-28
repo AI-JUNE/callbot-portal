@@ -24,7 +24,7 @@ HTTP
   GET  /api/caller_id                     → 요약(상태별 집계·만료 임박·정책·게이트)
   GET  /api/caller_id?op=list&tenant=&status=  → 목록(마스킹 번호)
   GET  /api/caller_id?op=policy           → 번호 규칙·증빙 종류·상태 전이표
-  GET  /api/caller_id?op=history          → 변경 이력(최근 100건)
+  GET  /api/caller_id?op=history[&limit=] → 변경 이력 + 잘린 사실(retained·dropped·truncated)
   POST /api/caller_id {op:"register"|"verify"|"reject"|"renew"|"revoke", ...}
 
 셀프테스트: python3 api/caller_id.py
@@ -45,6 +45,10 @@ import _pii_vault as pii_vault    # noqa: E402
 
 MAX_NUMBERS = 200
 HISTORY_MAX = 100
+HISTORY_DEFAULT = 50            # 한 응답에 싣는 기본 건수(?limit= 으로 조절)
+# `?op=history` 가 내보내는 칸(등록부). 손실 칸(`dropped`)이 빠지면 릴리스
+# 게이트 `counter_exposure` 가 실패한다 — 세어 두고 보여주지 않으면 센 것이 아니다.
+HISTORY_KEYS = ("count", "retained", "dropped", "capacity", "truncated")
 EVIDENCE_MAX_AGE_DAYS = 90      # 증빙서류 발급 후 유효 기간(관행: 3개월). 확정은 [승인 필요]
 DEFAULT_VALID_DAYS = 365        # 등록 유효기간(제안). 통신사 정책에 맞춰 조정
 EXPIRY_WARN_DAYS = 30           # 만료 임박 경고 시작일
@@ -91,6 +95,7 @@ _NUM_PATTERNS = (
 _LOCK = threading.Lock()
 _NUMBERS: dict = {}       # cid -> record
 _HISTORY: list = []
+_HIST_DROPPED = 0         # 상한 초과로 버린 이력 줄 수 — 조용히 사라지지 않게 센다
 _SEQ = [0]
 
 
@@ -197,10 +202,17 @@ def view(rec, now=None) -> dict:
 
 
 def _hist(action, cid, actor, detail=""):
+    global _HIST_DROPPED
     with _LOCK:
         _HISTORY.append({"ts": _iso(_now()), "action": action, "id": cid,
                          "actor": actor or "-", "detail": detail})
-        del _HISTORY[:-HISTORY_MAX]
+        # 상한 초과분은 버리되 **버린 줄 수를 센다**. 이 장부는 실발신 승인의
+        # 근거다(전기통신사업법 발신번호 사전등록) — 조용히 잘려 나가면 화면이
+        # 「최근 N건」을 전부로 보여주고, 사라진 등록·승인은 없던 일이 된다.
+        extra = len(_HISTORY) - HISTORY_MAX
+        if extra > 0:
+            del _HISTORY[:extra]
+            _HIST_DROPPED += extra
 
 
 def validate_tenant_id(v) -> str:
@@ -428,16 +440,44 @@ def policy() -> dict:
     }
 
 
-def history(limit=50) -> list:
-    n = max(1, min(int(limit or 50), HISTORY_MAX))
+def history(limit=HISTORY_DEFAULT) -> list:
+    n = max(1, min(int(limit or HISTORY_DEFAULT), HISTORY_MAX))
     with _LOCK:
         return [dict(h) for h in _HISTORY[-n:]]
 
 
+def history_stats(limit=HISTORY_DEFAULT) -> dict:
+    """이력 + **무엇이 빠졌는지**.
+
+    목록만 돌려주던 자리다. 그러면 읽는 사람은 받은 건수를 전부로 읽는다 —
+    실제로는 (a) 한 응답에 `limit` 건만 싣고 (b) 장부 자체가 `HISTORY_MAX`
+    를 넘기면 오래된 것부터 버린다. 둘 다 말하지 않으면 「추가만 되고
+    지워지지 않는다」가 거짓이 된다(`?op=failures` 의 `dropped`·전환 티켓
+    목록의 `truncated` 와 같은 규약).
+    """
+    n = max(1, min(int(limit or HISTORY_DEFAULT), HISTORY_MAX))
+    with _LOCK:
+        retained = len(_HISTORY)
+        rows = [dict(h) for h in _HISTORY[-n:]]
+        dropped = _HIST_DROPPED
+    return {
+        "history": rows,
+        "count": len(rows),          # 이번 응답에 실린 건수
+        "retained": retained,        # 장부에 남아 있는 건수
+        "dropped": dropped,          # 상한 초과로 버린 줄 수(실측)
+        "capacity": HISTORY_MAX,
+        "truncated": len(rows) < retained,
+        "limit": n,
+        "persistence": "instance-memory (휘발) — 영속 보관은 [승인 필요]",
+    }
+
+
 def _clear_for_tests():
+    global _HIST_DROPPED
     with _LOCK:
         _NUMBERS.clear()
         del _HISTORY[:]
+        _HIST_DROPPED = 0
         _SEQ[0] = 0
 
 
@@ -526,7 +566,9 @@ class handler(BaseHTTPRequestHandler):
             elif op == "policy":
                 out = {"ok": True, **policy()}
             elif op == "history":
-                out = {"ok": True, "history": history()}
+                limit = _errors.query_int(q, "limit", default=HISTORY_DEFAULT,
+                                          minimum=1, maximum=HISTORY_MAX)
+                out = {"ok": True, **history_stats(limit)}
             else:
                 out = {"ok": True, **summary()}
             rq.set(op=op)

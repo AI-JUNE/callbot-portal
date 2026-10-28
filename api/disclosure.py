@@ -19,7 +19,7 @@ HTTP
   GET  /api/disclosure                → 기본 문구·요건 목록·테넌트 수·검증 규칙
   GET  /api/disclosure?tenant=<id>    → 해당 테넌트의 **실효 문구**(설정 없으면 기본)와 검사 결과
   GET  /api/disclosure?op=list        → 설정된 테넌트 목록(문구 포함)
-  GET  /api/disclosure?op=history     → 변경 이력
+  GET  /api/disclosure?op=history[&limit=] → 변경 이력 + 잘린 사실(retained·dropped·truncated)
   POST /api/disclosure  {tenant_id, text, brand?, dry_run?}   → 검사 후 저장(dry_run=true 면 검사만)
   POST /api/disclosure  {tenant_id, op:"reset"}               → 기본 문구로 복귀
 
@@ -48,6 +48,10 @@ MIN_LEN = 10
 MAX_LEN = 300           # TTS 약 20초. 고지가 길면 고객이 끊는다
 MAX_TENANTS = 200
 HISTORY_MAX = 100
+HISTORY_DEFAULT = 50    # 한 응답에 싣는 기본 건수(?limit= 으로 조절)
+# `?op=history` 가 내보내는 칸(등록부). 손실 칸(`dropped`)이 빠지면 릴리스
+# 게이트 `counter_exposure` 가 실패한다 — 세어 두고 보여주지 않으면 센 것이 아니다.
+HISTORY_KEYS = ("count", "retained", "dropped", "capacity", "truncated")
 TENANT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 _PHONE_RE = re.compile(r"01[016789]-?\d{3,4}-?\d{4}")
 _RRN_RE = re.compile(r"\d{6}-?[1-4]\d{6}")
@@ -78,7 +82,8 @@ REQUIREMENTS = (
 
 _LOCK = threading.Lock()
 _TENANTS: dict = {}       # tenant_id -> record
-_HISTORY: list = []       # append-only, 최근 HISTORY_MAX
+_HISTORY: list = []       # 추가 전용(수정 없음) · 최근 HISTORY_MAX 건만 남는다
+_HIST_DROPPED = 0         # 상한 초과로 버린 이력 줄 수 — 조용히 사라지지 않게 센다
 
 
 def recording_live() -> bool:
@@ -170,8 +175,16 @@ def validate_tenant_id(tid) -> str:
 
 
 def _hist(entry: dict):
+    """호출자가 _LOCK 을 잡은 상태에서 부른다."""
+    global _HIST_DROPPED
     _HISTORY.append(entry)
-    del _HISTORY[:-HISTORY_MAX]
+    # 상한 초과분은 버리되 **버린 줄 수를 센다**. 이 장부는 AI 응대·녹음 고지를
+    # 언제 어떻게 바꿨는지의 근거다 — 조용히 잘려 나가면 화면이 「최근 N건 ·
+    # append-only」 라고 말하면서 사라진 변경을 숨긴다.
+    extra = len(_HISTORY) - HISTORY_MAX
+    if extra > 0:
+        del _HISTORY[:extra]
+        _HIST_DROPPED += extra
 
 
 def set_text(tenant_id, text, brand=None, actor=None) -> dict:
@@ -280,16 +293,37 @@ def _scope_tenants(tids, role, actor_partner_id, at):
         return None
 
 
-def history(limit=50) -> list:
-    n = max(1, min(int(limit or 50), HISTORY_MAX))
+def history(limit=HISTORY_DEFAULT) -> list:
+    n = max(1, min(int(limit or HISTORY_DEFAULT), HISTORY_MAX))
     with _LOCK:
         return [dict(h) for h in _HISTORY[-n:]]
 
 
+def history_stats(limit=HISTORY_DEFAULT) -> dict:
+    """이력 + **무엇이 빠졌는지**(`caller_id.history_stats` 와 같은 규약)."""
+    n = max(1, min(int(limit or HISTORY_DEFAULT), HISTORY_MAX))
+    with _LOCK:
+        retained = len(_HISTORY)
+        rows = [dict(h) for h in _HISTORY[-n:]]
+        dropped = _HIST_DROPPED
+    return {
+        "history": rows,
+        "count": len(rows),          # 이번 응답에 실린 건수
+        "retained": retained,        # 장부에 남아 있는 건수
+        "dropped": dropped,          # 상한 초과로 버린 줄 수(실측)
+        "capacity": HISTORY_MAX,
+        "truncated": len(rows) < retained,
+        "limit": n,
+        "persistence": "instance-memory (휘발) — 영속 보관은 [승인 필요]",
+    }
+
+
 def _clear_for_tests():
+    global _HIST_DROPPED
     with _LOCK:
         _TENANTS.clear()
         del _HISTORY[:]
+        _HIST_DROPPED = 0
 
 
 # --------------------------------------------------------------------------
@@ -362,7 +396,9 @@ class handler(BaseHTTPRequestHandler):
                 out = {"ok": True, "tenants": list_tenants(), "count": len(_TENANTS),
                        "persistence": "memory (영속 저장소 [승인 필요])"}
             elif op == "history":
-                out = {"ok": True, "history": history()}
+                limit = _errors.query_int(q, "limit", default=HISTORY_DEFAULT,
+                                          minimum=1, maximum=HISTORY_MAX)
+                out = {"ok": True, **history_stats(limit)}
             else:
                 out = {"ok": True, "default": effective(None),
                        "requirements": [{k: r[k] for k in ("key", "level", "label", "hint")} for r in REQUIREMENTS],
