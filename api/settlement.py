@@ -587,15 +587,27 @@ def report(month=None, partner_id=None, now=None):
             want = str(partner_id).strip().lower()
             lines = [d for d in lines if d["partner_id"] == want]
 
+    # 파트너별 집계 — `tenants` 는 **서로 다른 고객사 수**다.
+    # 2026-10-29(41차) 결함 수정: 그 전까지 줄마다 1 을 더해 **줄 수**를 적었다.
+    # 한 고객사가 한 파트너 밑에서 줄을 두 개 만드는 일은 흔하다 — 달 안에서
+    # 유입경로가 바뀌면 `split_bucket` 이 기간별로 쪼개고, 등록 전 구간은
+    # `unattributed` 줄로 따로 선다(파트너 없는 줄은 같은 `-` 칸에 모인다).
+    # 그래서 고객사 1곳이 「고객사 2」로 적혔고, **같은 응답의**
+    # `totals.tenants`(집합으로 센다)와 다른 말을 했다. 청구 근거 화면에서
+    # 두 숫자가 다르면 어느 쪽도 믿을 수 없다. 줄 수는 `lines` 로 따로 센다.
     by_partner = {}
+    tenant_sets = {}
     for d in lines:
         k = d["partner_id"] or "-"
         p = by_partner.setdefault(k, {
             "partner_id": d["partner_id"], "partner_name": d["partner_name"],
-            "tenants": 0, "calls": 0, "minutes": 0.0,
+            "tenants": 0, "lines": 0, "calls": 0, "minutes": 0.0,
             "revenue_krw": None, "commission_krw": None, "needs_attention": 0,
         })
-        p["tenants"] += 1
+        ts = tenant_sets.setdefault(k, set())
+        ts.add(d["tenant_id"])
+        p["tenants"] = len(ts)
+        p["lines"] += 1
         p["calls"] += d["calls"]
         p["minutes"] = round(p["minutes"] + d["minutes"], 1)
         if d["revenue_krw"] is not None:

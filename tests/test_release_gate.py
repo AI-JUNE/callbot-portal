@@ -13,8 +13,9 @@
   4) spoken_numbers— 프롬프트·데모 툴 결과에 박힌 수치(고객이 듣는 값)를 잡는다
   5) spoken_rules  — 시나리오 프롬프트가 "조회하지 않은 값은 말하지 않는다"를 지시하는가
   6) mem_caps      — 인스턴스 메모리 저장소에 보관 상한이 있는가(등록부 대조)
-  7) 현재 저장소는 위 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
-  8) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
+  7) host_bypass    — 주소 표기 우회(끝점 FQDN·짧은 꼴 IPv4)를 가드가 막는가
+  8) 현재 저장소는 위 검사를 모두 통과한다(게이트가 늘 빨간불이면 사람이 끈다)
+  9) 등록부가 현실과 맞다 — 등록된 파일이 실제로 존재하고 실제로 밖으로 나간다
 
 실행: python3 -m pytest tests/test_release_gate.py -q
 """
@@ -1232,6 +1233,84 @@ class TestCounterExposure(unittest.TestCase):
         self.assertIn(msg, buf.getvalue())
 
 
+class TestHostBypass(unittest.TestCase):
+    """20단계 — 주소 표기 우회 기록부(41차).
+
+    게이트가 **실제로 판정기를 돌려** 거부를 확인하는지 본다. 저장소 파일은
+    건드리지 않고, 고치기 전 판정기를 흉내낸 대역을 끼워 넣는다.
+    """
+
+    class _Old(object):
+        """41차 이전 판정기 — 끝점·짧은 꼴을 그냥 통과시킨다."""
+        normalize_host = staticmethod(lambda h: (h, True))
+
+        @staticmethod
+        def check(url, label="url", allow_insecure=False, allowlist=()):
+            import ipaddress
+            from urllib.parse import urlparse
+            p = urlparse(url)
+            host = (p.hostname or "").lower()
+            if p.scheme not in ("http", "https"):
+                return False, "http(s) 주소만 허용합니다"
+            if p.scheme == "http" and not allow_insecure:
+                return False, "https 주소만 허용합니다"
+            if not host:
+                return False, "호스트가 없습니다"
+            if host in ("localhost",) or host.endswith((".internal", ".local")):
+                return False, "내부 주소로는 보낼 수 없습니다"
+            try:
+                ip = ipaddress.ip_address(host)
+            except ValueError:
+                ip = None
+            if ip is not None and (ip.is_private or ip.is_loopback
+                                   or ip.is_link_local or ip.is_reserved):
+                return False, "사설·루프백 주소로는 보낼 수 없습니다"
+            return True, ""
+
+    class _Overblocking(object):
+        normalize_host = staticmethod(lambda h: (h, True))
+
+        @staticmethod
+        def check(url, label="url", allow_insecure=False, allowlist=()):
+            return False, "전부 막는다"
+
+    class _NoNormalize(object):
+        @staticmethod
+        def check(url, label="url", allow_insecure=False, allowlist=()):
+            return False, ""
+
+    def test_the_real_41st_defect_would_be_caught_today(self):
+        ok, msg = verify.check_host_bypass(self._Old)
+        self.assertFalse(ok)
+        self.assertIn("우회 통과", msg)
+        for u in ("https://metadata.google.internal./latest",
+                  "https://169.254.43518/latest", "https://127.1/x",
+                  "https://x.localhost/x"):
+            self.assertIn(u, msg, u)
+
+    def test_overblocking_also_fails(self):
+        """정상 주소를 막기 시작하면 사람이 가드를 끈다 — 그쪽도 실패다."""
+        ok, msg = verify.check_host_bypass(self._Overblocking)
+        self.assertFalse(ok)
+        self.assertIn("과차단", msg)
+
+    def test_missing_normalization_wiring_fails(self):
+        ok, msg = verify.check_host_bypass(self._NoNormalize)
+        self.assertFalse(ok)
+        self.assertIn("normalize_host", msg)
+
+    def test_registry_is_not_empty(self):
+        self.assertGreaterEqual(len(verify.HOST_BYPASS), 10)
+        self.assertGreaterEqual(len(verify.HOST_ALLOWED), 4)
+        for url, why in verify.HOST_BYPASS.items():
+            self.assertTrue(why.strip(), url)   # 사유 없는 등록은 등록이 아니다
+
+    def test_repository_passes_today(self):
+        ok, msg = verify.check_host_bypass()
+        self.assertTrue(ok, msg)
+        self.assertIn("거부", msg)
+
+
 class TestGateRuns(unittest.TestCase):
     def test_main_returns_zero_on_clean_tree(self):
         import io as _io
@@ -1248,7 +1327,8 @@ class TestGateRuns(unittest.TestCase):
         out = buf.getvalue()
         for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
                      "spoken_rules", "mem_caps", "history_caps", "speech_rules",
-                     "keyword_tables", "judge_inputs", "counter_exposure"):
+                     "keyword_tables", "judge_inputs", "counter_exposure",
+                     "host_bypass"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

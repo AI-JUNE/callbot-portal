@@ -3168,8 +3168,8 @@ function slRender(d){
   if(d.in_progress)warn+='<div class="hint" style="margin-bottom:10px">아직 끝나지 않은 달입니다. 확정 대상이 아니라 중간 집계입니다.</div>';
   var roll='';
   if((d.by_partner||[]).length){
-    roll='<table style="margin-bottom:12px"><thead><tr><th>파트너</th><th>고객사 줄</th><th>건수</th><th>매출(원)</th><th>수수료(원)</th><th>확인 필요</th></tr></thead><tbody>'
-      +d.by_partner.map(function(p){return '<tr><td><code>'+slEsc(p.partner_id||'-')+'</code> '+slEsc(p.partner_name||'')+'</td><td style="text-align:right">'+slNum(p.tenants)+'</td><td style="text-align:right">'+slNum(p.calls)+'</td><td style="text-align:right">'+slNum(p.revenue_krw)+'</td><td style="text-align:right"><b>'+slNum(p.commission_krw)+'</b></td><td style="text-align:right">'+slNum(p.needs_attention)+'</td></tr>';}).join('')
+    roll='<table style="margin-bottom:12px"><thead><tr><th>파트너</th><th>고객사</th><th>줄</th><th>건수</th><th>매출(원)</th><th>수수료(원)</th><th>확인 필요</th></tr></thead><tbody>'
+      +d.by_partner.map(function(p){return '<tr><td><code>'+slEsc(p.partner_id||'-')+'</code> '+slEsc(p.partner_name||'')+'</td><td style="text-align:right">'+slNum(p.tenants)+'</td><td style="text-align:right">'+slNum(p.lines)+'</td><td style="text-align:right">'+slNum(p.calls)+'</td><td style="text-align:right">'+slNum(p.revenue_krw)+'</td><td style="text-align:right"><b>'+slNum(p.commission_krw)+'</b></td><td style="text-align:right">'+slNum(p.needs_attention)+'</td></tr>';}).join('')
       +'</tbody></table>';}
   var foot='<div class="hint" style="margin-top:8px">'+slEsc(d.note||'')+'<br>통화 '+slEsc(d.currency||'')+' · 부가세 '+slEsc(d.vat||'')+' · '+slEsc(d.rounding||'')+' · 기간 경계 '+slEsc((d.period||{}).timezone||'')+'<br>실적 표본: '+slNum((d.usage||{}).records)+'건 / 버킷 '+slNum((d.usage||{}).buckets)+' · 수집 범위 '+slEsc(((d.usage||{}).collector||{}).scope||'')+'</div>';
   slSet(chips+warn+roll+slRows(d.lines)+foot);}

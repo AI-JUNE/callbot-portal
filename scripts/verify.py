@@ -25,6 +25,7 @@
  17. counter_exposure— 손실·오류 카운터를 세어 두고 응답에 싣는가(등록부 대조)
  18. live_gates    — `*_LIVE` 안전선을 요청마다 읽고 같은 규칙으로 판정하는가
  19. stale_state   — '진행 중'을 뜻하는 저장소에 시간 만료가 있고 배선돼 있는가
+ 20. host_bypass   — 주소 표기 우회(끝점 FQDN·짧은 꼴 IPv4…)가 SSRF 가드에 막히는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -1978,6 +1979,120 @@ def _called_elsewhere(tree, func_name):
     return False
 
 
+# --------------------------------------------------------------------------
+# 20) host_bypass (41차) — **주소 표기 우회 기록부**
+#
+# 15단계가 낱말에 대해 세운 규약("한 번 밝혀진 오탐은 전부에 적용한다")을
+# **주소**에 대해 세운다. 41차 결함이 그 자리에서 났다 —
+# `_urlguard.check()` 는 「루프백·사설·메타데이터로는 보낼 수 없다」고 적어 두고
+# `https://metadata.google.internal./latest`(끝점 FQDN)와
+# `https://169.254.43518/latest`(짧은 꼴 = 169.254.169.254)를 통과시켰다.
+# 리졸버는 그 표기를 **같은 곳으로** 푼다. 즉 판정이 틀린 것이 아니라
+# **판정 앞의 표기 정규화가 없었다.**
+#
+# 이 모듈은 안부 결과 웹훅·녹음 다운로드·Sentry DSN·주문 백엔드·보이스 엔진이
+# 공용으로 쓴다(6단계 `URLGUARD_REQUIRED`). 한 곳의 구멍이 다섯 경로의 구멍이다.
+#
+# 그래서 센다: 아래 기록부의 주소를 **실제로 `check()` 에 넣어** 거부를 확인한다.
+# 소스를 읽는 다른 단계와 달리 돌려 보는 이유는, 표기 우회는 코드 모양으로
+# 드러나지 않기 때문이다(`endswith`·`ipaddress` 는 그대로 거기 있었다).
+#
+# 과차단을 함께 고정한다(`HOST_ALLOWED`) — 가드가 정상 주소를 막기 시작하면
+# 사람이 가드를 끈다(28·30~40차와 같은 이유). 네트워크를 쓰지 않는다(DNS 조회 없음).
+# --------------------------------------------------------------------------
+HOST_BYPASS = {
+    "https://127.0.0.1./x":
+        "끝점(trailing dot) FQDN — 리졸버는 점 없는 것과 같은 곳으로 푼다",
+    "https://localhost./x":
+        "끝점 — BLOCKED_HOSTS 는 문자열 일치라 점 하나로 비켜간다",
+    "https://metadata.google.internal./latest":
+        "끝점 — `.internal` 접미 검사(endswith)가 성립하지 않는다",
+    "https://169.254.169.254./x":
+        "끝점 — 클라우드 메타데이터 주소",
+    "https://127.1/x":
+        "짧은 꼴 IPv4 — inet_aton 이 127.0.0.1 로 푼다",
+    "https://10.1/x":
+        "짧은 꼴 — 10.0.0.1(사설)",
+    "https://169.254.43518/latest":
+        "3칸 꼴 — 169.254.169.254(메타데이터)",
+    "https://0x7f.1/x":
+        "16진 + 짧은 꼴 — 127.0.0.1",
+    "https://2130706433/x":
+        "10진 32비트 — 127.0.0.1",
+    "https://0177.0.0.1/x":
+        "8진 — 127.0.0.1",
+    "https://x.localhost/x":
+        "RFC 6761 — `.localhost` 는 리졸버가 루프백으로 보낸다",
+    "https://[::1]/x":
+        "IPv6 루프백",
+    "https://[::ffff:127.0.0.1]/x":
+        "IPv4-mapped IPv6 — 127.0.0.1",
+    "https://a..b/x":
+        "빈 라벨 — 어떤 리졸버도 풀지 않는다. 해석 실패를 통과로 바꾸지 않는다",
+    "http://example.org/x":
+        "평문 http — 기본값에서는 거부(개발 플래그는 호출부가 넘긴다)",
+    "file:///etc/passwd":
+        "스킴 우회 — 로컬 파일 읽기",
+}
+HOST_ALLOWED = {
+    "https://eum.gowon.co.kr/api/channel/aicc/request": "이음 수신(실제 연동 대상)",
+    "https://123.example.com/x": "숫자 라벨이 섞인 정상 도메인",
+    "https://hooks.example.org:8443/cb": "비표준 포트 정상 주소",
+    "https://8.8.8.8/x": "공개 IP 리터럴",
+    "https://999.1/x": "범위를 넘긴 숫자 — IP 표기가 아니다(도메인으로 본다)",
+    "https://1.2.3.4.5/x": "라벨 5개 — inet_aton 도 IP 로 읽지 않는다",
+}
+
+
+def _load_urlguard():
+    """`api/_urlguard.py` 를 파일 경로로 불러온다(의존성 0 모듈이라 안전하다)."""
+    import importlib.util
+    path = os.path.join(API_DIR, "_urlguard.py")
+    try:
+        spec = importlib.util.spec_from_file_location("_verify_urlguard", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod, ""
+    except Exception as e:                         # noqa: BLE001
+        return None, type(e).__name__
+
+
+def check_host_bypass(mod=None):
+    """기록부의 표기 우회가 **실제로** 거부되는가 + 정상 주소는 통과하는가.
+
+    `mod` 는 회귀 테스트가 **고치기 전 판정기**를 끼워 보는 자리다 — 게이트가
+    그 결함을 실제로 잡는지 확인하려면 판정기를 바꿔 끼울 수 있어야 한다
+    (저장소 파일은 건드리지 않는다. 21차 사고 뒤의 규약).
+    """
+    err = ""
+    if mod is None:
+        mod, err = _load_urlguard()
+    if mod is None:
+        return False, "api/_urlguard.py 를 불러올 수 없다(%s)" % err
+    if not hasattr(mod, "normalize_host"):
+        return False, "_urlguard.normalize_host 가 없다(표기 정규화 배선이 사라졌다)"
+    msgs = []
+    for url, why in sorted(HOST_BYPASS.items()):
+        try:
+            ok = bool(mod.check(url)[0])
+        except Exception as e:                     # noqa: BLE001
+            msgs.append("%s 판정 중 예외(%s)" % (url, type(e).__name__))
+            continue
+        if ok:
+            msgs.append("우회 통과: %s — %s" % (url, why))
+    for url, why in sorted(HOST_ALLOWED.items()):
+        try:
+            ok, reason = mod.check(url)
+        except Exception as e:                     # noqa: BLE001
+            msgs.append("%s 판정 중 예외(%s)" % (url, type(e).__name__))
+            continue
+        if not ok:
+            msgs.append("과차단: %s 가 막힌다(%s) — %s" % (url, reason, why))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "표기 우회 %d건 거부 · 정상 주소 %d건 통과"
+                             % (len(HOST_BYPASS), len(HOST_ALLOWED)))
+
+
 def _emit(text, as_json=False):
     """게이트 출력 — 소비자가 둘이다(사람이 읽는 콘솔 · JSON 을 파싱하는 기계).
 
@@ -2031,6 +2146,7 @@ def main():
     ce_ok, ce_msg = check_counter_exposure(srcs)
     lg_ok, lg_msg = check_live_gates(srcs)
     ss_ok, ss_msg = check_stale_state(srcs)
+    hb_ok, hb_msg = check_host_bypass()
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -2052,6 +2168,7 @@ def main():
         {"step": "counter_exposure", "ok": ce_ok, "detail": ce_msg},
         {"step": "live_gates", "ok": lg_ok, "detail": lg_msg},
         {"step": "stale_state", "ok": ss_ok, "detail": ss_msg},
+        {"step": "host_bypass", "ok": hb_ok, "detail": hb_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

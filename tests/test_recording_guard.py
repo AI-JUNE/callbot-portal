@@ -180,15 +180,25 @@ class TestRecordingUrlRules(GuardBase):
             self.assertIn("형식", reason)
 
     def test_숫자표기_해석_경계(self):
-        """IP 표기가 아닌 것을 IP 로 단정하지 않는다(과차단 방지)."""
+        """IP 표기가 아닌 것을 IP 로 단정하지 않는다(과차단 방지).
+
+        2026-10-29(41차) 수정: 라벨 2~3개를 「IP 표기가 아니다」로 두던 기대값을
+        고쳤다 — `inet_aton` 은 `1.2.3` 을 1.2.0.3 으로 풀기 때문에, 그 기대값은
+        **결함을 회귀로 굳히고 있었다**(`https://10.1/x` 가 가드를 통과했다).
+        """
         self.assertIsNone(_urlguard.as_ip("1..2"))          # 빈 라벨
-        self.assertIsNone(_urlguard.as_ip("1.2.3"))         # 라벨 3개
-        self.assertIsNone(_urlguard.as_ip("1.2"))           # 라벨 2개
         self.assertIsNone(_urlguard.as_ip("99999999999"))   # 32비트 초과
+        self.assertIsNone(_urlguard.as_ip("1.2.3.4.5"))     # 라벨 5개
         self.assertIsNone(_urlguard.as_ip("08.0.0.1"))      # 8진 리터럴이 아님
+        self.assertIsNone(_urlguard.as_ip("999.1"))         # 앞 라벨 범위 초과
+        self.assertIsNone(_urlguard.as_ip("1.16777216"))    # 뒤 라벨 범위 초과
         self.assertIsNone(_urlguard.as_ip("cdn.clawops.io"))
         self.assertEqual(str(_urlguard.as_ip("2130706433")), "127.0.0.1")
         self.assertEqual(str(_urlguard.as_ip("0177.0.0.1")), "127.0.0.1")
+        # 짧은 꼴 — 리졸버가 푸는 대로 읽는다
+        self.assertEqual(str(_urlguard.as_ip("127.1")), "127.0.0.1")
+        self.assertEqual(str(_urlguard.as_ip("1.2.3")), "1.2.0.3")
+        self.assertEqual(str(_urlguard.as_ip("169.254.43518")), "169.254.169.254")
 
     def test_안부_콜백과_같은_규칙을_쓴다(self):
         """규칙이 두 군데 적혀 있으면 한쪽만 고쳐진다 — 같은 모듈을 쓰는지 고정."""
