@@ -26,6 +26,7 @@ os.environ.setdefault("CALLBOT_API_KEY", "test-key")
 
 import _ratelimit       # noqa: E402
 import ops_stats        # noqa: E402
+import _audit           # noqa: E402  — 대역이 쓸 라벨 환산(진짜 규칙)
 
 
 class Req(ops_stats.handler):
@@ -64,7 +65,14 @@ def run(path="/api/ops_stats", auth=True):
 
 
 class Recorder(object):
-    """감사 모듈 대역 — 무엇이 어떻게 적혔는지 확인한다."""
+    """감사 모듈 대역 — 무엇이 어떻게 적혔는지 확인한다.
+
+    라벨·상태 환산(`result_for`·`status_of`)은 **진짜 모듈 것**을 빌려 쓴다 —
+    대역이 제 규칙을 들고 있으면 라우트가 무엇으로 적는지 검증할 수 없다.
+    """
+
+    result_for = staticmethod(_audit.result_for)
+    status_of = staticmethod(_audit.status_of)
 
     def __init__(self, boom=False):
         self.rows = []

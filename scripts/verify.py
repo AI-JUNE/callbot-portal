@@ -26,6 +26,7 @@
  18. live_gates    — `*_LIVE` 안전선을 요청마다 읽고 같은 규칙으로 판정하는가
  19. stale_state   — '진행 중'을 뜻하는 저장소에 시간 만료가 있고 배선돼 있는가
  20. host_bypass   — 주소 표기 우회(끝점 FQDN·짧은 꼴 IPv4…)가 SSRF 가드에 막히는가
+ 21. audit_outcome — 감사 기록이 **응답과 같은 말**을 하는가(성공을 미리 적지 않는다)
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -2093,6 +2094,174 @@ def check_host_bypass(mod=None):
                              % (len(HOST_BYPASS), len(HOST_ALLOWED)))
 
 
+# --------------------------------------------------------------------------
+# 21) 감사 결과 (42차) — 감사 기록이 **응답과 같은 말**을 하는가
+#
+# 5차가 `ops_stats` 에서 고친 결함이 두 라우트(`wellbeing`·`voice`)에 그대로
+# 남아 있었다: 접근 가드를 통과한 **직후** `allow/200` 을 적었으므로, 실발신
+# 차단(501)·콜백 전송 실패(502)·입력오류(400)·과대본문(413)·미보관 조회(404)·
+# 내부오류(500)가 감사 스트림에서 **전부 성공**으로 보였다. 감사 장부는
+# 「누가 외부로 보냈나 · 누가 실발신을 시도했나」의 근거인데, 그 장부가 결과를
+# 거짓으로 적고 있으면 조사에 쓸 수 없다.
+#
+# 리뷰에서 보이지 않는 모양이다 — 기록 한 줄은 멀쩡하고 **놓인 자리**가 틀렸다.
+# 그래서 센다(20단계와 같은 방식: 규칙은 자리를, 판정은 실행으로 확인한다).
+#  (a) **성공을 미리 적지 않는다** — 감사 호출의 결과 인자가 `"allow"` 리터럴이면,
+#      같은 함수 안에서 그 앞에 응답 전송(`_send`·`_send_xml`·`send_response`)이
+#      있어야 한다. 거부(`deny`)는 가드 판정 그 자체라 앞에 와도 된다.
+#  (b) **실패를 뭉개지 않는다** — 결과 인자에 `"error"` 리터럴을 쓰지 않는다.
+#      상태코드가 정하게 한다(`_audit.result_for`). 42차 전까지 관리 장부 넷은
+#      입력오류 400 까지 `error` 로 적었고, 그러면 사용자 오타가 `/health.audit`
+#      의 error 칸을 올려 **진짜 5xx 가 그 안에 묻힌다**(18차 규약의 감사판).
+#  (c) `_audit.result_for` 가 실제로 2xx·3xx=allow · 4xx=deny · 5xx=error 를
+#      돌려주는지 **돌려 본다**(해석 불가는 error — 모르는 것을 성공으로 적지 않는다).
+#  (d) 등록부 `AUDIT_RESULT_USERS` 와 배선이 **양방향으로** 맞아야 한다.
+#
+# 범위는 좁다(28·30~41차와 같은 이유 — 과차단되면 사람이 게이트를 끈다):
+# 라우트 파일(밑줄 없음·`class handler` 있음·감사 배선 있음)의 함수 본문만 보고,
+# 감사 호출은 이름으로 고른다. 셀프테스트 블록은 보지 않는다.
+# --------------------------------------------------------------------------
+AUDIT_RESULT_USERS = {
+    "ops_stats.py": "집계·전환 티켓 조회 — 실패 상태를 그대로 적는다",
+    "caller_id.py": "발신번호 대장(실발신 승인 근거) — 입력오류는 deny",
+    "partners.py": "파트너 귀속 장부(정산 분쟁 근거)",
+    "settlement.py": "요율·과금 명세(청구 근거)",
+    "disclosure.py": "AI 고지 문구(법정 고지 변경)",
+    "voice.py": "통화 웹훅·캠페인 발신 시도",
+    "wellbeing.py": "안부 실행·판정 근거 열람·실발신 차단",
+    "health.py": "deep 점검(외부 도달성 시도) — 성공·실패 모두",
+}
+# 감사 기록 호출로 보는 이름(속성 호출은 끝 이름으로 본다).
+AUDIT_SINKS = ("record", "record_request", "_audit_ev", "_audit_safe",
+               "_audit_fail", "_audit", "_audit_deep", "_outcome")
+# 응답 본문을 실제로 쓰는 호출. `deny` 는 넣지 않는다 — 거부는 가드가 끝낸 요청이고,
+# 그 자리가 성공 기록보다 앞에 있다고 해서 성공이 응답 뒤에 적힌 것은 아니다.
+AUDIT_SENDS = ("_send", "_send_xml", "_send_csv", "send_response")
+# (c) 판정 표 — 상태코드 → 라벨.
+AUDIT_RESULT_CASES = (
+    (200, "allow"), (201, "allow"), (204, "allow"), (302, "allow"),
+    (400, "deny"), (401, "deny"), (403, "deny"), (404, "deny"),
+    (413, "deny"), (429, "deny"), (499, "deny"),
+    (500, "error"), (501, "error"), (502, "error"), (504, "error"),
+    (None, "error"), ("알수없음", "error"), (0, "error"),
+)
+
+
+def _load_api_module(fname, alias):
+    """api/<fname> 을 **실행해** 판정 함수를 부를 수 있게 올린다(20단계와 같은 방식)."""
+    import importlib.util
+    path = os.path.join(API_DIR, fname)
+    try:
+        spec = importlib.util.spec_from_file_location(alias, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod, ""
+    except Exception as e:                         # noqa: BLE001
+        return None, type(e).__name__
+
+
+def _audit_route_files(sources):
+    """감사를 배선한 라우트 파일 목록(9단계와 같은 선별 규칙)."""
+    out = []
+    for name, text in sorted(sources.items()):
+        if name.startswith("_") or "class handler" not in text:
+            continue
+        if not any(c in _code(text) for c in AUDIT_CALLS):
+            continue
+        out.append(name)
+    return out
+
+
+def _called_tail(node):
+    """Call 노드의 호출 이름(마지막 토큰). `self._audit(...)` → `_audit`."""
+    import ast
+    fn = node.func
+    if isinstance(fn, ast.Name):
+        return fn.id
+    if isinstance(fn, ast.Attribute):
+        return fn.attr
+    return ""
+
+
+def _literal_args(node):
+    """Call 의 **직접** 인자 리터럴(중첩 표현식은 보지 않는다) → (문자열집합, 정수집합)."""
+    import ast
+    words, nums = set(), set()
+    for a in list(node.args) + [k.value for k in node.keywords]:
+        if not isinstance(a, ast.Constant):
+            continue
+        if isinstance(a.value, bool):
+            continue                           # live=False 같은 사실 서술 칸
+        if isinstance(a.value, str):
+            words.add(a.value)
+        elif isinstance(a.value, int):
+            nums.add(a.value)
+    return words, nums
+
+
+def check_audit_outcome(sources, mod=None):
+    """감사 결과가 응답과 같은 말을 하는가. `mod` 는 회귀가 판정기를 끼우는 자리."""
+    import ast
+    msgs, used = [], set()
+    for name in _audit_route_files(sources):
+        try:
+            tree = ast.parse(sources[name])
+        except Exception:                          # noqa: BLE001
+            continue                               # 문법 오류는 py_compile 게이트가 잡는다
+        for fn in [n for n in ast.walk(ast.Module(body=_strip_selftest(tree),
+                                                  type_ignores=[]))
+                   if isinstance(n, ast.FunctionDef)]:
+            sends = [c.lineno for c in ast.walk(fn)
+                     if isinstance(c, ast.Call) and _called_tail(c) in AUDIT_SENDS]
+            for c in ast.walk(fn):
+                if not isinstance(c, ast.Call) or _called_tail(c) not in AUDIT_SINKS:
+                    continue
+                words, nums = _literal_args(c)
+                if "error" in words:
+                    msgs.append("%s:%d %s(…, \"error\", …) — 실패 라벨을 손으로 적었다. "
+                                "상태코드가 정하게 할 것(_audit.result_for) — 4xx 를 "
+                                "error 로 적으면 진짜 5xx 가 묻힌다"
+                                % (name, c.lineno, _called_tail(c)))
+                # 성공을 적는 자리는 둘 중 하나로 드러난다 — 라벨 리터럴(`"allow"`)
+                # 이거나 **상태 리터럴이 2xx·3xx** 다(라벨이 헬퍼 안에 숨은 경우).
+                if "allow" not in words and not any(200 <= n < 400 for n in nums):
+                    continue
+                if not any(s < c.lineno for s in sends):
+                    msgs.append("%s:%d %s 가 응답 **전에** allow 를 적는다 — 그 뒤에 "
+                                "나올 400·501·502·500 이 전부 성공으로 남는다"
+                                "(5차 결함의 모양). 결과가 확정된 뒤에 적을 것"
+                                % (name, c.lineno, fn.name))
+        if "result_for" in _code(sources[name]):
+            used.add(name)
+    missing = sorted(set(AUDIT_RESULT_USERS) - used)
+    if missing:
+        msgs.append("상태→라벨 판정 배선이 없다: %s (_audit.result_for 를 쓸 것)"
+                    % ", ".join(missing))
+    stale = sorted(used - set(AUDIT_RESULT_USERS))
+    if stale:
+        msgs.append("등록부에 없는 사용처: %s (AUDIT_RESULT_USERS 에 사유를 적을 것)"
+                    % ", ".join(stale))
+    err = ""
+    if mod is None:
+        mod, err = _load_api_module("_audit.py", "_verify_audit")
+    if mod is None:
+        msgs.append("api/_audit.py 를 불러올 수 없다(%s)" % err)
+    elif not hasattr(mod, "result_for"):
+        msgs.append("_audit.result_for 가 없다(상태→라벨 판정이 사라졌다)")
+    else:
+        for status, want in AUDIT_RESULT_CASES:
+            try:
+                got = mod.result_for(status)
+            except Exception as e:                 # noqa: BLE001
+                msgs.append("result_for(%r) 판정 중 예외(%s)" % (status, type(e).__name__))
+                continue
+            if got != want:
+                msgs.append("result_for(%r) = %r — %r 이어야 한다" % (status, got, want))
+    return (not msgs), (" / ".join(msgs) if msgs
+                        else "감사 라우트 %d개 · 상태→라벨 %d건 확인"
+                             % (len(AUDIT_RESULT_USERS), len(AUDIT_RESULT_CASES)))
+
+
 def _emit(text, as_json=False):
     """게이트 출력 — 소비자가 둘이다(사람이 읽는 콘솔 · JSON 을 파싱하는 기계).
 
@@ -2147,6 +2316,7 @@ def main():
     lg_ok, lg_msg = check_live_gates(srcs)
     ss_ok, ss_msg = check_stale_state(srcs)
     hb_ok, hb_msg = check_host_bypass()
+    ao_ok, ao_msg = check_audit_outcome(srcs)
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -2169,6 +2339,7 @@ def main():
         {"step": "live_gates", "ok": lg_ok, "detail": lg_msg},
         {"step": "stale_state", "ok": ss_ok, "detail": ss_msg},
         {"step": "host_bypass", "ok": hb_ok, "detail": hb_msg},
+        {"step": "audit_outcome", "ok": ao_ok, "detail": ao_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

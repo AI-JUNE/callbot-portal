@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(ROOT, "api"))
 
 import partners           # noqa: E402
 import _ratelimit         # noqa: E402
+import _audit             # noqa: E402  — 대역이 쓸 라벨 환산(진짜 규칙)
 
 ENVS = ("PARTNER_RBAC_LIVE", "CALLBOT_API_KEY", "CALLBOT_STRICT",
         "CALLBOT_DEBUG_ERRORS")
@@ -261,6 +262,11 @@ class _BrokenAudit(object):
 
 
 class _CountingAudit(object):
+    # 라벨·상태 환산은 **진짜 모듈 것**을 쓴다 — 대역은 저장만 바꾼다.
+    # (대역이 제 규칙을 들고 있으면 라우트가 무엇으로 적는지 검증할 수 없다)
+    status_of = staticmethod(_audit.status_of)
+    result_for = staticmethod(_audit.result_for)
+
     def __init__(self):
         self.calls = []
 
@@ -308,12 +314,14 @@ class TestAuditIsolation(Base):
         self.assertEqual(partners.handler._actor(self._inst()), "origin:portal")
 
     def test_audit_records_the_real_outcome(self):
+        """42차: 입력오류(400)는 `deny` 다 — `error` 로 적으면 진짜 5xx 가 묻힌다."""
         fake = _CountingAudit()
         partners._audit = fake
         call("GET", query="op=drop")             # 400
         call("GET")                              # 200
-        self.assertIn(("GET", "error", 400), fake.calls)
+        self.assertIn(("GET", "deny", 400), fake.calls)
         self.assertIn(("GET", "allow", 200), fake.calls)
+        self.assertNotIn("error", [r for _m, r, _s in fake.calls])
 
 
 # ==========================================================================

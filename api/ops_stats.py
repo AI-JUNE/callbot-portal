@@ -440,6 +440,20 @@ except Exception:          # pragma: no cover
     _audit = None
 
 
+def _audit_result(status):
+    """상태코드 → 감사 결과 라벨. 판정은 `_audit.result_for` 한 곳에만 둔다.
+
+    42차 전에는 이 자리에 `"error" if st >= 500 else "deny"` 가 적혀 있었다 —
+    같은 규칙이 라우트마다 복제돼 있었고, 복제된 쪽은 자리마다 달랐다.
+    """
+    if not _audit:
+        return "error"
+    try:
+        return _audit.result_for(status)
+    except Exception:          # pragma: no cover - 판정 장애 격리
+        return "error"
+
+
 class handler(BaseHTTPRequestHandler):
     # 기본 접근로그는 쿼리스트링(PII 가능)을 그대로 찍으므로 침묵 — 구조화 로그가 대체
     log_message = _log.suppress_access_log
@@ -506,8 +520,9 @@ class handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             # 실패도 사실대로 남긴다 — 감사가 실패를 성공으로 적으면 조사 근거가 무너진다.
-            self._audit("GET", "error" if st >= 500 else "deny", st, rq,
-                        period, op)
+            # 상태 → 라벨 판정은 `_audit.result_for` 한 곳에만 둔다(42차 — 그 전에는
+            # 이 자리에 규칙을 복제해 두어 라우트마다 다른 말을 했다).
+            self._audit("GET", _audit_result(st), st, rq, period, op)
             return
         self._send(200, summary, rq)
         rq.finish(200)

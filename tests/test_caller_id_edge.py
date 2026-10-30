@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(ROOT, "api"))
 import caller_id          # noqa: E402
 import partners           # noqa: E402
 import _ratelimit         # noqa: E402
+import _audit             # noqa: E402  — 대역이 쓸 라벨 환산(진짜 규칙)
 
 ENVS = ("CPAAS_LIVE", "PARTNER_RBAC_LIVE", "PII_MASTER_KEY",
         "CALLBOT_API_KEY", "CALLBOT_STRICT", "CALLBOT_DEBUG_ERRORS")
@@ -263,6 +264,10 @@ class _BrokenAudit(object):
 
 
 class _CountingAudit(object):
+    # 라벨·상태 환산은 **진짜 모듈 것**을 쓴다 — 대역은 저장만 바꾼다.
+    status_of = staticmethod(_audit.status_of)
+    result_for = staticmethod(_audit.result_for)
+
     def __init__(self):
         self.calls = []
 
@@ -309,8 +314,10 @@ class TestAuditIsolation(Base):
         caller_id._audit = fake
         call("GET", query="op=nope")            # 400
         call("GET")                             # 200
-        self.assertIn(("GET", "error", 400), fake.calls)
+        # 42차: 입력오류는 `deny` 다(`error` 는 5xx 전용 — 18차 규약).
+        self.assertIn(("GET", "deny", 400), fake.calls)
         self.assertIn(("GET", "allow", 200), fake.calls)
+        self.assertNotIn("error", [r for _m, r, _s in fake.calls])
 
 
 # ==========================================================================

@@ -438,6 +438,23 @@ def _close(rq, code, deep=False, **extra):
         pass
 
 
+def _audit_deep(h, status):
+    """deep 점검 1건을 감사 스트림에 남긴다 — **결과가 확정된 뒤** 실제 상태로.
+
+    shallow 헬스체크(업타임 모니터·LB 의 대량 호출)는 기록하지 않는다 —
+    요청 1건=1줄이면 실제 조사 대상이 그 줄들에 묻힌다.
+    42차: 그 전에는 응답을 보내기 **전에** `allow/200` 을 적었다. 응답 조립이
+    터져 500 이 나가도 감사에는 성공이 남는다(5차 결함의 모양).
+    상태→라벨 판정은 `_audit.result_for` 한 곳에만 둔다.
+    """
+    try:
+        import _audit
+        _audit.record(h.headers, "ops.health.deep", _audit.result_for(status),
+                      status=status, method="GET", path=h.path)
+    except Exception:
+        pass
+
+
 class handler(BaseHTTPRequestHandler):
     # 기본 접근로그는 요청라인을 그대로 찍는다. /health 는 무인증 공개 경로라
     # 외부가 임의 쿼리를 붙여 부를 수 있다 — 그 문자열을 로그에 남기지 않는다.
@@ -474,16 +491,11 @@ class handler(BaseHTTPRequestHandler):
                 q = ""
             payload = _payload(q)
             deep = payload.get("checks", {}).get("mode") == "deep"
-            # 감사: deep 점검은 외부 도달성 시도를 유발하는 '관리 기능'이므로 기록한다.
-            # shallow 헬스체크(업타임 모니터의 대량 호출)는 기록하지 않는다.
-            if deep:
-                try:
-                    import _audit
-                    _audit.record(self.headers, "ops.health.deep", "allow", status=200,
-                                  method="GET", path=self.path)
-                except Exception:
-                    pass
             self._send(200, payload)
+            # 감사: deep 점검은 외부 도달성 시도를 유발하는 '관리 기능'이므로
+            # 기록한다(결과가 확정된 뒤에 — `_audit_deep` 주석 참조).
+            if deep:
+                _audit_deep(self, 200)
             # 등급(healthy/degraded/unhealthy)은 PII 가 아니라 운영 신호다.
             _close(rq, 200, deep=deep, health=payload.get("status"))
         except Exception as e:
@@ -492,6 +504,10 @@ class handler(BaseHTTPRequestHandler):
             self._send(500, {"ok": False, "status": "error",
                              "code": "INTERNAL_ERROR",
                              "error": _errors.MESSAGE_BY_CODE["INTERNAL_ERROR"]})
+            # deep 점검이 터진 것도 감사에 남긴다 — 성공만 남으면 "그때 무엇을
+            # 찔렀는지"를 되짚을 수 없다(거부·오류가 조사 가치가 더 높다).
+            if deep:
+                _audit_deep(self, 500)
             # 헬스가 터진 것은 반드시 남긴다 — 응답 본문에 못 싣는 원인을
             # 여기서는 예외 '타입명'(error_code)으로 남긴다(문구는 기록하지 않는다).
             try:

@@ -792,6 +792,28 @@ def _audit_ev(headers, path, method, result, status, **extra):
         return None
 
 
+def _audit_result(status):
+    """상태코드 → 감사 결과 라벨. 판정은 `_audit.result_for` 한 곳에만 둔다.
+
+    감사 모듈이 없으면 기록 자체가 남지 않으므로(`_audit_ev` 가 None) 라벨은
+    쓰이지 않는다 — 그래도 성공으로 단정하지 않는다.
+    """
+    if _audit is None:
+        return "error"
+    try:
+        return _audit.result_for(status)
+    except Exception:                      # pragma: no cover - 판정 장애 격리
+        return "error"
+
+
+def _status_of(env, default=500):
+    """오류 봉투에서 실제 응답 상태를 읽는다(감사·집계용)."""
+    try:
+        return int((env or {}).get("status") or default)
+    except Exception:                      # pragma: no cover - 봉투 모양 방어
+        return default
+
+
 def _op_from_path(path):
     """`/api/wellbeing/call` 과 `/api/wellbeing?op=call` 을 모두 받는다.
 
@@ -854,6 +876,8 @@ class handler(BaseHTTPRequestHandler):
     log_message = _log.suppress_access_log
 
     def _send(self, obj, code=200):
+        """응답을 보내고 **그 상태코드를 돌려준다** — 감사 기록이 응답과 같은
+        말을 하려면 호출부가 '무엇으로 끝났는지'를 알아야 한다(42차)."""
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         rq = getattr(self, "_rq", None)
         self.send_response(code)
@@ -868,6 +892,21 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
         _close(rq, code)
+        return code
+
+    def _outcome(self, method, status, **extra):
+        """관리 감사 기록 — **결과가 확정된 뒤** 실제 상태로 남긴다.
+
+        5차가 `ops_stats` 에서 고친 결함이 이 라우트에 그대로 남아 있었다:
+        가드를 통과한 직후 `allow/200` 을 적었으므로 **실발신 차단(501)**·
+        콜백 전송 실패(502)·입력오류(400)·미보관 조회(404)·내부오류(500)가
+        감사 스트림에서 전부 성공으로 보였다. 이 장부(`call.wellbeing`)는
+        「누가 외부로 안부 결과를 보냈나 · 누가 실발신을 시도했나」의 근거다.
+        `op` 를 함께 적는다 — 같은 경로가 안부 실행·최근 이력·**판정 근거 열람**
+        을 모두 맡으므로 액션명만으로는 무엇을 했는지 가려낼 수 없다
+        (`ops_stats` 가 전환 티켓 목록에 `op` 를 적는 것과 같은 이유).
+        """
+        _audit_ev(self.headers, self.path, method, _audit_result(status), status, **extra)
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -882,10 +921,21 @@ class handler(BaseHTTPRequestHandler):
         if not ok:
             _audit_ev(self.headers, self.path, "GET", "deny", code)
             return _guard.deny(self, code, msg, rq)
-        _audit_ev(self.headers, self.path, "GET", "allow", 200)
-        q = parse_qs(urlparse(self.path).query)
-        op = (_op_from_path(self.path) or q.get("op", [""])[0] or "").strip().lower()
-        rq.set(op=_op_label(op))
+        op = _op_from_path(self.path)
+        try:
+            q = parse_qs(urlparse(self.path).query)
+            op = (op or q.get("op", [""])[0] or "").strip().lower()
+            rq.set(op=_op_label(op))
+            status = self._get(q, op, rq)
+        except Exception as e:
+            # 조회 경로도 표준 봉투로 끝낸다 — 예외가 핸들러를 뚫고 나가면
+            # 응답도 감사 기록도 남지 않는다(조용한 실패 금지).
+            status = _status_of(_errors.handle(self, e, route="/api/wellbeing",
+                                               method="GET", rq=rq))
+        self._outcome("GET", status, op=_op_label(op))
+
+    def _get(self, q, op, rq):
+        """조회 동작 — 응답을 보내고 그 상태코드를 돌려준다(감사 기록용)."""
         if op == "recent":
             return self._send({"ok": True, "recent": RECENT})
         if op == "failures":
@@ -903,17 +953,18 @@ class handler(BaseHTTPRequestHandler):
             # request_id·details[].field 가 다른 라우트와 같은 모양으로 나간다
             # (code 값은 기존 소비자를 위해 그대로 유지한다).
             if not ref:
-                return _errors.send(self, status=400, code="VALIDATION_ERROR", rq=rq,
-                                    message="ref 파라미터가 필요합니다(raw_ref)",
-                                    details=[{"field": "ref", "reason": "필수 항목입니다"}])
+                return _status_of(_errors.send(
+                    self, status=400, code="VALIDATION_ERROR", rq=rq,
+                    message="ref 파라미터가 필요합니다(raw_ref)",
+                    details=[{"field": "ref", "reason": "필수 항목입니다"}]), 400)
             rec = get_result(ref)
             if rec is None:
-                return _errors.send(
+                return _status_of(_errors.send(
                     self, status=404, code="NOT_FOUND", rq=rq,
                     message="해당 raw_ref 의 결과가 없습니다(최근 %d건만 보관)" % _MAX_RESULTS,
-                    details=[{"field": "ref", "reason": "보관된 결과가 없습니다"}])
+                    details=[{"field": "ref", "reason": "보관된 결과가 없습니다"}]), 404)
             return self._send({"ok": True, "result": rec})
-        self._send({
+        return self._send({
             "ok": True, "endpoint": "wellbeing", "scenario": "안부",
             "live": live_mode(),
             "mode": "live" if live_mode() else "simulation",
@@ -940,44 +991,54 @@ class handler(BaseHTTPRequestHandler):
         if not ok:
             _audit_ev(self.headers, self.path, "POST", "deny", code)
             return _guard.deny(self, code, msg, rq)
-        _audit_ev(self.headers, self.path, "POST", "allow", 200, live=live_mode())
+        op = _op_from_path(self.path)
         try:
             body = _errors.read_json(self, max_bytes=MAX_BODY, required=True)
-            op = _op_from_path(self.path) or str(body.get("op") or "call").lower()
+            op = op or str(body.get("op") or "call").lower()
             rq.set(op=_op_label(op))
             if op == "request":
-                return self._eum_request(body, rq)
-            if op not in ("call", ""):
+                status = self._eum_request(body, rq)
+            elif op in ("call", ""):
+                status = self._call(body, rq)
+            else:
                 raise _errors.ValidationError.field("op", "지원하지 않는 동작입니다(call)")
-            if live_mode() or str(body.get("mode") or "").lower() == "live":
-                # 실발신은 코드가 아니라 사람 승인으로만 열린다.
-                return _errors.send(self, status=501, code="NOT_IMPLEMENTED", rq=rq,
-                                    message="실회선 발신은 승인 후 활성화됩니다([승인 필요]). "
-                                            "현재는 전화망 미경유 시뮬레이션만 제공합니다.")
-            senior_id = _errors.as_str(body, "senior_id", required=True, max_len=64,
-                                       allow_empty=False)
-            callback_url = _errors.as_str(body, "callback_url", default="", max_len=2048)
-            profile = _errors.as_choice(body, "profile", sorted(PROFILES), default="ok")
-            answers = body.get("answers")
-            if answers is not None and not isinstance(answers, dict):
-                raise _errors.ValidationError.field("answers", "객체여야 합니다")
-            try:
-                out = run_wellbeing(senior_id, callback_url or None, profile=profile,
-                                    answers=answers)
-            except ValueError as e:
-                raise _errors.ValidationError.field("request", str(e))
-            # 판정 결과·전송 성공 여부만 남긴다 — 대상자 ID·콜백 URL 은 담지 않는다.
-            rq.set(risk=(out.get("payload") or {}).get("risk_level"),
-                   delivered=bool((out.get("delivery") or {}).get("delivered")))
-            # 웹훅 전송 실패는 502 로 드러낸다 — 성공으로 위장하지 않는다.
-            d = out.get("delivery") or {}
-            if callback_url and not d.get("delivered"):
-                return self._send({**out, "ok": False,
-                                   "error": d.get("error") or "콜백 전송 실패",
-                                   "code": "CALLBACK_DELIVERY_FAILED"}, code=502)
-            self._send(out)
         except Exception as e:
-            _errors.handle(self, e, route="/api/wellbeing", method="POST")
+            status = _status_of(_errors.handle(self, e, route="/api/wellbeing",
+                                               method="POST", rq=rq))
+        # 감사는 결과가 확정된 뒤에 — 501(실발신 차단)·502(전송 실패)·400 을
+        # 성공으로 적지 않는다. `live` 는 그 순간의 게이트 상태다.
+        self._outcome("POST", status, op=_op_label(op), live=live_mode())
+
+    def _call(self, body, rq):
+        """안부 1건 실행 — 응답을 보내고 그 상태코드를 돌려준다(감사 기록용)."""
+        if live_mode() or str(body.get("mode") or "").lower() == "live":
+            # 실발신은 코드가 아니라 사람 승인으로만 열린다.
+            return _status_of(_errors.send(
+                self, status=501, code="NOT_IMPLEMENTED", rq=rq,
+                message="실회선 발신은 승인 후 활성화됩니다([승인 필요]). "
+                        "현재는 전화망 미경유 시뮬레이션만 제공합니다."), 501)
+        senior_id = _errors.as_str(body, "senior_id", required=True, max_len=64,
+                                   allow_empty=False)
+        callback_url = _errors.as_str(body, "callback_url", default="", max_len=2048)
+        profile = _errors.as_choice(body, "profile", sorted(PROFILES), default="ok")
+        answers = body.get("answers")
+        if answers is not None and not isinstance(answers, dict):
+            raise _errors.ValidationError.field("answers", "객체여야 합니다")
+        try:
+            out = run_wellbeing(senior_id, callback_url or None, profile=profile,
+                                answers=answers)
+        except ValueError as e:
+            raise _errors.ValidationError.field("request", str(e))
+        # 판정 결과·전송 성공 여부만 남긴다 — 대상자 ID·콜백 URL 은 담지 않는다.
+        rq.set(risk=(out.get("payload") or {}).get("risk_level"),
+               delivered=bool((out.get("delivery") or {}).get("delivered")))
+        # 웹훅 전송 실패는 502 로 드러낸다 — 성공으로 위장하지 않는다.
+        d = out.get("delivery") or {}
+        if callback_url and not d.get("delivered"):
+            return self._send({**out, "ok": False,
+                               "error": d.get("error") or "콜백 전송 실패",
+                               "code": "CALLBACK_DELIVERY_FAILED"}, code=502)
+        return self._send(out)
 
     def _eum_request(self, body, rq):
         """이음 3R 현장 음성 요청 — `POST /api/wellbeing/request`.

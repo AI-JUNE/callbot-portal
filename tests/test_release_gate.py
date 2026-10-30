@@ -1328,7 +1328,7 @@ class TestGateRuns(unittest.TestCase):
         for step in ("outbound", "request_log", "audit_actions", "spoken_numbers",
                      "spoken_rules", "mem_caps", "history_caps", "speech_rules",
                      "keyword_tables", "judge_inputs", "counter_exposure",
-                     "host_bypass"):
+                     "host_bypass", "audit_outcome"):
             self.assertIn(step, out)
         self.assertNotIn("FAIL", out)
 

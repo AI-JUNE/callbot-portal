@@ -248,7 +248,13 @@ class TestWiring(AuditBase):
     def test_voice_records_allow_and_deny(self):
         s = self._src("voice.py")
         self.assertIn("_audit_ev(", s)
-        self.assertGreaterEqual(s.count("_audit_ev(self.headers"), 4)
+        # 거부는 가드 직후(상태코드는 _guard 판정값), 성공·실패는 **결과가
+        # 확정된 뒤** `_outcome` 으로 적는다(42차). 그 전에는 가드를 통과한
+        # 직후 `allow/200` 을 적어 400·413·500 이 성공으로 남았다.
+        self.assertEqual(s.count('_audit_ev(self.headers, self.path, "GET", "deny"'), 1)
+        self.assertEqual(s.count('_audit_ev(self.headers, self.path, "POST", "deny"'), 1)
+        self.assertEqual(s.count("_outcome(self, "), 2)
+        self.assertNotIn('"allow", 200', s)        # 성공을 미리 적지 않는다
 
     def test_health_records_only_deep_checks(self):
         s = self._src("health.py")

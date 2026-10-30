@@ -65,6 +65,34 @@ BUFFER_HARD_MAX = 2000          # 메모리 방어 상한
 
 RESULTS = ("allow", "deny", "error")
 
+
+def result_for(status):
+    """응답 상태코드 → 감사 결과 라벨. **이 판정은 여기 한 곳에만 둔다.**
+
+    2026-10-30(42차) — 라우트마다 라벨을 손으로 적고 있었고, 그래서 감사
+    스트림이 응답과 **다른 말**을 했다:
+      · `wellbeing`·`voice` 는 가드를 통과한 직후 `allow/200` 을 적었다 —
+        실발신 차단(501)·콜백 전송 실패(502)·입력오류(400)·미보관(404)·
+        내부오류(500)가 전부 **성공**으로 남았다(5차가 `ops_stats` 에서 고친
+        결함이 두 라우트에 그대로 있었다).
+      · 관리 장부 넷(`caller_id`·`partners`·`settlement`·`disclosure`)은 모든
+        예외를 `error` 로 적었다 — 사용자 오타(400)가 감사 스트림과
+        `/health.audit` 의 `error` 칸을 올리면 **진짜 5xx 가 그 안에 묻힌다**
+        (18차가 요청 로그에서 4xx=warn·5xx=error 로 가른 것과 같은 규약).
+
+    규칙: 2xx·3xx = allow · 4xx = deny(요청이 거부됐다) · 5xx = error.
+    해석할 수 없는 값은 `error` 다 — 모르는 것을 성공으로 적지 않는다.
+    """
+    try:
+        n = int(status)
+    except (TypeError, ValueError):
+        return "error"
+    if 200 <= n < 400:
+        return "allow"
+    if 400 <= n < 500:
+        return "deny"
+    return "error"
+
 # 관리 기능으로 간주하는 경로 → 감사 액션명.
 # 여기에 없는 경로는 일반 트래픽으로 보고 감사 스트림에 남기지 않는다
 # (감사 로그가 일반 로그에 묻히면 조사 가치가 떨어진다).
@@ -339,6 +367,20 @@ def record_request(headers, path, method, result, status, request_id=None, **ext
                   method=method, path=path, **extra)
 
 
+def status_of(exc, default=500):
+    """예외 → 응답 상태코드. `_errors.ValidationError` 는 자기 상태를 들고 있다.
+
+    라우트가 `getattr(exc, "status", 500)` 를 네 곳에 복제해 두고 있었다 —
+    기본값이 자리마다 달랐다(`disclosure` 는 지역변수를 기본값으로 썼다).
+    """
+    try:
+        return int(getattr(exc, "status", default) or default)
+    except (TypeError, ValueError):        # pragma: no cover - 비정상 status 방어
+        return default
+
+
+
+
 # --------------------------------------------------------------------------
 # 조회 — 프로세스 내부용(HTTP 노출은 관리자 인증 확정 후) [승인 필요]
 # --------------------------------------------------------------------------
@@ -405,6 +447,14 @@ if __name__ == "__main__":     # pragma: no cover
     assert counters()["allow"] == 1 and counters()["deny"] == 1 and counters()["total"] == 2
     assert action_for("/api/ops_stats?period=week") == "ops.stats.read"
     assert action_for("/api/chat") is None
+    # 상태코드 → 결과 라벨(판정은 한 곳에만 둔다 · 42차)
+    assert result_for(200) == "allow" and result_for(204) == "allow"
+    assert result_for(302) == "allow"
+    assert result_for(400) == "deny" and result_for(404) == "deny"
+    assert result_for(429) == "deny" and result_for(499) == "deny"
+    assert result_for(500) == "error" and result_for(501) == "error"
+    assert result_for(502) == "error"
+    assert result_for(None) == "error" and result_for("x") == "error"
     assert record_request(h, "/api/chat", "POST", "allow", 200) is None
     assert record_request(h, "/api/ops_stats", "GET", "allow", 200)["method"] == "GET"
     # 키 지문만 남고 원문 키는 남지 않는다

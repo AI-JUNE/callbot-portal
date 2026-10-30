@@ -717,14 +717,68 @@ def _persist_call_result(cid, sess, result):
         pass
 
 
+CAMPAIGN_MAX = 500          # 한 요청의 대상 수 상한(응답 크기·메모리 방어)
+# 번호 자릿수 — `_sip_adapter._clean_number` 와 **같은 규칙**이다(실발신이 열리면
+# 이 계획이 그대로 그 함수로 들어간다). 회귀가 두 규칙의 일치를 강제한다.
+CAMPAIGN_DIGITS = (4, 20)
+# 대본 이름 — voice 는 시나리오 화이트리스트를 갖고 있지 않다(이벤트 경로도
+# 같다). 임의 객체가 metadata 로 새지 않게 **꼴과 길이만** 본다.
+CAMPAIGN_SCENARIO_MAX = 40
+
+
+def campaign_targets(numbers):
+    """캠페인 대상 번호 검증 → 숫자만 남긴 목록. 어긋나면 ValueError.
+
+    42차 결함: 라우트가 본문의 `numbers` 를 그대로 `for n in numbers` 에 넣었다.
+    문자열이 오면 파이썬은 **글자마다 한 통**을 만든다 — 「01012345678」 한 건이
+    `to:"0"`·`to:"1"`… 11건으로 늘어난다. 돌려주는 계획은 그럴듯해 보이므로
+    사람이 눈치채지 못하고, 사전(`dict`)이면 키가 번호 자리에 들어앉는다.
+    개수 상한도 없어서 한 요청이 수만 건의 계획을 만들 수 있었다.
+    **실발신이 열린 뒤에는 이 계획이 그대로 발신 요청이 된다** — 그래서
+    계획 단계에서 막는다(`_sip_adapter.dial` 이 번호 1건에 하는 검증의 목록판).
+    """
+    if numbers is None:
+        raise ValueError("numbers 가 필요합니다(대상 번호 배열)")
+    if isinstance(numbers, (str, bytes)) or not isinstance(numbers, (list, tuple)):
+        raise ValueError("numbers 는 배열이어야 합니다")
+    if len(numbers) > CAMPAIGN_MAX:
+        raise ValueError("numbers 는 한 번에 %d건까지 가능합니다" % CAMPAIGN_MAX)
+    lo, hi = CAMPAIGN_DIGITS
+    out = []
+    for i, n in enumerate(numbers):
+        digits = "".join(ch for ch in n if ch.isdigit()) if isinstance(n, str) else ""
+        if not digits or not (lo <= len(digits) <= hi):
+            raise ValueError("numbers[%d] 가 전화번호 꼴이 아닙니다(숫자 %d~%d자리)"
+                             % (i, lo, hi))
+        out.append(digits)
+    return out
+
+
 def trigger_campaign(numbers, scenario="care", meta=None):
-    meta = meta or {}
+    """아웃바운드 캠페인 **계획**을 만든다. 발신은 하지 않는다.
+
+    `queued` 는 「실제로 발신 큐에 넣은 건수」다. 실회선 결선은 아직 없으므로
+    (3R·**[승인 필요]**) 게이트가 켜져 있어도 **0** 이다 — 그 전에는 게이트가
+    켜지면 `queued: N` 이라고 답했는데, 아무것도 걸지 않았으므로 **하지 않은
+    일을 보고하는 숫자**였다(회귀 하나가 「실제로 걸지 않는다」는 제목을 달고
+    그 숫자를 정답으로 박아 두고 있었다). 계획 건수는 `would_call` 이다.
+    """
+    if meta is not None and not isinstance(meta, dict):
+        raise ValueError("meta 는 객체여야 합니다")
+    if not isinstance(scenario, str) or not scenario.strip():
+        raise ValueError("scenario 는 문자열이어야 합니다")
+    if len(scenario) > CAMPAIGN_SCENARIO_MAX:
+        raise ValueError("scenario 는 %d자 이하여야 합니다" % CAMPAIGN_SCENARIO_MAX)
+    targets = campaign_targets(numbers)
+    meta = dict(meta or {})
     calls = [{"to": n, "from": os.environ.get("CALLBOT_CALLER_ID", "070-0000-0000"),
               "webhook": "/api/voice", "metadata": {"scenario": scenario, **meta},
-              "consent_required": True} for n in numbers]
+              "consent_required": True} for n in targets]
     if not live():
-        return {"mode": "dry-run(무과금)", "queued": 0, "would_call": len(calls), "calls": calls}
-    return {"mode": "live", "queued": len(calls), "calls": calls}
+        return {"mode": "dry-run(무과금)", "queued": 0, "would_call": len(calls),
+                "calls": calls}
+    return {"mode": "live", "queued": 0, "would_call": len(calls), "calls": calls,
+            "note": "실회선 발신 결선이 없어 계획만 만들었습니다 — 실발신은 [승인 필요]"}
 
 
 import os as _os_g, sys as _sys_g
@@ -748,6 +802,127 @@ def _audit_ev(headers, path, method, result, status, **extra):
         return _audit.record_request(headers, path, method, result, status, **extra)
     except Exception:
         return None
+
+
+def _audit_result(status):
+    """상태코드 → 감사 결과 라벨. 판정은 `_audit.result_for` 한 곳에만 둔다."""
+    if _audit is None:
+        return "error"
+    try:
+        return _audit.result_for(status)
+    except Exception:                      # pragma: no cover - 판정 장애 격리
+        return "error"
+
+
+def _status_of(env, default=500):
+    """오류 봉투에서 실제 응답 상태를 읽는다(감사·집계용)."""
+    try:
+        return int((env or {}).get("status") or default)
+    except Exception:                      # pragma: no cover - 봉투 모양 방어
+        return default
+
+
+def _outcome(h, method, status, **extra):
+    """관리 감사 기록 — **결과가 확정된 뒤** 실제 상태로 남긴다.
+
+    5차가 `ops_stats` 에서 고친 결함이 이 라우트에도 남아 있었다: 가드를
+    통과한 직후 `allow/200` 을 적었으므로 입력오류(400)·과대본문(413)·
+    내부오류(500)가 감사 스트림에서 전부 성공으로 보였다. 이 장부
+    (`call.webhook`)는 **외부 시스템 연동 지점**의 근거다 — 캠페인 발신
+    시도(`op=campaign`)가 어떻게 끝났는지가 특히 중요하다.
+
+    핸들러 메서드가 아니라 모듈 함수다 — 회귀가 쓰는 대역 핸들러는 응답
+    헬퍼만 빌려 쓰므로, 판정·기록을 메서드로 두면 대역에서 돌지 않는다.
+    """
+    _audit_ev(h.headers, h.path, method, _audit_result(status), status, **extra)
+
+
+def _mark_op(h, op):
+    """감사용 동작 라벨을 핸들러에 적어 둔다(예외 경로에서도 읽히게)."""
+    try:
+        h._audit_op = op
+    except Exception:                      # pragma: no cover - 속성 설정이 막힌 대역
+        pass
+
+
+def _marked_op(h):
+    return getattr(h, "_audit_op", None)
+
+
+def _serve_get(h, q):
+    """조회 동작 — 응답을 보내고 그 **상태코드**를 돌려준다(감사 기록용).
+
+    상태는 `_send` 의 반환값에 기대지 않고 이 자리에서 분명히 적는다 —
+    회귀의 대역 핸들러가 응답 헬퍼를 갈아끼울 수 있기 때문이다.
+    """
+    if q.get("op", [""])[0] == "log":
+        h._send({"ok": True, "live": live(), "recent": RECENT,
+                 "webhook": "/api/voice", "provider": CPAAS})
+        return 200
+    h._send({
+        "ok": True, "endpoint": "voice-webhook", "provider": CPAAS,
+        "live": live(), "engine": bool(run_turn), "stt": bool(transcribe),
+        # 실측 집계(만든 수치가 아니라 이 인스턴스가 실제로 처리한 건수).
+        # 거부·실패가 0 이 아니면 녹음 주소가 가드에 걸리고 있다는 뜻이다.
+        "recording": dict(RECORDING_STATS),
+        # 세션 보관 현황. evicted 가 0 이 아니면 동시 통화가 상한에
+        # 닿았다는 뜻이고(상한을 올릴 판단 근거), expired 는 종료
+        # 이벤트가 오지 않은 통화가 있다는 뜻이다.
+        "sessions": _Session.stats(),
+        "note": "CPaaS webhook adapter"})
+    return 200
+
+
+def _serve_post(h, rq):
+    """웹훅·캠페인 처리 — (상태코드, 감사용 op) 를 돌려준다."""
+    # 입력검증: 본문 상한(256KiB). CPaaS 이벤트·폼은 작다 — 과대 본문은 413.
+    try:
+        n = int((h.headers.get("Content-Length") or "0").strip() or "0")
+    except Exception:
+        raise _errors.ValidationError.field("content-length", "정수가 아닙니다")
+    if n < 0:
+        raise _errors.ValidationError.field("content-length", "음수입니다")
+    if n > MAX_WEBHOOK_BODY:
+        raise _errors.ValidationError(
+            details=[{"field": "body", "reason": "최대 %d바이트" % MAX_WEBHOOK_BODY}],
+            code="PAYLOAD_TOO_LARGE", status=413)
+    raw = h.rfile.read(n) if n else b""
+    ctype = (h.headers.get("Content-Type", "") or "").lower()
+    # JSON 본문(콘솔의 캠페인 dry-run 등)은 CPaaS 가 twilio 여도 아래 JSON 경로로 보낸다
+    if "x-www-form-urlencoded" in ctype or (CPAAS == "twilio" and "json" not in ctype):
+        form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "ignore")).items()}
+        h._send_xml(handle_twilio(form))
+        return 200, None
+    try:
+        body = json.loads(raw or b"{}")
+    except Exception:
+        raise _errors.ValidationError.field("body", "JSON 형식이 아닙니다")
+    if not isinstance(body, dict):
+        raise _errors.ValidationError.field("body", "JSON 객체여야 합니다")
+    if body.get("op") == "campaign":
+        rq.set(op="campaign")
+        # 실패해도 감사에 `op` 가 남아야 한다(발신 시도는 추적 가치가 높다) —
+        # 예외로 빠져나가면 반환값이 없으므로 핸들러에 적어 둔다.
+        _mark_op(h, "campaign")
+        try:
+            plan = trigger_campaign(body.get("numbers"),
+                                    body.get("scenario", "care"),
+                                    body.get("meta"))
+        except ValueError as e:
+            # 입력 오류를 500 으로 보고하면 사용자 오타가 서비스 장애 알림으로
+            # 울린다(6차가 chat 에서 고친 것과 같은 규약).
+            raise _errors.ValidationError.field("campaign", str(e))
+        h._send(plan)
+        return 200, "campaign"
+    ev = _parse_event(body)
+    # 이벤트 종류만 남긴다 — 발화 원문·번호는 담지 않는다(PII).
+    rq.set(ev=_label(ev.get("type"), _EVENTS))
+    if ev.get("type") == "answered":
+        _log_call({"from": ev.get("from", ""), "ev": "통화연결", "text": ""})
+    elif ev.get("type") == "speech" and ev.get("text"):
+        _log_call({"from": ev.get("from", ""), "ev": "고객발화", "text": ev.get("text")})
+    h._send(handle_event(ev))
+    return 200, None
 
 
 # 로그 보조필드는 **아는 값만** 남긴다. `op`·`type` 은 외부(CPaaS·콘솔)가 보내는
@@ -794,6 +969,8 @@ class handler(BaseHTTPRequestHandler):
     log_message = _log.suppress_access_log
 
     def _send(self, obj, code=200):
+        """응답을 보내고 **그 상태코드를 돌려준다**(감사 기록이 응답과 같은 말을
+        하려면 호출부가 '무엇으로 끝났는지'를 알아야 한다 · 42차)."""
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         rq = getattr(self, "_rq", None)
         self.send_response(code)
@@ -807,6 +984,7 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
         _close(rq, code)
+        return code
 
     def _send_xml(self, xml, code=200):
         b = xml.encode("utf-8")
@@ -818,6 +996,7 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
         _close(rq, code, kind="voiceml")
+        return code
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -831,22 +1010,18 @@ class handler(BaseHTTPRequestHandler):
         if not _ok:
             _audit_ev(self.headers, self.path, "GET", "deny", _c)
             return _guard.deny(self, _c, _m, rq)
-        _audit_ev(self.headers, self.path, "GET", "allow", 200)
-        q = parse_qs(urlparse(self.path).query)
-        rq.set(op=_label(q.get("op", [""])[0], _OPS))
-        if q.get("op", [""])[0] == "log":
-            self._send({"ok": True, "live": live(), "recent": RECENT, "webhook": "/api/voice", "provider": CPAAS})
-            return
-        self._send({"ok": True, "endpoint": "voice-webhook", "provider": CPAAS,
-                    "live": live(), "engine": bool(run_turn), "stt": bool(transcribe),
-                    # 실측 집계(만든 수치가 아니라 이 인스턴스가 실제로 처리한 건수).
-                    # 거부·실패가 0 이 아니면 녹음 주소가 가드에 걸리고 있다는 뜻이다.
-                    "recording": dict(RECORDING_STATS),
-                    # 세션 보관 현황. evicted 가 0 이 아니면 동시 통화가 상한에
-                    # 닿았다는 뜻이고(상한을 올릴 판단 근거), expired 는 종료
-                    # 이벤트가 오지 않은 통화가 있다는 뜻이다.
-                    "sessions": _Session.stats(),
-                    "note": "CPaaS webhook adapter"})
+        op = None
+        try:
+            q = parse_qs(urlparse(self.path).query)
+            op = _label(q.get("op", [""])[0], _OPS)
+            rq.set(op=op)
+            status = _serve_get(self, q)
+        except Exception as e:
+            # 조회 경로도 표준 봉투로 끝낸다 — 예외가 핸들러를 뚫고 나가면
+            # 응답도 감사 기록도 남지 않는다(조용한 실패 금지).
+            status = _status_of(_errors.handle(self, e, route="/api/voice",
+                                               method="GET", rq=rq))
+        _outcome(self, "GET", status, op=op)
 
     def do_POST(self):
         rq = _begin(self, "POST")
@@ -854,44 +1029,14 @@ class handler(BaseHTTPRequestHandler):
         if not _ok:
             _audit_ev(self.headers, self.path, "POST", "deny", _c)
             return _guard.deny(self, _c, _m, rq)
-        _audit_ev(self.headers, self.path, "POST", "allow", 200, live=live())
+        _mark_op(self, None)
+        op = None
         try:
-            # 입력검증: 본문 상한(256KiB). CPaaS 이벤트·폼은 작다 — 과대 본문은 413.
-            try:
-                n = int((self.headers.get("Content-Length") or "0").strip() or "0")
-            except Exception:
-                raise _errors.ValidationError.field("content-length", "정수가 아닙니다")
-            if n < 0:
-                raise _errors.ValidationError.field("content-length", "음수입니다")
-            if n > MAX_WEBHOOK_BODY:
-                raise _errors.ValidationError(
-                    details=[{"field": "body", "reason": "최대 %d바이트" % MAX_WEBHOOK_BODY}],
-                    code="PAYLOAD_TOO_LARGE", status=413)
-            raw = self.rfile.read(n) if n else b""
-            ctype = (self.headers.get("Content-Type", "") or "").lower()
-            # JSON 본문(콘솔의 캠페인 dry-run 등)은 CPaaS 가 twilio 여도 아래 JSON 경로로 보낸다
-            if "x-www-form-urlencoded" in ctype or (CPAAS == "twilio" and "json" not in ctype):
-                form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "ignore")).items()}
-                self._send_xml(handle_twilio(form))
-                return
-            try:
-                body = json.loads(raw or b"{}")
-            except Exception:
-                raise _errors.ValidationError.field("body", "JSON 형식이 아닙니다")
-            if not isinstance(body, dict):
-                raise _errors.ValidationError.field("body", "JSON 객체여야 합니다")
-            if body.get("op") == "campaign":
-                rq.set(op="campaign")
-                self._send(trigger_campaign(body.get("numbers", []), body.get("scenario", "care"), body.get("meta")))
-                return
-            ev = _parse_event(body)
-            # 이벤트 종류만 남긴다 — 발화 원문·번호는 담지 않는다(PII).
-            rq.set(ev=_label(ev.get("type"), _EVENTS))
-            if ev.get("type") == "answered":
-                _log_call({"from": ev.get("from", ""), "ev": "통화연결", "text": ""})
-            elif ev.get("type") == "speech" and ev.get("text"):
-                _log_call({"from": ev.get("from", ""), "ev": "고객발화", "text": ev.get("text")})
-            self._send(handle_event(ev))
+            status, op = _serve_post(self, rq)
         except Exception as e:
             # 표준 에러 봉투 — 웹훅 응답도 같은 규약을 따른다(내부 문구 미노출)
-            _errors.handle(self, e, route="/api/voice", method="POST", rq=rq)
+            status = _status_of(_errors.handle(self, e, route="/api/voice",
+                                               method="POST", rq=rq))
+            op = _marked_op(self)
+        # 감사는 결과가 확정된 뒤에 — 400·413·500 을 성공으로 적지 않는다.
+        _outcome(self, "POST", status, op=op, live=live())

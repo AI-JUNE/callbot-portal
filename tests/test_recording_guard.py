@@ -460,15 +460,22 @@ class TestDefensiveBranches(GuardBase):
         self.assertIsNone(voice._persist_call_result("c1", {}, object()))
 
     def test_캠페인은_게이트가_켜져도_실제로_걸지_않는다(self):
-        """`trigger_campaign` 은 계획만 만든다 — live 분기에서도 네트워크를 쓰지 않는다."""
+        """`trigger_campaign` 은 계획만 만든다 — live 분기에서도 네트워크를 쓰지 않는다.
+
+        42차: 그래서 `queued` 는 게이트가 켜져 있어도 **0** 이다. 이 테스트는
+        제목으로 「실제로 걸지 않는다」를 말하면서 `queued: 2` 를 정답으로
+        박아 두고 있었다 — 하지 않은 일을 보고하는 숫자였다.
+        """
         out = voice.trigger_campaign(["01000000000"], scenario="care")
         self.assertEqual(out["queued"], 0)
+        self.assertEqual(out["would_call"], 1)
         self.assertIn("dry-run", out["mode"])
         # 게이트는 **호출 시점에** 읽힌다(37차) — 환경변수로 켠다.
         self.addCleanup(os.environ.pop, "CPAAS_LIVE", None)
         os.environ["CPAAS_LIVE"] = "1"
         out = voice.trigger_campaign(["01000000000", "01011112222"], scenario="care")
-        self.assertEqual((out["mode"], out["queued"]), ("live", 2))
+        self.assertEqual((out["mode"], out["queued"], out["would_call"]), ("live", 0, 2))
+        self.assertIn("[승인 필요]", out["note"])
         self.assertEqual(self.network_calls, [])
 
 

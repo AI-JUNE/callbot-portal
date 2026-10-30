@@ -414,7 +414,10 @@ class TestHttp(Base):
         self.assertEqual(disclosure.list_tenants(), [])
 
     def test_post_invalid_text_400_with_keys(self):
-        before = _audit.counters()["error"]
+        # 42차: 입력오류(400)는 감사에 `deny` 로 적힌다. `error` 로 적으면
+        # 사용자 오타가 `/health.audit` 의 error 칸을 올려 진짜 5xx 가 묻힌다.
+        before_err = _audit.counters()["error"]
+        before = _audit.counters()["deny"]
         h = call("POST", headers=SAME_ORIGIN,
                  payload={"tenant_id": "shop", "text": "안녕하세요 온라인몰입니다. 무엇을 도와드릴까요?", "brand": "온라인몰"})
         self.assertEqual(h.status, 400)
@@ -424,7 +427,8 @@ class TestHttp(Base):
         self.assertIn("ai_identity", [d["key"] for d in b["details"]])
         self.assertTrue(all(d["field"] == "text" for d in b["details"]))
         self.assertEqual(disclosure.list_tenants(), [])
-        self.assertEqual(_audit.counters()["error"], before + 1)
+        self.assertEqual(_audit.counters()["deny"], before + 1)
+        self.assertEqual(_audit.counters()["error"], before_err)
 
     def test_post_missing_tenant_400(self):
         h = call("POST", headers=SAME_ORIGIN, payload={"text": GOOD})

@@ -736,6 +736,22 @@ def _audit_safe(headers, path, method, result, status, rid):
         pass
 
 
+def _audit_fail(headers, path, method, exc, rid):
+    """실패한 요청의 감사 기록 — 라벨은 **응답 상태**가 정한다(`_audit.result_for`).
+
+    모든 예외를 `error` 로 적으면 사용자 오타(400)가 `/health.audit` 의 `error`
+    칸을 올려 진짜 5xx 가 그 안에 묻힌다(18차 규약 · 42차).
+    """
+    if not _audit:
+        return
+    try:
+        status = _audit.status_of(exc)
+        _audit.record_request(headers, path, method, _audit.result_for(status), status,
+                              request_id=rid)
+    except Exception:      # 감사 장애가 요청을 죽이지 않는다
+        pass
+
+
 class handler(BaseHTTPRequestHandler):
     log_message = _log.suppress_access_log
 
@@ -830,8 +846,7 @@ class handler(BaseHTTPRequestHandler):
             _audit_safe(self.headers, self.path, "GET", "allow", 200, rq.request_id)
             rq.finish(200)
         except Exception as e:
-            _audit_safe(self.headers, self.path, "GET", "error", getattr(e, "status", 500),
-                        rq.request_id)
+            _audit_fail(self.headers, self.path, "GET", e, rq.request_id)
             _errors.handle(self, e, route="/api/partners", method="GET", rq=rq)
 
     def do_POST(self):
@@ -883,8 +898,7 @@ class handler(BaseHTTPRequestHandler):
             _audit_safe(self.headers, self.path, "POST", "allow", 200, rq.request_id)
             rq.finish(200)
         except Exception as e:
-            _audit_safe(self.headers, self.path, "POST", "error", getattr(e, "status", 500),
-                        rq.request_id)
+            _audit_fail(self.headers, self.path, "POST", e, rq.request_id)
             _errors.handle(self, e, route="/api/partners", method="POST", rq=rq)
 
 
