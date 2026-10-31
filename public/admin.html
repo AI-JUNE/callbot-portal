@@ -1139,6 +1139,21 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
       </section>
 
       <section id="view-sysresp" class="hidden">
+        <!-- 43차: 음성 인식 엔진 선택 — 자체 학습 전화 STT(GOWON). 상태 배지·안내 문장은
+             서버 응답(/api/stt 의 health)만 그린다(하드코딩 상태 없음). 표의 수치는
+             학습 결과 측정값이며 측정 조건을 같은 카드에 적는다. -->
+        <div class="card" style="margin-bottom:16px"><h3>🎙️ 음성 인식 엔진 (STT) <span class="r"><button onclick="gowonSttLoad(true)">🔄 새로고침</button> <span id="gsBadge"></span></span></h3>
+          <div style="padding:12px 18px">
+            <div style="font-size:13px;font-weight:800;margin-bottom:6px">GOWON 전화 STT (자체 학습)</div>
+            <p style="font-size:12px;color:var(--mut);line-height:1.75;margin:0 0 12px">전화 통화 음성으로 직접 미세조정한 음성 인식 모델입니다. 공개 데이터셋인 AI Hub 「저음질 전화망 음성인식」 으로 학습했고, 전사는 저희가 운영하는 STT 서버가 처리합니다. 현재 기본 경로는 기존 엔진이며, 이 모델은 설정과 승인을 거친 뒤에 통화에 쓰입니다.</p>
+            <table><thead><tr><th>모델</th><th>글자 오류율(CER)</th><th>문장당 처리 시간(p50)</th><th>문장당 처리 시간(p95)</th></tr></thead><tbody>
+              <tr><td>Whisper turbo, 학습 전</td><td>6.83%</td><td>측정하지 않았습니다</td><td>측정하지 않았습니다</td></tr>
+              <tr><td><b>GOWON large v6</b> (권장)</td><td><b>5.59%</b></td><td>0.18초</td><td>0.48초</td></tr>
+              <tr><td>GOWON turbo v4 (경량)</td><td>6.02%</td><td>0.08초</td><td>0.15초</td></tr>
+            </tbody></table>
+            <p id="gsNote" role="status" style="font-size:12px;color:var(--mut);line-height:1.75;margin:12px 0 0">엔진 상태를 불러오는 중입니다.</p>
+          </div>
+          <div class="hint" style="padding:0 18px 12px">측정 조건을 함께 밝힙니다. AI Hub 전화망 시험 문장 2,000개(4개 분야에서 각 500개)를 한 문장씩 처리해 쟀습니다. 글자 오류율은 띄어쓰기와 문장부호를 제외하고 계산했습니다. 처리 시간은 B200 MIG 1g.23gb 에서 잰 값이며, 네트워크 왕복 시간과 발화가 끝났음을 감지하는 시간은 포함하지 않았습니다. 다른 회사 제품을 같은 조건으로 함께 측정한 적이 없으므로 비교 수치는 적지 않습니다. 실제 통화에서는 회선 품질에 따라 이 숫자와 다를 수 있습니다. 엔진을 실제로 켜는 것은 <b>[승인 필요]</b> 사항입니다.</div></div>
         <div class="card"><h3>시스템 응답 현황 (STT / SOE / TTS) <span class="r"><button class="primary" onclick="exportXlsx()">⬇ 엑셀</button></span></h3>
           <div class="chartbody"><canvas id="chSysresp"></canvas></div>
           <div style="padding:6px 18px 4px;font-size:12px;color:var(--mut);font-weight:800">시간대 × 유형 히트맵</div><div id="sysHeat" style="padding:0 18px 14px;overflow-x:auto"></div>
@@ -2159,7 +2174,29 @@ function rStatout(){var f=activeFilters('statout');mkBar('chStatout',['Greeting'
 function rStatsvc(){var f=activeFilters('statsvc');mkBar('chStatsvc',['주문조회','배송조회','반품·교환','상품문의','결제문의'],_sumArr(_selDays(f.period),'svc'));rStatsvcTbl(f);}
 function rChan(){var f=activeFilters('chan'),days=_selDays(f.period);var a=days.reduce(function(acc,d){var hr=chanHours(d,f.type);return hr.map(function(v,i){return v+(acc[i]||0);});},[]);
  mkLine('chChan',['09','10','11','12','13','14','15','16','17','18'],a);rChanTbl(f);var cap=(f.type==='전체'||!f.type)?300:200,t0=chanHours(DAYS[0],f.type),mn=Math.min.apply(null,t0),mx=Math.max.apply(null,t0),av=Math.round(t0.reduce(function(x,y){return x+y;},0)/t0.length);_set('chanNow',Math.round(t0[t0.length-1])+'/'+cap);_set('chanMin',Math.round(mn));_set('chanAvg',av);_set('chanMax',Math.round(mx));}
-function rSysresp(){var f=activeFilters('sysresp');mkBar('chSysresp',['STT지연','STT장애','SOE지연','SOE장애','TTS지연','TTS장애'],_sumArr(_selDays(f.period),'sys'));_tbl('tbSysresp',f,sysRow,1);if(typeof renderSysHeat==='function')renderSysHeat();}
+/* 43차: 자체 학습 전화 STT(GOWON) 상태 — /api/stt 의 health 블록만 그린다.
+   배지·안내 문장을 화면에 박아 두면 설정이 바뀐 뒤에도 같은 말을 한다(§8). */
+var _gsLoaded=false;
+function gowonSttLoad(force){
+ var badge=document.getElementById('gsBadge'),note=document.getElementById('gsNote');
+ if(!badge||!note)return;
+ if(_gsLoaded&&!force)return;_gsLoaded=true;
+ var esc=(typeof _shEsc==='function')?_shEsc:function(s){return String(s==null?'':s);};
+ var put=function(tag,cls,text){
+  _htmlSet(badge,'<span class="tag '+cls+'">'+esc(tag)+'</span>');
+  _htmlSet(note,esc(text));
+ };
+ var done=function(d){
+  var h=d&&d.health,stt=h&&h.stt,ps=(stt&&stt.providers)||[],g=null;
+  for(var i=0;i<ps.length;i++){if(ps[i]&&ps[i].provider==='gowon'){g=ps[i];break;}}
+  if(!g){put('상태 조회 불가','neu','엔진 상태를 조회할 수 없습니다. 로컬 환경이거나 API 가 배포되지 않았습니다.');return;}
+  var model=g.model?(' 적용 모델은 '+g.model+' 입니다.'):'';
+  put(g.status==='ready'?'활성':'승인 후 활성화',g.status==='ready'?'pos':'neu',(g.note||'')+model);
+ };
+ try{fetch('/api/stt',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(done).catch(function(){done(null);});}
+ catch(e){done(null);}
+}
+function rSysresp(){if(typeof gowonSttLoad==='function')gowonSttLoad(true);var f=activeFilters('sysresp');mkBar('chSysresp',['STT지연','STT장애','SOE지연','SOE장애','TTS지연','TTS장애'],_sumArr(_selDays(f.period),'sys'));_tbl('tbSysresp',f,sysRow,1);if(typeof renderSysHeat==='function')renderSysHeat();}
 function rMm(){var d=_sumArr(_selDays(activeFilters('mm').period),'mm');mkDonut('chMm',['주문상세','배송추적','영수증발급','상품안내'],d);}
 /* ===== 통계 표 렌더러(실집계·필터연동) ===== */
 function _fmt(n){return Math.round(n).toLocaleString();}

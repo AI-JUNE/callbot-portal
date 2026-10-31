@@ -642,5 +642,78 @@ class TestHealthReport(Base):
         self.assertEqual(self.calls, [])
 
 
+# ==========================================================================
+# 9) 관리 콘솔 표기 — 수치는 측정 조건과 함께, 상태는 서버가 준 것만
+# ==========================================================================
+class TestConsole(unittest.TestCase):
+    """「시스템 응답 현황」 화면의 음성 인식 엔진 카드.
+
+    화면에 상태를 박아 두면 설정이 바뀐 뒤에도 같은 말을 한다(§8 — 화면은 서버
+    응답만 그린다). 수치는 측정 조건과 **같은 카드에** 있어야 하고, 비교 측정을
+    하지 않았으므로 비교 표현을 쓰지 않는다.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        with io.open(os.path.join(ROOT, "public", "admin.html"),
+                     encoding="utf-8") as f:
+            cls.html = f.read()
+        start = cls.html.find("<!-- 43차: 음성 인식 엔진 선택")
+        end = cls.html.find('<div class="card"><h3>시스템 응답 현황', start)
+        js = cls.html.find("/* 43차: 자체 학습 전화 STT(GOWON) 상태")
+        js_end = cls.html.find("function rSysresp", js)
+        if start < 0 or end <= start or js < 0 or js_end <= js:
+            # 여기서 멈추지 않으면 아래 단정들이 **빈 문자열**을 검사한다
+            # (카드가 사라져도 전부 통과하는 회귀가 된다).
+            raise AssertionError("admin.html 에서 음성 인식 엔진 카드를 찾지 못했다")
+        cls.card = cls.html[start:end]
+        cls.js = cls.html[js:js_end]
+
+    def test_engine_is_named_on_the_screen(self):
+        self.assertIn("GOWON 전화 STT (자체 학습)", self.card)
+
+    def test_measured_numbers_are_on_the_screen(self):
+        for n in ("6.83%", "5.59%", "6.02%", "0.18초", "0.48초", "0.08초", "0.15초"):
+            self.assertIn(n, self.card, n)
+
+    def test_measurement_conditions_sit_in_the_same_card(self):
+        """조건 없는 수치는 자랑이다 — 표본·계산 방법·장비·제외 항목을 같이 적는다."""
+        for cond in ("2,000개", "띄어쓰기", "문장부호", "B200 MIG 1g.23gb",
+                     "네트워크", "한 문장씩"):
+            self.assertIn(cond, self.card, cond)
+
+    def test_no_comparison_claim(self):
+        """타사와 같은 조건으로 측정한 적이 없다 — 비교로 읽힐 말을 쓰지 않는다."""
+        for bad in ("타사", "보다 정확", "업계 최고", "1위", "최고 성능"):
+            self.assertNotIn(bad, self.card, bad)
+
+    def test_activation_is_marked_as_pending_approval(self):
+        self.assertIn("[승인 필요]", self.card)
+        self.assertIn("승인 후 활성화", self.js)
+
+    def test_badge_and_note_come_from_the_server(self):
+        self.assertIn("g.status==='ready'", self.js)
+        self.assertIn("g.note", self.js)
+        self.assertIn("/api/stt", self.js)
+        self.assertIn("provider==='gowon'", self.js)
+
+    def test_console_does_not_print_the_address_or_the_secret_name(self):
+        for bad in ("GOWON_STT_URL", "GOWON_STT_SECRET"):
+            self.assertNotIn(bad, self.card + self.js, bad)
+
+    def test_unreachable_endpoint_says_so_instead_of_claiming_ready(self):
+        self.assertIn("상태 조회 불가", self.js)
+
+    def test_view_render_loads_the_status(self):
+        """카드만 있고 호출이 없으면 영원히 「불러오는 중」이다."""
+        i = self.html.find("function rSysresp")
+        self.assertIn("gowonSttLoad", self.html[i:i + 400])
+
+    def test_escaped_output_only(self):
+        """서버 문구를 그대로 innerHTML 에 넣으면 화면이 열린다."""
+        self.assertIn("_shEsc", self.js)
+        self.assertIn("_htmlSet", self.js)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
