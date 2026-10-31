@@ -39,7 +39,7 @@
 - [x] **health 반영**: `_kind_health` / `health.py _speech()` 에서 gowon 이 「설정됨 + 게이트 ON」이면 `ready`, 아니면 `pending_approval`. 리포트에 모델 이름(`GOWON_STT_MODEL_LABEL`, 기본 `large_v6`)만 싣고 주소·비밀값은 싣지 않는다(`test_report_carries_no_secret` 유지). 위 테스트 docstring 의 「모든 비-sim 은 pending」 문장을 「설정이 없으면 pending」으로 정확히 고친다.
 - [x] **테스트 `tests/test_gowon_stt.py`** (네트워크 0, urlopen 대역): 미설정 거부 · 게이트 OFF 면 sim · 정상 전사 · 서명 헤더가 `_vstudio.sign` 과 같은 값 · http/사설 IP/메타데이터 주소 거부 · 리다이렉트 미추종 · 401/500/타임아웃/깨진 JSON 분류 · 응답 상한 · 발화와 비밀값이 로그에 없음 · 폴백 경로.
 - [x] **관리 콘솔(admin.html) 표기** (「시스템 응답 현황」 화면 맨 위 카드. 배지·안내 문장은 `/api/stt` 응답만 그린다): STT 엔진을 고르는 자리(서비스 설정 또는 시스템 응답현황)에 「GOWON 전화 STT (자체 학습)」를 추가하고, 위 표의 수치를 **측정 조건과 함께** 적는다. 설정 전에는 「승인 후 활성화」 배지. 문구 기준: 가운뎃점·대시·화살표 축약 금지, 사람이 쓴 전문 문장. 「타사보다 정확」 같은 비교 표현 금지(비교 측정을 하지 않았다).
-- [ ] **문서**: `COMMERCIAL_READINESS.md` 에 항목 추가(코드 완료 / 활성화는 [승인 필요]), 환경변수 목록이 있는 문서(DEPLOY 등)에 네 변수 추가, `_night-auto-status.md` 기록.
+- [x] **문서**: `COMMERCIAL_READINESS.md` 에 항목 추가(코드 완료 / 활성화는 [승인 필요]), 환경변수 목록이 있는 문서(DEPLOY 등)에 네 변수 추가, `_night-auto-status.md` 기록. (DEPLOY.md 3-1 절 · 43차 기록)
 
 ## 하지 않는 것
 
