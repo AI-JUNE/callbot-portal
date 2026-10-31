@@ -301,6 +301,9 @@ def _speech():
     - delegated: speech_providers 팩토리로 위임되는지 여부.
     - active/forced_sim: 위임 시 실제 선택 결과. SPEECH_LIVE=0이면 비-sim 요청도
       sim 강제(실호출 원천 차단) → forced_sim=True 로 표시.
+    - stt.gowon: 자체 학습 전화 STT(gowon)의 **설정 상태**. 위임 여부와 무관하게
+      싣는다 — 운영자는 "지금 고를 수 있는가"를 먼저 알아야 한다(모델 이름만,
+      주소·비밀값은 싣지 않는다).
     """
     stt_want = (os.environ.get("CALLBOT_STT_PROVIDER") or "").strip().lower()
     tts_want = (os.environ.get("CALLBOT_TTS_PROVIDER") or "").strip().lower()
@@ -309,6 +312,20 @@ def _speech():
         "stt": {"requested": stt_want or "gemini", "delegated": bool(stt_want and stt_want != "gemini")},
         "tts": {"requested": tts_want or "edge", "delegated": bool(tts_want and tts_want != "edge")},
     }
+    try:
+        d = os.path.dirname(__file__)
+        if d not in sys.path:
+            sys.path.insert(0, d)
+        import _speech_providers as sp
+        # 판정은 `_speech_providers.gowon_health` 한 곳이다 — 헬스가 따로 판정하면
+        # 「헬스는 ready 인데 전사만 거부된다」는 엇갈림이 생긴다(15차 음성 게이트와
+        # 같은 결함 계열).
+        g = sp.gowon_health(info["speech_live"])
+        info["stt"]["gowon"] = {"status": g["status"], "ready": g["ok"],
+                                "configured": g["configured"],
+                                "blocked": g["blocked"], "model": g["model"]}
+    except Exception as e:      # 헬스는 절대 실패하지 않도록 best-effort
+        info["note"] = "speech_providers unavailable: %s" % type(e).__name__
     if info["stt"]["delegated"] or info["tts"]["delegated"]:
         try:
             d = os.path.dirname(__file__)

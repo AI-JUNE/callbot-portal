@@ -76,14 +76,17 @@ OUTBOUND = {
     "voice.py":          "녹음 다운로드 — 요청 본문의 URL(_urlguard 필수)",
     "wellbeing.py":      "안부 결과 웹훅 — 요청 본문의 URL(_urlguard 필수)",
     "_eum_request.py":   "이음 현장 음성 요청 접수 — EUM_REQUEST_URL(환경변수, _urlguard 필수·기본 허용 호스트 eum.gowon.co.kr)",
+    "_speech_providers.py": "자체 학습 전화 STT 서버 — GOWON_STT_URL(환경변수, _urlguard 필수)",
 }
 # 주소가 **고정 상수가 아닌** 파일. 공용 가드(api/_urlguard.py)를 반드시 거친다.
 # 요청 본문에서 오는 것(voice·wellbeing)과 설정에서 오는 것(_order_backend·_vstudio·
-# _monitoring)을 같이 둔다 — 환경변수라고 검증을 빼면 오타·잘못 복사한 값으로
-# 주문 정보와 Bearer 키, 합성할 발화와 HMAC 서명, 오류 봉투와 DSN 공개키가
-# 평문 http·사설망·클라우드 메타데이터로 나간다(쓰기 승인 뒤에는 환불 접수가 엉뚱한 주소로 간다).
+# _monitoring·_speech_providers)을 같이 둔다 — 환경변수라고 검증을 빼면 오타·잘못
+# 복사한 값으로 주문 정보와 Bearer 키, 합성할 발화와 HMAC 서명, 전사할 **통화 음성**과
+# 그 서명, 오류 봉투와 DSN 공개키가 평문 http·사설망·클라우드 메타데이터로
+# 나간다(쓰기 승인 뒤에는 환불 접수가 엉뚱한 주소로 간다).
 URLGUARD_REQUIRED = {"voice.py", "wellbeing.py", "_order_backend.py",
-                     "_vstudio.py", "_monitoring.py", "_eum_request.py"}
+                     "_vstudio.py", "_monitoring.py", "_eum_request.py",
+                     "_speech_providers.py"}
 OUTBOUND_CALLS = ("urlopen(", "socket.create_connection(")
 
 

@@ -12,6 +12,10 @@
   2) `"1"` 정확 일치 — true·yes·10·0 은 OFF(실수로 켜지지 않는다).
   3) 팩토리·health 리포트·`health.py` 가 **같은 순간 같은 값**을 본다(드리프트 금지).
   4) 게이트를 켜도 실연동은 열리지 않는다 — 골격은 여전히 PermissionError「[승인 필요]」.
+     (2026-10-31) 리포트에서 **설정이 없으면 pending** 이다. 전까지는 「모든 비-sim 은
+     pending」이라고 적혀 있었는데, 그것은 실호출 코드가 하나도 없던 때의 사실이다.
+     자체 학습 STT(gowon)는 실구현이라 **설정 + 게이트**가 갖춰지면 ready 가 된다 —
+     설정 상태별 판정은 `tests/test_gowon_stt.py::TestHealthReport` 가 고정한다.
   5) 조회·팩토리는 게이트를 켜지 않고 네트워크를 쓰지 않는다.
   6) (2026-10-10 보강) **등록된 골격 전부**가 거부한다. 지금까지는 clova 한 곳만
      호출해 봤는데 골격은 6개다 — 나머지 다섯 중 하나에 실호출 코드가 들어가도
@@ -32,7 +36,10 @@ import _speech_providers as sp     # noqa: E402
 import health                      # noqa: E402
 
 GATE = "SPEECH_LIVE"
-ENV = (GATE, "CALLBOT_STT_PROVIDER", "CALLBOT_TTS_PROVIDER")
+# gowon 설정도 비운다 — 이 파일은 「설정이 없는 상태」의 회귀다. 실제로 설정된
+# 환경(배포 서버)에서 돌면 pending 단정이 거짓 적색으로 깨진다.
+ENV = (GATE, "CALLBOT_STT_PROVIDER", "CALLBOT_TTS_PROVIDER",
+       "GOWON_STT_URL", "GOWON_STT_SECRET")
 
 
 class GateBase(unittest.TestCase):
@@ -152,6 +159,13 @@ class TestStillPendingApproval(GateBase):
             self.assertIn("[승인 필요]", str(cm.exception))
 
     def test_every_non_sim_provider_is_still_pending_in_the_report(self):
+        """**설정이 없으면** pending — 이 테스트는 어떤 비-sim 설정도 없는 상태다.
+
+        게이트만 켜는 것으로는 아무 프로바이더도 열리지 않는다. 골격(clova·
+        google·aws)은 실호출 코드가 없어 늘 pending 이고, 실구현인 gowon 은
+        주소·공유 비밀이 없으므로 여기서도 pending 이다(설정이 갖춰진 경우는
+        `tests/test_gowon_stt.py::TestHealthReport` 가 본다).
+        """
         self.live()
         rep = sp.health_report()
         for kind in ("stt", "tts"):
