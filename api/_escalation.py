@@ -43,6 +43,7 @@
   python api/_escalation.py
 """
 import os
+import re
 import sys
 import time
 import itertools
@@ -65,6 +66,79 @@ HANDOFF_KEYWORDS = [
 ]
 # 자동응대를 중단하고 즉시 전환할 민감 주제(콜봇 응대 범위 밖)
 SENSITIVE_KEYWORDS = ["법적", "소송", "고소", "언론", "신고할", "금감원"]
+
+# 민감 주제 판정 **직전에만** 가리는 오탐 낱말(34·38차와 같은 규약).
+# 가리는 것은 판정 입력뿐이고 티켓에 남는 글(`detail`)은 손대지 않는다.
+# 띄어쓰기를 건너뛰고 대조한다 — 전사는 「고장 신고」를 「고장신고」로도 적는다.
+_DECOY = (
+    # 「법적」 이 다른 낱말 안에서 걸린다. 「법적으로 하겠다」는 그대로 남는다.
+    "합법적", "불법적", "위법적", "편법적", "방법",
+    # 「고소」 — 맛(고소한 맛)·소득·공포증. 「고소하겠다」·「고소할」 은 가리지 않는다.
+    "고소한", "고소하고", "고소해서", "고소하네", "고소함", "고소득", "고소공포",
+    # 「신고할」 — 고장·분실 접수는 민감 주제가 아니다(CS 의 일상 용건이다).
+    "고장 신고", "분실 신고", "파손 신고", "변경 신고", "오배송 신고",
+)
+# 띄어쓰기를 건너뛰는 대조식 — 낱말의 공백은 버리고 글자 사이에 `\s*` 를 둔다
+# (「고장 신고」와 「고장신고」를 같은 것으로 본다). 모듈 전역
+# `re.compile("…|…")` 리터럴이 아니므로 14단계 `speech_rules` 등록부의 대상이
+# 아니다(판정 방향이 없는 가림표다).
+_RX_DECOY = tuple(
+    re.compile(r"\s*".join(re.escape(c) for c in w if not c.isspace()))
+    for w in _DECOY)
+
+
+def _blank(m):
+    return " " * len(m.group(0))
+
+
+def _squash(text):
+    """전사 띄어쓰기 보정 — **낱말이 글자로 쪼개진 자리만** 붙인다.
+
+    예전에는 공백을 전부 지웠다(`text.replace(" ", "")`). 전사 띄어쓰기가
+    불안정해서였고 그 전제 자체는 맞다 — 「상 담 사」는 한 낱말이다.
+    그런데 공백을 전부 지우면 **원래 문장에 없던 낱말이 만들어진다**:
+      「주문 방법 적어 주세요」  → 방법적어   → `법적`
+      「주소 송파구예요」        → 주소송파구 → `소송`
+      「그거 말고 소포로 보내요」→ 말고소포   → `고소`
+      「전화하고 소식이 없어요」 → 하고소식   → `고소`
+      「취소 송금해 주세요」     → 취소송금   → `소송`
+    민감 주제는 **자동응대를 중단하고 즉시 전환**하는 판정이고, 티켓 장부에
+    「민감 주제 키워드: 고소」가 사유로 남는다 — 과자가 고소하다고 말한 고객이
+    법적 분쟁 건으로 적힌다. 놓치는 쪽만 위험한 것이 아니다: 이 사유가 일상
+    대화로 울리면 운영자는 `sensitive` 티켓을 믿지 않게 된다(21·38차와 같은 판단).
+
+    그래서 공백은 **짧은 쪽이 한 글자일 때만** 지운다 — 전사가 낱말을 글자로
+    쪼갠 모양이다(「상 담 사」·「사 람 이 랑」). 두 쪽이 모두 두 글자 이상이면
+    원래 두 낱말이고, 붙여서 얻은 일치는 가짜다.
+
+    상담원 요청 표(`HANDOFF_KEYWORDS`)에는 쓰지 않는다 — 그 표는 두 낱말에
+    걸치는 꼴(「진짜사람」·「사람연결」·「사람바꿔」)을 일부러 쓰고, 걸리면
+    사람에게 넘기는 **안전한 방향**이다. 좁히는 것은 전환을 멈추는 쪽이 아니라
+    고객을 분쟁 당사자로 적는 쪽뿐이다.
+    """
+    parts = (text or "").split()
+    if not parts:
+        return ""
+    out = [parts[0]]
+    for p in parts[1:]:
+        if min(len(out[-1]), len(p)) == 1:
+            out[-1] += p
+        else:
+            out.append(p)
+    return " ".join(out)
+
+
+def _mask_decoys(text):
+    """오탐 낱말을 공백으로 가린다(길이를 보존해 다른 경계를 만들지 않는다)."""
+    s = text or ""
+    for rx in _RX_DECOY:
+        s = rx.sub(_blank, s)
+    return s
+
+
+def sensitive_text(text):
+    """민감 주제 판정에 **실제로 들어가는 글**. 게이트·회귀가 이 함수를 본다."""
+    return _mask_decoys(_squash(text))
 
 CONF_THRESHOLD = 0.55   # 이 미만이면 저신뢰
 FALLBACK_LIMIT = 2      # 연속 폴백 허용 횟수(초과 시 전환)
@@ -150,12 +224,17 @@ class EscalationPolicy:
         self.fallback_limit = fallback_limit
 
     def evaluate(self, text="", confidence=1.0, fallback_streak=0):
-        t = (text or "").replace(" ", "")
+        # 두 표는 **다른 글**을 본다(44차). 민감 주제는 즉시 전환 + 장부에 사유를
+        # 적는 판정이라 과대보고의 값이 비싸므로 띄어쓰기 보정을 좁게 하고 오탐
+        # 낱말을 가린다. 상담원 요청은 종전대로 공백을 전부 지운 글을 본다 —
+        # 표가 두 낱말에 걸치는 꼴을 쓰고, 넓게 걸리는 쪽이 안전하다.
+        sens = sensitive_text(text)
+        want = (text or "").replace(" ", "")
         for kw in SENSITIVE_KEYWORDS:
-            if kw in t:
+            if kw in sens:
                 return {"reason": "sensitive", "detail": "민감 주제 키워드: %s" % kw}
         for kw in HANDOFF_KEYWORDS:
-            if kw in t:
+            if kw in want:
                 return {"reason": "request", "detail": "상담원 요청 키워드: %s" % kw}
         if confidence is not None and confidence < self.conf_threshold:
             return {"reason": "low_confidence", "detail": "신뢰도 %.2f < %.2f" % (confidence, self.conf_threshold)}
@@ -333,6 +412,18 @@ if __name__ == "__main__":     # pragma: no cover
     assert pol.evaluate("주문 조회요", confidence=0.3)["reason"] == "low_confidence"
     assert pol.evaluate("음...", confidence=0.9, fallback_streak=3)["reason"] == "repeated_fallback"
     assert pol.evaluate("주문 조회요", confidence=0.9, fallback_streak=0) is None
+
+    # 44차: 평범한 발화가 '민감 주제'로 올라가지 않는다
+    for q in ("주문 방법 적어서 보내 주세요", "주소 송파구 123번지예요",
+              "그거 말고 소포로 보내 주세요", "전화하고 소식이 없어요",
+              "그거 합법적인가요", "이 과자 고소하고 맛있어요",
+              "고소득자라서요", "고장 신고할게요"):
+        assert pol.evaluate(q) is None, q
+    # 진짜 신호는 그대로 걸린다(전사가 글자를 쪼개도)
+    for s in ("법적으로 대응하겠습니다", "고소하겠습니다", "소 송 할 거예요"):
+        assert pol.evaluate(s)["reason"] == "sensitive", s
+    # 상담원 요청 표는 좁히지 않았다 — 두 낱말에 걸치는 꼴을 그대로 쓴다
+    assert pol.evaluate("진짜 사람 좀 바꿔요")["reason"] == "request"
 
     q = EscalationQueue()
     t = q.enqueue("sess-1", "request", "고객이 상담원 연결 요청")

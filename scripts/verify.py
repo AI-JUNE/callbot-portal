@@ -28,6 +28,7 @@
  20. host_bypass   — 주소 표기 우회(끝점 FQDN·짧은 꼴 IPv4…)가 SSRF 가드에 막히는가
  21. audit_outcome — 감사 기록이 **응답과 같은 말**을 하는가(성공을 미리 적지 않는다)
  22. scenario_names— 대본 이름이 등록부(`_engine.SCENARIOS`) 한 곳에서만 나오는가
+ 23. utterance_decoys— 평범한 발화가 세 판정기에서 경보가 되지 않는가(문장 기록부)
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -1072,7 +1073,10 @@ KEYWORD_TABLES = {
     ("_escalation.py", "HANDOFF_KEYWORDS"):
         ("match", "상담원 연결 요청 — 걸리면 사람에게 넘긴다(넓게 걸리는 쪽이 안전)"),
     ("_escalation.py", "SENSITIVE_KEYWORDS"):
-        ("match", "민감 신호(법적·언론) — 걸리면 우선순위를 올린다"),
+        ("match", "민감 신호(법적·언론) — 즉시 전환 + 티켓 사유로 남는다. "
+                  "띄어쓰기 보정을 좁게 하고(_squash) 오탐을 가린다(_DECOY)"),
+    ("_escalation.py", "_DECOY"):
+        ("mask", "오탐 낱말(합법적·고소한·고장 신고) — 민감 주제 판정 직전에 가린다"),
     ("disclosure.py", "BANNED"):
         ("match", "금지어 — 화면·문서에 있으면 실패시킨다"),
     ("caller_id.py", "EVIDENCE_TYPES"):
@@ -1100,6 +1104,8 @@ KEYWORD_MASKS = {
     "_eum_request.py": ("_DECOY", "def _mask_decoys"),
     "wellbeing.py": ("_POS_IDIOM", "def _negated",
                      "_DECOY", "_DENIAL", "def judge_text"),
+    "_escalation.py": ("_DECOY", "def _mask_decoys", "def _squash",
+                       "def sensitive_text"),
 }
 # (d) 38차 — **오탐은 한 번 알면 전부에 적용된다.**
 #     34차가 `_eum_request` 에서 「커**피를**」·「한**숨을**」·「**무사고**」를
@@ -1118,6 +1124,11 @@ KEYWORD_DECOY_HOSTS = {
     "돈까스": "「돈까스」 안에 `돈`(금전문제)이 숨는다",
     "열이틀": "「열이틀」 안에 `열이`(발열)가 숨는다",
     "열이레": "「열이레」 안에 `열이`(발열)가 숨는다",
+    # 44차 — `_escalation.SENSITIVE_KEYWORDS` 의 두 글자 낱말이 같은 모양으로
+    # 걸렸다. 15단계는 1글자와 위 기록부 조각만 보므로 눈 밖이었다.
+    "합법적": "「합법적」·「불법적」 안에 `법적`(법적 대응)이 숨는다",
+    "고소한": "「고소한 맛」 안에 `고소`(고소·소송)가 숨는다",
+    "고소득": "「고소득」 안에 `고소`(고소·소송)가 숨는다",
 }
 KW_PARTICLES = ("", "가", "를", "을", "이", "은", "도", "만", "과", "와", "에", "로")
 KW_MAX_LEN = 12
@@ -2439,6 +2450,142 @@ def check_scenario_names(engine=None, routes=None, mods=None):
                                 len(routes or SCENARIO_ROUTES)))
 
 
+# --------------------------------------------------------------------------
+# 23) utterance_decoys (44차) — **발화 오탐 기록부**
+#
+# 15단계(`keyword_tables`)는 낱말표의 **모양**을 본다 — 1글자 낱말과, 이미
+# 밝혀진 오탐 낱말의 조각이 다른 표에 들어 있는지. 그 그물로는 44차 결함 둘이
+# 다 빠져나갔다.
+#   ① `_escalation.SENSITIVE_KEYWORDS` 는 **두 글자**다(`법적`·`고소`·`소송`).
+#      게다가 판정 전에 **공백을 전부 지워** 원문에 없던 낱말을 만들었다 —
+#      「주문 방법 적어 주세요」→`법적` · 「주소 송파구예요」→`소송` ·
+#      「전화하고 소식이 없어요」→`고소`. 낱말표만 봐서는 보이지 않는다.
+#   ② 38차가 `wellbeing` 에 세운 「증상이 없다는 말」 가림(`_DENIAL`)이
+#      `_eum_request` 에는 오지 않았다 — 「숨이 차지 않아요」가 **긴급 연결**로
+#      접수됐다(34차 `_DECOY` 가 거꾸로 그 파일에만 있던 것과 같은 모양).
+#
+# 둘 다 코드 모양이 아니라 **문장을 넣어 봐야** 드러난다. 그래서 20·21단계처럼
+# 돌려 본다: 기록부의 문장을 세 판정기에 **실제로 넣고**, 경보가 나오면 실패한다.
+#  (a) 오탐 문장은 **어느 판정기에서도** 경보가 아니다. 한 파일에서 밝혀진
+#      오탐은 전부에 적용한다(38차 (d) 규약의 문장판).
+#  (b) 과차단을 함께 고정한다 — 진짜 신호는 반드시 경보여야 한다. 가림이
+#      넓어지면 「코피가 멈추지 않아요」가 조용해지고, 그게 더 큰 결함이다.
+#  (c) 판정기 등록부와 기록부는 양방향으로 맞아야 한다(쓰지 않는 판정기 금지).
+#
+# 경보의 뜻은 판정기마다 다르다 — 전환·담당자 알림·follow_up 생성. 어느 쪽이든
+# **사람을 움직이는** 값이고, 일상 대화로 울리면 사람이 그 채널을 믿지 않게 된다.
+# 네트워크를 쓰지 않는다(판정은 전부 순수 함수다).
+# --------------------------------------------------------------------------
+UTTERANCE_JUDGES = {
+    "escalation": ("_escalation.py",
+                   "민감 주제 전환 — 자동응대를 멈추고 티켓 사유로 남는다"),
+    "eum": ("_eum_request.py",
+            "이음 3R 요청 유형 — `emergency` 는 담당자 알림을 울린다"),
+    "wellbeing": ("wellbeing.py",
+                  "안부 위험도 — 이음이 `high` 로 follow_up 을 만든다"),
+}
+# 경보가 되어서는 안 되는 평범한 발화. 전부 **실제로 그렇게 나갔던** 모양이다.
+UTTERANCE_DECOYS = {
+    "주문 방법 적어서 보내 주세요": "공백을 지우면 「방법 적어」 → `법적`(44차)",
+    "그거 합법적인가요": "「합법적」 안에 `법적`(44차)",
+    "불법적인 건 아니죠": "「불법적」 안에 `법적`(44차)",
+    "주소 송파구 123번지예요": "공백을 지우면 「주소 송파」 → `소송`(44차)",
+    "취소 송금해 주세요": "공백을 지우면 「취소 송금」 → `소송`(44차)",
+    "그거 말고 소포로 보내 주세요": "공백을 지우면 「말고 소포」 → `고소`(44차)",
+    "전화하고 소식이 없어요": "공백을 지우면 「하고 소식」 → `고소`(44차)",
+    "최고 소식이네요": "공백을 지우면 「최고 소식」 → `고소`(44차)",
+    "이 과자 고소하고 맛있어요": "「고소하고」(맛) 안에 `고소`(44차)",
+    "고소득자라서요": "「고소득」 안에 `고소`(44차)",
+    "고장 신고할게요": "고장 접수는 민감 주제가 아니다 — `신고할`(44차)",
+    "어르신 숨이 차지 않으세요": "없다고 말한 증상이 긴급으로 올라갔다(44차)",
+    "다치신 데 없어요": "같은 모양 — `다치신`(44차)",
+    "사고는 없었어요": "같은 모양 — `사고`(44차)",
+    "피는 안 나요": "같은 모양 — `피`(44차)",
+    "어르신이 커피를 드시고 싶다고 하세요": "「커피를」 안에 `피를`(출혈 · 34차)",
+    "한숨을 길게 쉬세요": "「한숨을」 안에 `숨을`(호흡곤란 · 34차)",
+    "무사고로 끝났습니다": "「무사고」 안에 `사고`(34차)",
+    "돈가스 드셨어요": "「돈가스」 안에 `돈`(금전문제 · 34차)",
+    "커피가 식었어요": "「커피가」 안에 `피가`(출혈 · 38차)",
+    "며칠째 잘 챙겨 먹고 있어요": "기간 부사 단독 적중 → 결식(38차)",
+    "어지럽지 않아요": "없다고 말한 증상 → 위험신호(38차)",
+    "굶지 않았어요": "같은 모양 — `굶`(38차)",
+    "열이틀 만에 오셨어요": "「열이틀」 안에 `열이`(발열 · 38차)",
+}
+# 반드시 경보여야 하는 발화 — 가림이 넓어지면 여기서 드러난다.
+UTTERANCE_REAL = {
+    "법적으로 대응하겠습니다": "법적 대응 통보 — 콜봇 응대 범위 밖",
+    "고소하겠습니다": "「고소하」 를 통째로 가리면 이것이 조용해진다",
+    "소 송 할 거예요": "전사가 낱말을 글자로 쪼개도 잡아야 한다",
+    "언론에 제보할 거예요": "언론 제보 통보",
+    "금감원에 신고할 겁니다": "감독기관 신고 통보",
+    "어르신이 쓰러지셨어요": "긴급 — 담당자 알림이 울려야 한다",
+    "코피가 멈추지 않아요": "오탐 가림이 **진짜 출혈**을 지우지 않는다",
+    "교통사고가 났어요": "「무사고」 가림이 진짜 사고를 지우지 않는다",
+    "사고는 없었는데 어르신이 쓰러지셨어요": "부정은 그 어구만큼만 가린다",
+    "어지러워서 움직이지 못해요": "위험신호 — 부정문 가림이 삼키지 않는다",
+    "하나도 못 먹었어요": "결식 — 위험신호",
+    "죽고 싶어요": "자해 암시 — 부정문이라도 올린다(38차 CRITICAL_NO_DENIAL)",
+}
+
+
+def _judge_alarm(key, mod, text):
+    """판정기 하나를 돌려 **경보 라벨**을 돌려준다(경보가 아니면 "")."""
+    if key == "escalation":
+        hit = mod.EscalationPolicy().evaluate(text) or {}
+        return "sensitive" if hit.get("reason") == "sensitive" else ""
+    if key == "eum":
+        label = mod.classify(text)[0]
+        return "emergency" if label == "emergency" else ""
+    if key == "wellbeing":
+        # 위험신호는 네 답변 **전체**를 보므로 한 칸씩 넣어 본다(나머지는 빈 칸).
+        for slot in mod.QUESTION_KEYS:
+            ans = {k: (text if k == slot else "") for k in mod.QUESTION_KEYS}
+            if mod.score_answers(ans).get("risk_level") == mod.RISK_HIGH:
+                return "high:" + slot
+        return ""
+    raise KeyError(key)                        # pragma: no cover - 등록부 오타
+
+
+def check_utterance_decoys(mods=None):
+    """기록부의 문장을 세 판정기에 실제로 넣어 본다. `mods` 는 회귀가 끼우는 자리."""
+    msgs, loaded = [], {}
+    for key, (fname, why) in sorted(UTTERANCE_JUDGES.items()):
+        mod, err = _scn_mod(fname, "_verify_judge_" + key, mods)
+        if mod is None:
+            msgs.append("api/%s 를 불러올 수 없다(%s) — %s" % (fname, err, why))
+            continue
+        loaded[key] = mod
+    if not loaded:
+        return False, " / ".join(msgs) or "판정기를 하나도 불러올 수 없다"
+    for text, why in sorted(UTTERANCE_DECOYS.items()):
+        for key, mod in sorted(loaded.items()):
+            try:
+                alarm = _judge_alarm(key, mod, text)
+            except Exception as e:                 # noqa: BLE001
+                msgs.append("%s 판정 중 예외(%s): 「%s」"
+                            % (key, type(e).__name__, text))
+                continue
+            if alarm:
+                msgs.append("오탐 경보: %s 가 「%s」 를 %s 로 읽는다 — %s. 한 "
+                            "파일에서 밝혀진 오탐은 전부에 적용한다(38차 규약)"
+                            % (key, text, alarm, why))
+    for text, why in sorted(UTTERANCE_REAL.items()):
+        heard = False
+        for key, mod in sorted(loaded.items()):
+            try:
+                heard = heard or bool(_judge_alarm(key, mod, text))
+            except Exception as e:                 # noqa: BLE001
+                msgs.append("%s 판정 중 예외(%s): 「%s」"
+                            % (key, type(e).__name__, text))
+        if not heard:
+            msgs.append("과차단: 「%s」 가 어느 판정기에서도 경보가 아니다 — %s"
+                        % (text, why))
+    return (not msgs), (" / ".join(msgs[:8]) if msgs
+                        else "판정기 %d개 · 오탐 문장 %d건 조용 · 진짜 신호 %d건 경보"
+                             % (len(loaded), len(UTTERANCE_DECOYS),
+                                len(UTTERANCE_REAL)))
+
+
 def _emit(text, as_json=False):
     """게이트 출력 — 소비자가 둘이다(사람이 읽는 콘솔 · JSON 을 파싱하는 기계).
 
@@ -2495,6 +2642,7 @@ def main():
     hb_ok, hb_msg = check_host_bypass()
     ao_ok, ao_msg = check_audit_outcome(srcs)
     sn_ok, sn_msg = check_scenario_names()
+    ud_ok, ud_msg = check_utterance_decoys()
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -2519,6 +2667,7 @@ def main():
         {"step": "host_bypass", "ok": hb_ok, "detail": hb_msg},
         {"step": "audit_outcome", "ok": ao_ok, "detail": ao_msg},
         {"step": "scenario_names", "ok": sn_ok, "detail": sn_msg},
+        {"step": "utterance_decoys", "ok": ud_ok, "detail": ud_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

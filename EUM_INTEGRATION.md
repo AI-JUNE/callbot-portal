@@ -61,6 +61,10 @@
         릴리스 게이트 15단계 `keyword_tables` **(d) 오탐 기록부**(한 파일에서 밝혀진 오탐은 전부에 적용).
         남은 한계: 「약을 안 먹어요」(복약)가 아직 `starving` 으로 읽힌다 — 식사와 복약을 낱말로
         가리면 「밥도 약도 안 먹어요」를 놓치므로 과대보고 쪽에 두었다.
+      · 2026-11-02(44차) 보강: 38차가 **이 파일에** 세운 「증상이 없다는 말」 가림(`_DENIAL`)이
+        거꾸로 `_eum_request`(3R 현장 요청 분류)에는 오지 않았다 — 34차 `_DECOY` 가 그 파일에만
+        있던 것과 **정확히 반대 방향**의 같은 결함이다. 재발 방지는 릴리스 게이트 23단계
+        `utterance_decoys`(아래 3R 절 참조).
 - [x] 웹훅 서명(HMAC) — `CALLBACK_SECRET` 환경변수, 미설정 시 서명 생략(로컬)
       · HMAC-SHA256(`<ts>.<body>`), 허용 시차 300초. 본문 변조·키 불일치·시각 이탈 모두 거부(회귀 9건).
       · 덤으로 **SSRF 가드**: 콜백은 https 만(개발 시 `WELLBEING_ALLOW_INSECURE=1`), 루프백·사설·링크로컬·메타데이터 주소 차단, `WELLBEING_CALLBACK_HOSTS` 화이트리스트 지원. 한계(DNS rebinding)는 코드 주석에 명시.
@@ -136,6 +140,22 @@ AICC 는 「STT 된 글을 분류·정리해 서명 웹훅으로 넘기는 것�
         `classification.evidence_outside_summary`, 잘렸다는 사실은 `classification.truncated`
         로 드러낸다(둘 다 우리 응답에만 있고 이음 본문 4칸은 불변).
         회귀 `tests/test_eum_request_truncation.py` 21건 · 릴리스 게이트 16단계 `judge_inputs`.
+      · 2026-11-02(44차) 보강: **없다고 말한 증상이 그대로 긴급 연결로 접수됐다.**
+        현장 담당자가 「어르신 숨이 차지 않으세요」·「다치신 데 없어요」·「사고는 없었어요」·
+        「피는 안 나요」라고 **괜찮다고 보고**하면 `emergency` 로 분류돼 담당자 알림이 울렸다
+        (`숨이`·`다치신`·`사고`·`피` 가 부정 어구 안에서 걸린다). 38차가 `wellbeing._DENIAL` 로
+        고친 것과 같은 결함인데 이 파일에는 규약이 오지 않았다 — 34차 `_DECOY` 가 거꾸로
+        이 파일에만 있던 것과 **반대 방향의 같은 모양**이다. 긴급 채널이 안심 보고로 울리면
+        담당자는 그 채널을 믿지 않게 된다(21·38차와 같은 판단).
+        범위는 38차와 같게 좁다: 증상 낱말에 부정이 **바로 붙은 어구**만, 그 어구만큼만 가린다 —
+        「사고는 없었는데 어르신이 쓰러지셨어요」는 그대로 `emergency` 다.
+        이음에 보내는 `summary` 는 손대지 않는다(담당자가 읽는 글은 원문 그대로).
+        `evidence_outside_summary` 도 분류와 **같은 눈**으로 계산한다(가림을 한쪽만 걸면
+        근거가 요약 안에 있는지를 잘못 적는다).
+        회귀 `tests/test_utterance_decoys.py` 26건(subtest 99건) · 릴리스 게이트 23단계
+        `utterance_decoys` — **발화 오탐 기록부**를 두고 평범한 문장 24건을 세 판정기
+        (`wellbeing`·`_eum_request`·`_escalation`)에 **실제로 넣어** 경보가 없음을 확인하고,
+        진짜 신호 12건은 반대로 경보가 나오는지 확인한다(과차단 동반 고정).
 - [x] `POST /api/wellbeing/request` — 함수 한도 때문에 wellbeing 의 하위 동작. 본문 `{participant_id, transcript, ref?, send?}`.
       · 기본은 **dry-run**(분류 결과·보낼 본문만 돌려줌). `EUM_CHANNEL_SECRET`(16자 이상) 등록 + `send:true` 일 때만 이음으로 전송.
       · 전송 실패는 502 `EUM_DELIVERY_FAILED` 로 드러낸다. 재시도·실패 보관은 안부 웹훅과 같은 `deliver_with_retry`.

@@ -86,6 +86,27 @@ _RULES = (
 # 「코피가」·「교통사고가」처럼 판정 낱말이 뜻 그대로 들어 있는 낱말은 넣지 않는다.
 _DECOY = ("커피", "한숨", "무사고", "무의식", "돈가스", "돈까스")
 _DECOY_RX = re.compile("|".join(map(re.escape, _DECOY)))
+# 44차 — **증상이 없다고 명시한 말**이 그대로 긴급으로 올라갔다.
+# 38차가 `wellbeing._DENIAL` 로 고친 것과 같은 결함이 이 파일에는 오지 않았다
+# (34차 `_DECOY` 가 거꾸로 이 파일에만 있던 것과 같은 모양 — 규칙이 절반만
+# 지켜진 자리다). 현장 담당자가 「어르신 숨이 차지 않으세요」·「다치신 데
+# 없어요」·「사고는 없었어요」라고 **괜찮다고 보고**하면 긴급 연결로 접수돼
+# 담당자 알림이 울렸다. 긴급 채널이 안심 보고로 울리면 그 채널을 믿지 않게
+# 된다(21·38차와 같은 판단 — 놓치는 쪽만 위험한 것이 아니다).
+#
+# 범위는 38차와 같게 좁다: 증상 낱말에 부정이 **바로 붙은 어구**만, 그 어구
+# 만큼만 가린다. 답변 전체에 부정 판정을 걸지 않는다 —
+# 「사고는 없었는데 어르신이 쓰러지셨어요」는 그대로 긴급이다.
+_DENIAL = re.compile("|".join([
+    r"숨이\s*차지\s*(?:는\s*)?않", r"숨\s*(?:은\s*|이\s*)?안\s*차",
+    r"숨을\s*못\s*쉬지\s*(?:는\s*)?않",
+    r"피가\s*나지\s*(?:는\s*)?않", r"피\s*(?:는\s*)?안\s*나",
+    r"쓰러지지\s*(?:는\s*)?않", r"쓰러지신\s*적\s*(?:은\s*)?없",
+    r"다치지\s*(?:는\s*)?않", r"다치신\s*데\s*(?:는\s*)?없",
+    r"넘어지지\s*(?:는\s*)?않", r"넘어지신\s*적\s*(?:은\s*)?없",
+    r"사고\s*(?:는\s*)?없", r"사고\s*난\s*적\s*(?:은\s*)?없",
+    r"응급\s*(?:실\s*)?(?:에\s*)?(?:갈\s*일\s*)?(?:은\s*)?없",
+]))
 _PID = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 
@@ -94,13 +115,26 @@ def _mask_decoys(t):
     return _DECOY_RX.sub("·", t)
 
 
+def _blank(m):
+    """길이를 보존해 가린다 — 가림이 다른 낱말을 새로 만들지 않게."""
+    return " " * len(m.group(0))
+
+
+def _mask_denials(t):
+    """「증상이 없다」고 명시한 어구를 분류 **직전에만** 가린다."""
+    return _DENIAL.sub(_blank, t)
+
+
 def classify(text):
     """(label, 근거 낱말 목록). 같은 글이면 항상 같은 답이다.
 
     **자르지 않은 글**을 넣어야 한다(`clean_text`). 500자로 자른 요약을 넣으면
     뒤쪽에 있는 긴급 신호가 분류에서 사라진다.
+
+    이음에 보내는 `summary` 는 손대지 않는다 — 담당자가 읽는 글은 원문 그대로다.
+    가림은 판정 입력에만 적용된다(34·38차와 같은 규약).
     """
-    t = _mask_decoys(re.sub(r"\s+", " ", str(text or "")))
+    t = _mask_denials(_mask_decoys(re.sub(r"\s+", " ", str(text or ""))))
     for label, words in _RULES:
         hit = [w for w in words if w in t]
         if hit:
@@ -152,7 +186,9 @@ def build_payload(participant_id, transcript, ref=None):
     }
     # 담당자가 읽는 요약에 근거 낱말이 없을 수 있다(잘린 뒤쪽에서 걸린 경우).
     # 그 사실을 숨기지 않고 분류 결과에 적는다 — 이음 본문은 손대지 않는다.
-    masked_summary = _mask_decoys(summary)
+    # 분류가 본 것과 **같은 눈**으로 본다(가림을 한쪽만 적용하면 근거가 요약
+    # 안에 있는지 없는지를 잘못 적는다).
+    masked_summary = _mask_denials(_mask_decoys(summary))
     outside = [w for w in evidence if w not in masked_summary]
     return payload, {"label": label, "label_ko": LABEL_KO[label], "evidence": evidence,
                      "truncated": len(full) > SUMMARY_MAX,
