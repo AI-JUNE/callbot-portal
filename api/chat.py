@@ -1,7 +1,7 @@
 import os, sys, json
 from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(__file__))
-from _engine import run_turn
+from _engine import run_turn, DEFAULT_SCENARIO, SCENARIO_PROMPTS
 
 def _key():
     return bool((os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip())
@@ -13,9 +13,12 @@ import _log
 import _errors
 import _monitoring as monitoring
 
-# 시나리오 화이트리스트 — engine.run_turn 의 분기와 같은 목록을 유지한다.
-# (드리프트는 tests/test_chat_assist.py 가 감시: 각 값이 서로 다른 프롬프트를 고르는지 확인)
-SCENARIOS = ("refund", "integrity", "overdue", "welfare", "trio", "wellbeing", "안부")
+# 시나리오 화이트리스트 — 이름을 **베껴 적지 않는다**(44차). 전에는 같은 목록이
+# engine 의 갈림과 여기 두 벌로 있었고, 둘이 어긋나면 `/api/chat` 이 받아 놓고
+# engine 이 엉뚱한 프롬프트로 답한다(그 모양으로 한 번 났던 결함이다).
+# 이 라우트가 공개하는 것은 **전용 프롬프트가 있는 대본 + 기본(refund)** 이다
+# — 데모 전용 대본(order·handoff 등)은 `/api/sim_call` 쪽 목록이다.
+SCENARIOS = (DEFAULT_SCENARIO,) + tuple(SCENARIO_PROMPTS)
 
 # 메시지 role 화이트리스트 — engine._to_contents 가 해석하는 값만 받는다.
 ROLES = ("user", "assistant", "model", "system", "tool")

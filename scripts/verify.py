@@ -27,6 +27,7 @@
  19. stale_state   — '진행 중'을 뜻하는 저장소에 시간 만료가 있고 배선돼 있는가
  20. host_bypass   — 주소 표기 우회(끝점 FQDN·짧은 꼴 IPv4…)가 SSRF 가드에 막히는가
  21. audit_outcome — 감사 기록이 **응답과 같은 말**을 하는가(성공을 미리 적지 않는다)
+ 22. scenario_names— 대본 이름이 등록부(`_engine.SCENARIOS`) 한 곳에서만 나오는가
 
 검사 범위: 게이트는 **고객에게 도달하는 것**만 막는다. 내부 운영 문서까지 막으면
 사람이 게이트를 끄게 되고, 그러면 게이트가 없는 것과 같다.
@@ -2265,6 +2266,179 @@ def check_audit_outcome(sources, mod=None):
                              % (len(AUDIT_RESULT_USERS), len(AUDIT_RESULT_CASES)))
 
 
+# --------------------------------------------------------------------------
+# 22) scenario_names (44차) — 대본 이름은 **한 곳에서만** 나온다
+#
+# 44차 결함: 대본 이름을 아는 자리가 세 벌이었다 — `_engine.run_turn` 의
+# if/elif 갈림 · `chat.SCENARIOS`(입력 화이트리스트) · `sim_call.SCRIPTS`.
+# 그리고 **`voice` 는 한 벌도 갖지 못했다**: CPaaS 이벤트와 캠페인 `metadata`
+# 가 보낸 임의 문자열을 그대로 세션에 담아 엔진으로 넘겼고, 모르는 이름은
+# 엔진에서 조용히 기본 CS 프롬프트로 떨어지며 **주문·환불 툴이 열렸다**.
+# 안부·복지 통화에서 환불 툴이 열려 있는데 어느 자리에도 그 사실이 적히지
+# 않는다. 이름은 지표(`_call_metrics`)·전환 티켓 라벨로도 흘러가므로
+# 집계가 오타마다 쪼개진다.
+#
+# 리뷰에서 보이지 않는 모양이다 — `meta.get("scenario", "refund")` 한 줄은
+# 멀쩡해 보이고, 빠진 것은 **거기 없는 검증**이다(17·19·20·30·34·36·38·42차가
+# 반복해 지적한 '규칙이 절반만 지켜진 자리').
+#
+# 그래서 센다(20·21단계와 같은 방식 — 판정은 실제로 돌려 본다):
+#  (a) 등록부는 `_engine.SCENARIOS` 한 곳이다. 다른 자리의 이름이 그 안에
+#      없으면 실패한다(라우트가 받아 놓고 엔진이 다른 프롬프트를 고른다).
+#  (b) 등록부 잔재도 실패한다 — 아무도 쓰지 않는 이름은 등록부에서 지운다.
+#  (c) 전용 프롬프트 대본은 **툴이 닫혀** 있어야 한다.
+#  (d) 외부 입력을 받는 라우트는 등록부를 거친다 — 모르는 이름을 기본 대본으로
+#      되돌리고(통화 중이라 거부하지 않는다) 캠페인 계획은 거부한다.
+#  (e) 과차단을 함께 고정한다(등록된 이름·앞뒤 공백은 그대로 통과).
+# --------------------------------------------------------------------------
+SCENARIO_SOURCES = {
+    "chat.py": ("SCENARIOS", "`/api/chat` 입력 화이트리스트 — 공개 목록도 이 값이다"),
+    "sim_call.py": ("SCRIPTS", "시뮬레이터 대본표 — 키가 대본 이름이다"),
+}
+# 외부(CPaaS·콘솔)가 보낸 이름을 받는 라우트와 그 되돌림·거부 함수.
+SCENARIO_ROUTES = {
+    "voice.py": ("event_scenario", "trigger_campaign",
+                 "CPaaS 이벤트·캠페인 metadata — 통화 중에는 되돌리고 계획은 거부"),
+}
+# 등록부에 없는 이름(되돌려져야 한다)과 그 사유.
+SCENARIO_UNKNOWN = {
+    "웰비잉": "오타·존재하지 않는 대본",
+    "Refund": "대소문자가 다른 표기 — 등록부에 없다(접어 주면 집계가 쪼개진다)",
+    "wellbeing;drop": "꼴이 어긋난 값",
+    "refund_over_9000": "등록된 이름을 접두로 품은 다른 이름(부분 일치 금지)",
+}
+SCENARIO_PHONE = "01000000000"       # 프롬프트 조립용 더미 번호(실번호 아님)
+
+
+def _scenario_names(mod, symbol):
+    """모듈의 대본 이름 모음 → 집합. 읽을 수 없으면 None."""
+    v = getattr(mod, symbol, None)
+    if isinstance(v, dict):
+        v = tuple(v)
+    if not isinstance(v, (tuple, list)):
+        return None
+    return set(v)
+
+
+def _scn_mod(fname, alias, mods):
+    """등록부 검사용 모듈 — `mods` 에 끼워 둔 것이 있으면 그것을 쓴다.
+
+    회귀가 **고치기 전 모양**을 끼워 게이트가 그것을 실제로 잡는지 보는 자리다
+    (저장소 파일은 건드리지 않는다 · 21차 사고 뒤의 규약).
+    """
+    if mods and fname in mods:
+        return mods[fname], ""
+    return _load_api_module(fname, alias)
+
+
+def check_scenario_names(engine=None, routes=None, mods=None):
+    """대본 이름 등록부 — `engine`·`routes`·`mods` 는 회귀가 끼우는 자리."""
+    msgs = []
+    err = ""
+    if engine is None:
+        engine, err = _scn_mod("_engine.py", "_verify_engine", mods)
+    if engine is None:
+        return False, "api/_engine.py 를 불러올 수 없다(%s)" % err
+    for sym in ("SCENARIOS", "SCENARIO_PROMPTS", "DEFAULT_SCENARIO",
+                "normalize_scenario", "scenario_prompt"):
+        if not hasattr(engine, sym):
+            return False, "_engine.%s 가 없다(대본 등록부 배선이 사라졌다)" % sym
+    known = _scenario_names(engine, "SCENARIOS")
+    if not known:
+        return False, "_engine.SCENARIOS 를 읽을 수 없다"
+    if engine.DEFAULT_SCENARIO not in known:
+        msgs.append("_engine.DEFAULT_SCENARIO(%r) 가 등록부에 없다"
+                    % engine.DEFAULT_SCENARIO)
+    # (a)(b) 다른 자리의 이름 ↔ 등록부
+    used = {engine.DEFAULT_SCENARIO} | (_scenario_names(engine, "SCENARIO_PROMPTS") or set())
+    for fname, (symbol, why) in sorted(SCENARIO_SOURCES.items()):
+        mod, e = _scn_mod(fname, "_verify_scn_" + fname.split(".")[0], mods)
+        if mod is None:
+            msgs.append("api/%s 를 불러올 수 없다(%s)" % (fname, e))
+            continue
+        names = _scenario_names(mod, symbol)
+        if names is None:
+            msgs.append("%s 의 %s 를 읽을 수 없다 — %s" % (fname, symbol, why))
+            continue
+        used |= names
+        for n in sorted(names - known):
+            msgs.append("%s:%s 의 「%s」 가 _engine.SCENARIOS 에 없다 — 라우트가 "
+                        "받아 놓고 엔진이 다른 프롬프트를 고른다(%s)"
+                        % (fname, symbol, n, why))
+    for n in sorted(known - used):
+        msgs.append("등록부 잔재: 「%s」 를 쓰는 자리가 없다 — 쓰지 않는 이름은 "
+                    "등록부에서 지울 것(SCENARIO_SOURCES 대조)" % n)
+    # (c) 전용 프롬프트 대본은 툴을 열지 않는다
+    for n in sorted(_scenario_names(engine, "SCENARIO_PROMPTS") or set()):
+        try:
+            sysp, use_tools = engine.scenario_prompt(n, SCENARIO_PHONE)
+        except Exception as e:                     # noqa: BLE001
+            msgs.append("scenario_prompt(%r) 판정 중 예외(%s)" % (n, type(e).__name__))
+            continue
+        if use_tools:
+            msgs.append("「%s」 가 주문·환불 툴을 연다 — 전용 프롬프트 대본은 "
+                        "툴을 쓸 일이 없고, 열어 두면 모델이 부른다" % n)
+        if not isinstance(sysp, str) or not sysp.strip():
+            msgs.append("「%s」 의 프롬프트가 비어 있다" % n)
+    # (d)(e) 외부 입력을 받는 라우트가 등록부를 거치는가 — 실제로 돌려 본다
+    for fname, (norm, reject, why) in sorted((routes or SCENARIO_ROUTES).items()):
+        mod, e = _scn_mod(fname, "_verify_scn_route_" + fname.split(".")[0], mods)
+        if mod is None:
+            msgs.append("api/%s 를 불러올 수 없다(%s)" % (fname, e))
+            continue
+        fn = getattr(mod, norm, None)
+        if not callable(fn):
+            msgs.append("%s 에 %s() 가 없다 — 외부가 보낸 대본 이름을 되돌리는 "
+                        "자리가 사라졌다(%s)" % (fname, norm, why))
+            continue
+        for bad, bad_why in sorted(SCENARIO_UNKNOWN.items()):
+            try:
+                name, unknown = fn(bad)
+            except Exception as ex:                # noqa: BLE001
+                msgs.append("%s.%s(%r) 판정 중 예외(%s)"
+                            % (fname, norm, bad, type(ex).__name__))
+                continue
+            if name not in known:
+                msgs.append("%s.%s(%r) → 「%s」 — 등록부 밖의 이름이 세션·지표로 "
+                            "흘러간다(%s)" % (fname, norm, bad, name, bad_why))
+            if not unknown:
+                msgs.append("%s.%s(%r) 가 **되돌렸다는 사실**을 말하지 않는다 — "
+                            "조용히 바꾸면 보내는 쪽의 오타가 고쳐지지 않는다(%s)"
+                            % (fname, norm, bad, bad_why))
+        for good in (engine.DEFAULT_SCENARIO, " " + engine.DEFAULT_SCENARIO + " "):
+            try:
+                name, unknown = fn(good)
+            except Exception as ex:                # noqa: BLE001
+                msgs.append("%s.%s(%r) 판정 중 예외(%s)"
+                            % (fname, norm, good, type(ex).__name__))
+                continue
+            if (name, unknown) != (engine.DEFAULT_SCENARIO, False):
+                msgs.append("과차단: %s.%s(%r) = (%r, %r) — 등록된 이름은 그대로 "
+                            "써야 한다(가드가 정상 입력을 막으면 사람이 가드를 끈다)"
+                            % (fname, norm, good, name, unknown))
+        rej = getattr(mod, reject, None)
+        if not callable(rej):
+            msgs.append("%s 에 %s() 가 없다(%s)" % (fname, reject, why))
+            continue
+        for bad in sorted(SCENARIO_UNKNOWN):
+            try:
+                rej(["01011112222"], bad)
+            except ValueError:
+                continue
+            except Exception as ex:                # noqa: BLE001
+                msgs.append("%s.%s(scenario=%r) 가 ValueError 가 아닌 %s 로 끝났다 "
+                            "— 입력 오류는 400 이어야 한다"
+                            % (fname, reject, bad, type(ex).__name__))
+                continue
+            msgs.append("%s.%s 가 등록되지 않은 대본 「%s」 로 계획을 만든다 — 그 "
+                        "계획은 실발신 승인 뒤 그대로 발신 요청이 된다(%s)"
+                        % (fname, reject, bad, why))
+    return (not msgs), (" / ".join(msgs[:8]) if msgs
+                        else "대본 %d개 등록 · 되돌림 %d건 · 라우트 %d개 확인"
+                             % (len(known), len(SCENARIO_UNKNOWN),
+                                len(routes or SCENARIO_ROUTES)))
+
+
 def _emit(text, as_json=False):
     """게이트 출력 — 소비자가 둘이다(사람이 읽는 콘솔 · JSON 을 파싱하는 기계).
 
@@ -2320,6 +2494,7 @@ def main():
     ss_ok, ss_msg = check_stale_state(srcs)
     hb_ok, hb_msg = check_host_bypass()
     ao_ok, ao_msg = check_audit_outcome(srcs)
+    sn_ok, sn_msg = check_scenario_names()
 
     steps = [
         {"step": "py_compile", "ok": p_ok, "detail": p_msg},
@@ -2343,6 +2518,7 @@ def main():
         {"step": "stale_state", "ok": ss_ok, "detail": ss_msg},
         {"step": "host_bypass", "ok": hb_ok, "detail": hb_msg},
         {"step": "audit_outcome", "ok": ao_ok, "detail": ao_msg},
+        {"step": "scenario_names", "ok": sn_ok, "detail": sn_msg},
     ]
     ok = all(s["ok"] for s in steps)
     if a.json:

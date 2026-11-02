@@ -167,9 +167,15 @@ class TestOverdueScriptNumbers(unittest.TestCase):
                 self.assertIsNone(self.MONEY.search(getattr(engine, name)))
 
     def test_overdue_scenario_still_uses_this_prompt(self):
-        """대본을 고쳤어도 그 대본이 실제로 쓰이는지 확인한다."""
-        src = io.open(os.path.join(ROOT, "api", "_engine.py"), encoding="utf-8").read()
-        self.assertIn('scenario=="overdue": sysp=PROMPT_OVERDUE', src)
+        """대본을 고쳤어도 그 대본이 실제로 쓰이는지 확인한다.
+
+        44차: 갈림이 if/elif 에서 `SCENARIO_PROMPTS` 등록부로 옮겨졌다 —
+        소스 문자열이 아니라 **판정 함수를 돌려서** 확인한다(등록부가 바뀌면
+        여기서 드러나고, 표기만 바꾸는 리팩터링에는 깨지지 않는다).
+        """
+        sysp, use_tools = engine.scenario_prompt("overdue", "01000000000")
+        self.assertIs(sysp, engine.PROMPT_OVERDUE)
+        self.assertFalse(use_tools, "연체 안내는 주문·환불 툴을 쓰지 않는다")
 
 
 class TestConsoleScriptTableAgrees(unittest.TestCase):

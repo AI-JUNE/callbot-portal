@@ -33,10 +33,66 @@ except Exception:                       # pragma: no cover - 모듈 부재 폴�
     _scrub = _scrub_unavailable
 
 try:
-    from _engine import run_turn, trim_history
+    from _engine import (run_turn, trim_history, SCENARIOS,
+                         DEFAULT_SCENARIO, normalize_scenario)
 except Exception:
     run_turn = None
     trim_history = None
+    # 등록부를 못 읽으면 **기본 대본 하나만** 안다(fail-closed). engine 이 없으면
+    # 통화는 「점검 중」으로 끝나므로 대본 이름은 쓰이지 않지만, 여기서 임의
+    # 문자열을 통과시키면 그 값이 세션·지표·티켓 라벨로 흘러간다.
+    SCENARIOS = ("refund",)
+    DEFAULT_SCENARIO = "refund"
+    normalize_scenario = None
+
+
+def _known_scenario(value):
+    """등록된 대본 이름이면 그 이름, 아니면 None.
+
+    판정은 `_engine.normalize_scenario` 한 곳이 갖는다 — 규칙을 복제하면
+    한쪽만 고쳐지고 그때 라우트와 엔진이 서로 다른 대본을 말한다.
+    """
+    if normalize_scenario is not None:
+        return normalize_scenario(value)
+    if isinstance(value, str) and value.strip() in SCENARIOS:
+        return value.strip()
+    return None
+
+
+def default_scenario():
+    """이 배포의 기본 대본 — **등록된 이름만** 돌려준다.
+
+    `CALLBOT_DEFAULT_SCENARIO` 오타가 조용히 '모르는 대본'이 되지 않게 한다.
+    읽는 시점은 호출 때다(웜 인스턴스가 옛 값을 붙들고 있지 않게 · `live()` 와
+    같은 규약). 모르는 값은 기본값으로 되돌리고, **되돌렸다는 사실**은
+    `GET /api/voice` 의 `scenario.env_unknown` 으로 드러낸다(조용히 바꾸지 않는다).
+    """
+    return _known_scenario(os.environ.get("CALLBOT_DEFAULT_SCENARIO")) or DEFAULT_SCENARIO
+
+
+def _scenario_state():
+    """기본 대본 설정 상태 — 실측값이다(꾸민 수치가 아니다)."""
+    raw = (os.environ.get("CALLBOT_DEFAULT_SCENARIO") or "").strip()
+    name = default_scenario()
+    return {"name": name, "env_override": bool(raw),
+            "env_unknown": bool(raw) and raw != name,
+            "known": list(SCENARIOS)}
+
+
+def event_scenario(value):
+    """이벤트·`metadata` 가 보낸 대본 이름 → (등록된 이름, 모르는 값이었는가).
+
+    통화 **중**에 오는 값이라 거부하지 않는다 — 거부하면 전화가 끊긴다.
+    대신 기본 대본으로 되돌리고 그 사실을 로그에 적는다(`scenario_fallback`).
+    보내지 않은 것은 '모르는 값'이 아니다(기본 대본을 쓰는 정상 경로다).
+    캠페인 계획은 사람이 만드는 요청이므로 그쪽은 **400 으로 거부**한다
+    (`trigger_campaign` · `sim_call` 의 「조용히 다른 대본으로 바꾸지 않는다」).
+    """
+    name = _known_scenario(value)
+    if name is not None:
+        return name, False
+    blank = value is None or (isinstance(value, str) and not value.strip())
+    return default_scenario(), not blank
 try:
     from _stt import transcribe
 except Exception:
@@ -420,7 +476,7 @@ def handle_twilio(p):
     rec_url = (p.get("RecordingUrl", "") or "").strip()
     rec_dur = str(p.get("RecordingDuration", "") or "").strip()
     dial_status = (p.get("DialCallStatus", "") or "").lower()
-    scenario = os.environ.get("CALLBOT_DEFAULT_SCENARIO", "refund")
+    scenario = default_scenario()
 
     # 통화 종료류
     if status in ("completed", "canceled", "busy", "no-answer", "failed"):
@@ -488,6 +544,9 @@ def handle_twilio(p):
 
 
 def _parse_event(body):
+    # 대본 이름은 **등록된 이름으로 되돌린 뒤에** 담는다(44차). 그 전에는 CPaaS
+    # 가 보낸 값을 그대로 세션에 넣어 engine 으로 넘겼고, 모르는 이름은 엔진에서
+    # 조용히 기본 CS 프롬프트가 되면서 **환불 툴이 열렸다**.
     if CPAAS == "clawops":
         et = body.get("event")
         typ = {"call.answered": "answered", "call.recording": "speech",
@@ -495,15 +554,17 @@ def _parse_event(body):
         meta = body.get("metadata")
         if not isinstance(meta, dict):   # 문자열·배열이 와도 500 이 되지 않게
             meta = {}
+        scenario, unknown = event_scenario(meta.get("scenario"))
         return {"type": typ, "call_id": body.get("callId") or body.get("call_id"),
                 "from": body.get("from"), "to": body.get("to"),
-                "scenario": meta.get("scenario", "refund"),
+                "scenario": scenario, "scenario_unknown": unknown,
                 "tenant": meta.get("tenant_id") if isinstance(meta.get("tenant_id"), str) else None,
                 "audio_b64": body.get("audio"), "mime": body.get("mime", "audio/wav"),
                 "recording_url": body.get("recordingUrl")}
+    scenario, unknown = event_scenario(body.get("scenario"))
     return {"type": body.get("type", "answered"), "call_id": body.get("call_id", "demo-call"),
             "from": body.get("from", "01000000000"), "to": body.get("to", ""),
-            "scenario": body.get("scenario", "refund"),
+            "scenario": scenario, "scenario_unknown": unknown,
             "tenant": body.get("tenant_id") if isinstance(body.get("tenant_id"), str) else None,
             "audio_b64": body.get("audio_b64"), "mime": body.get("mime", "audio/webm"),
             "recording_url": body.get("recording_url"), "text": body.get("text")}
@@ -541,7 +602,9 @@ def handle_event(ev):
         sess["messages"].append({"role": "user", "content": user_text})
         if run_turn:
             r = run_turn(sess["messages"], phone=sess.get("phone", ""),
-                         scenario=sess.get("scenario", "refund"),
+                         # 세션에는 되돌린 이름만 들어가지만, 읽을 때도 한 번 더
+                         # 확인한다 — 이 값이 어느 프롬프트를 고르는지 정한다.
+                         scenario=_known_scenario(sess.get("scenario")) or default_scenario(),
                          mem_prior=sess.get("mem"), session_ref=_session_ref(cid))
             _store_history(sess, r["messages"])
             _Session.put(cid, sess)
@@ -721,8 +784,8 @@ CAMPAIGN_MAX = 500          # 한 요청의 대상 수 상한(응답 크기·메
 # 번호 자릿수 — `_sip_adapter._clean_number` 와 **같은 규칙**이다(실발신이 열리면
 # 이 계획이 그대로 그 함수로 들어간다). 회귀가 두 규칙의 일치를 강제한다.
 CAMPAIGN_DIGITS = (4, 20)
-# 대본 이름 — voice 는 시나리오 화이트리스트를 갖고 있지 않다(이벤트 경로도
-# 같다). 임의 객체가 metadata 로 새지 않게 **꼴과 길이만** 본다.
+# 대본 이름 길이 상한 — 꼴이 어긋난 값에 짧은 사유를 돌려주기 위한 것이다.
+# 등록된 이름인지는 `_engine.SCENARIOS` 등록부가 판정한다(44차).
 CAMPAIGN_SCENARIO_MAX = 40
 
 
@@ -769,10 +832,19 @@ def trigger_campaign(numbers, scenario="care", meta=None):
         raise ValueError("scenario 는 문자열이어야 합니다")
     if len(scenario) > CAMPAIGN_SCENARIO_MAX:
         raise ValueError("scenario 는 %d자 이하여야 합니다" % CAMPAIGN_SCENARIO_MAX)
+    # 44차: 등록된 대본만 받는다. 계획은 사람이 만드는 요청이므로 거부해도
+    # 통화가 끊기지 않는다 — 모르는 이름을 받아 주면 그 계획이 발신 요청이
+    # 되고(실발신 승인 뒤), 통화는 엉뚱한 프롬프트로 열린다.
+    name = _known_scenario(scenario)
+    if name is None:
+        raise ValueError("scenario 가 등록된 대본이 아닙니다(%s)" % ", ".join(SCENARIOS))
     targets = campaign_targets(numbers)
     meta = dict(meta or {})
+    # 검증한 이름이 **마지막에** 들어간다. `{"scenario": name, **meta}` 였을 때는
+    # `meta` 안의 같은 키가 그 값을 덮어, 검증을 통째로 비켜 간 이름이 계획에
+    # 실렸다(그 계획이 그대로 웹훅 metadata 로 되돌아온다).
     calls = [{"to": n, "from": os.environ.get("CALLBOT_CALLER_ID", "070-0000-0000"),
-              "webhook": "/api/voice", "metadata": {"scenario": scenario, **meta},
+              "webhook": "/api/voice", "metadata": {**meta, "scenario": name},
               "consent_required": True} for n in targets]
     if not live():
         return {"mode": "dry-run(무과금)", "queued": 0, "would_call": len(calls),
@@ -862,6 +934,10 @@ def _serve_get(h, q):
     h._send({
         "ok": True, "endpoint": "voice-webhook", "provider": CPAAS,
         "live": live(), "engine": bool(run_turn), "stt": bool(transcribe),
+        # 이 배포가 실제로 쓰는 기본 대본과 등록된 이름 목록. `env_unknown` 이
+        # true 면 `CALLBOT_DEFAULT_SCENARIO` 값이 등록부에 없어 기본값으로
+        # 되돌려 쓰고 있다는 뜻이다(조용히 바꾸지 않는다).
+        "scenario": _scenario_state(),
         # 실측 집계(만든 수치가 아니라 이 인스턴스가 실제로 처리한 건수).
         # 거부·실패가 0 이 아니면 녹음 주소가 가드에 걸리고 있다는 뜻이다.
         "recording": dict(RECORDING_STATS),
@@ -915,8 +991,13 @@ def _serve_post(h, rq):
         h._send(plan)
         return 200, "campaign"
     ev = _parse_event(body)
-    # 이벤트 종류만 남긴다 — 발화 원문·번호는 담지 않는다(PII).
-    rq.set(ev=_label(ev.get("type"), _EVENTS))
+    # 이벤트 종류와 **되돌린 대본 이름**만 남긴다 — 발화 원문·번호는 담지
+    # 않는다(PII). 이름은 등록부를 거친 값이므로 임의 문자열이 집계에 섞이지
+    # 않는다. 되돌렸다는 사실(`scenario_fallback`)도 남긴다 — 조용히 바꾸면
+    # 보내는 쪽의 오타가 영원히 고쳐지지 않는다.
+    rq.set(ev=_label(ev.get("type"), _EVENTS), scenario=ev.get("scenario"))
+    if ev.get("scenario_unknown"):
+        rq.set(scenario_fallback=True)
     if ev.get("type") == "answered":
         _log_call({"from": ev.get("from", ""), "ev": "통화연결", "text": ""})
     elif ev.get("type") == "speech" and ev.get("text"):

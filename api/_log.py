@@ -86,7 +86,7 @@ FIELDS = {
     "kind": "응답 형식(voice: voiceml)",
     "mode": "점검 깊이(health: shallow|deep)",
     "period": "집계 기간(ops_stats: today|week|month)",
-    "scenario": "대화 시나리오(chat·sim_call · 화이트리스트)",
+    "scenario": "대화 시나리오(chat·sim_call·voice · _engine.SCENARIOS 등록부)",
     "task": "assist 작업 종류(화이트리스트)",
     "risk": "안부 판정 위험도(wellbeing: low|mid|high|unknown)",
     "health": "헬스 등급(healthy|degraded|unhealthy)",
@@ -97,6 +97,7 @@ FIELDS = {
     "dry_run": "저장 없이 검사만 했다",
     "transferred": "상담사 전환으로 끝났다",
     "tenant_set": "테넌트가 지정됐다(식별자 값은 싣지 않는다)",
+    "scenario_fallback": "보내온 대본 이름이 등록부에 없어 기본 대본으로 되돌렸다(voice)",
     # 수량·길이
     "msg_count": "대화 이력 건수",
     "line_count": "정산 명세 줄 수",

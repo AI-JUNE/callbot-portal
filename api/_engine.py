@@ -176,6 +176,64 @@ def _sys(phone):
             "(4)대기 순번·대기시간·소요일수처럼 툴이 알려주지 않은 수치는 말하지 않는다"
             "(모르면 '확인되는 대로 안내드리겠습니다'로 안내).")
 
+# --- 시나리오 등록부 (44차) ------------------------------------------------
+# 대본 이름의 **유일한 출처**다. 전에는 이름을 아는 자리가 세 벌이었다 —
+# `run_turn` 의 if/elif 갈림 · `chat.SCENARIOS`(입력 화이트리스트) ·
+# `sim_call.SCRIPTS`(대본). 그리고 `voice` 는 한 벌도 갖지 못해 CPaaS 이벤트와
+# 캠페인 `metadata` 가 보낸 **임의 문자열**을 그대로 세션에 담아 여기로 넘겼다.
+# 모르는 이름은 아래 갈림에서 조용히 기본 CS 프롬프트로 떨어지고 **그때 툴이
+# 열린다** — 안부·복지 통화에 환불 툴이 열린 채 돌아가는데 아무 자리에도
+# 그 사실이 적히지 않는다. 이름은 `_call_metrics`·에스컬레이션 티켓 라벨로도
+# 흘러가므로 집계가 오타마다 쪼개진다.
+DEFAULT_SCENARIO = "refund"
+# 전용 프롬프트를 쓰는 대본 — **툴을 열지 않는다**(조사·연체·복지·안부는
+# 주문/환불 툴을 쓸 일이 없고, 열어 두면 모델이 부를 수 있다).
+# 이름이 `PROMPT_` 로 시작하면 릴리스 게이트가 이 표를 '봇이 읽는 문장'으로
+# 보므로(`spoken_numbers`·`spoken_rules`) 표 이름은 뒤집어 둔다.
+SCENARIO_PROMPTS = {
+    "integrity": PROMPT_INTEGRITY,
+    "overdue": PROMPT_OVERDUE,
+    "welfare": PROMPT_WELFARE,
+    "trio": PROMPT_TRIO,
+    "wellbeing": PROMPT_WELLBEING,
+    "안부": PROMPT_WELLBEING,          # 별칭 — 같은 프롬프트를 가리킨다
+}
+# 기본 CS 프롬프트(주문/배송/환불 툴 사용) 경로의 대본 이름.
+TOOL_SCENARIOS = ("refund", "order", "redelivery", "handoff", "refund_over", "care")
+# 등록된 이름 전부. 순서는 고정이다(공개 목록·화면 버튼이 이 순서를 읽는다).
+SCENARIOS = (DEFAULT_SCENARIO,) + tuple(SCENARIO_PROMPTS) + \
+            tuple(s for s in TOOL_SCENARIOS if s != DEFAULT_SCENARIO)
+
+
+def scenario_prompt(scenario, phone):
+    """(시스템 프롬프트, 툴 사용 여부). 모르는 이름은 기본 CS 경로다.
+
+    모르는 이름을 여기서 막지 않는다 — 판정은 **경계**(라우트)의 몫이다
+    (`chat` 은 400·`sim_call` 은 400·`voice` 는 등록된 이름으로 되돌린다).
+    엔진이 거부하면 통화 중에 끊기고, 엔진이 조용히 바꾸면 경계가 검증을
+    빼먹었다는 사실이 영원히 드러나지 않는다. 그래서 엔진은 **기존 계약
+    그대로** 두고 경계에 화이트리스트를 둔다.
+    """
+    key = scenario if isinstance(scenario, str) else ""
+    sysp = SCENARIO_PROMPTS.get(key)
+    if sysp is None:
+        return _sys(phone), True
+    return sysp, False
+
+
+def normalize_scenario(value, default=None):
+    """외부가 보낸 대본 이름 → **등록된 이름** 또는 `default`.
+
+    앞뒤 공백만 버리고 정확히 대조한다(대소문자를 접지 않는다 — 「Refund」를
+    받아 주면 등록부에 없는 이름이 로그·집계에 섞인다).
+    """
+    if isinstance(value, str):
+        v = value.strip()
+        if v in SCENARIOS:
+            return v
+    return default
+
+
 _MEM_KEYS=("order_id","max_refund","quoted_amount","awaiting","affirm","transferred")
 
 def _mem_blank():
@@ -518,12 +576,9 @@ def run_turn(messages,phone="01012345678",scenario="refund",max_hops=5,
              mem_prior=None,session_ref=None):
     model=os.environ.get("CALLBOT_GEMINI_MODEL","gemini-2.5-flash")
     mem=_mem(messages,prior=mem_prior); log=[]; audit=[]; usage={"input":0,"output":0}; msgs=list(messages)
-    if scenario=="integrity": sysp=PROMPT_INTEGRITY; use_tools=False
-    elif scenario=="overdue": sysp=PROMPT_OVERDUE; use_tools=False
-    elif scenario=="welfare": sysp=PROMPT_WELFARE; use_tools=False
-    elif scenario=="trio": sysp=PROMPT_TRIO; use_tools=False
-    elif scenario in ("wellbeing","안부"): sysp=PROMPT_WELLBEING; use_tools=False
-    else: sysp=_sys(phone); use_tools=True
+    # 갈림은 `SCENARIO_PROMPTS` 등록부 한 곳이 갖는다(44차) — if/elif 였을 때는
+    # 대본 이름을 아는 자리가 코드에 세 벌이었고 `voice` 는 한 벌도 없었다.
+    sysp,use_tools=scenario_prompt(scenario,phone)
     noted=False
     for _ in range(max_hops):
         win,dropped=_window(msgs)
