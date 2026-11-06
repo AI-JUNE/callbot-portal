@@ -351,5 +351,29 @@ class TestGate(Base):
         self.assertIn("utterance_decoys", names)
 
 
+class EumDecoyRound45(unittest.TestCase):
+    """45차 — `_eum_request` 긴급 낱말이 평범한 낱말·숫자열 안에서 걸렸다."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api"))
+        import _eum_request
+        cls.er = _eum_request
+
+    def test_평범한_말은_긴급이_아니다(self):
+        for t in ("의식주 지원 물품을 받았어요", "사고력 놀이 활동을 했어요",
+                  "사고방식이 바뀌신 것 같아요", "주소가 1190번지예요",
+                  "잠깐 숨을 돌리고 계세요"):
+            with self.subTest(t=t):
+                self.assertNotEqual(self.er.classify(t)[0], "emergency")
+
+    def test_진짜_신호는_그대로_긴급이다(self):
+        for t in ("119 불렀어요", "119에 전화했어요", "의식이 없으세요",
+                  "교통사고가 났어요", "숨을 못 쉬세요",
+                  "의식주 지원 중 어르신이 쓰러지셨어요"):
+            with self.subTest(t=t):
+                self.assertEqual(self.er.classify(t)[0], "emergency")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
