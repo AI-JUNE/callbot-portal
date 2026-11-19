@@ -1,12 +1,12 @@
-<!DOCTYPE html>
+  if(!el.hasAttribute('data-count')) return;<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>CallBot — 24시간 멈추지 않는 AI 콜센터</title>
-<meta name="description" content="상담의 절반을 AI가 먼저 받습니다. STT·LLM·TTS, 상담지원 AI, 실시간 운영 콘솔, 무코드 실전화 연계까지 — 하나의 AICC·CaaS 플랫폼으로 상담을 자동화하세요."/>
-<meta property="og:title" content="CallBot — 24시간 멈추지 않는 AI 콜센터"/>
-<meta property="og:description" content="상담의 절반을 AI가 먼저 받는 AICC·CaaS 플랫폼. 음성·텍스트 자동 응대, 상담지원 AI, 실시간 운영 콘솔, 무코드 실전화 연계."/>
+<title>CallBot | 야간과 주말 문의를 먼저 받는 콜봇</title>
+<meta name="description" content="반복 문의는 콜봇이 먼저 받고, 판단이 필요한 건은 통화 요약과 함께 상담원에게 넘깁니다. 상담 어시스트, 운영 콘솔, 실전화 연계를 한 플랫폼에서 운영합니다."/>
+<meta property="og:title" content="CallBot | 야간과 주말 문의를 먼저 받는 콜봇"/>
+<meta property="og:description" content="반복 문의는 콜봇이 먼저 받고, 판단이 필요한 건은 상담원에게 넘기는 AICC 플랫폼입니다. 상담 어시스트와 운영 콘솔을 함께 제공합니다."/>
 <meta property="og:type" content="website"/>
 <link rel="apple-touch-icon" href="/icon-192.png"/>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
@@ -201,17 +201,17 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
 <!-- HERO -->
 <section class="hero">
   <div class="wrap">
-    <span class="badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg> AICC · CaaS 올인원 플랫폼</span>
-    <h1>24시간,<br/><span class="grad-txt">멈추지 않는</span> AI 콜센터</h1>
-    <p class="lead">밀려드는 전화도, 깊은 밤에도 놓치지 않습니다. 반복 문의는 콜봇이 끝까지 처리하고, 상담사는 진짜 중요한 대화에 집중합니다. STT·LLM·TTS부터 실전화 연계까지, 하나의 AICC·CaaS 플랫폼에서.</p>
+    <span class="badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg> AICC 콜봇 플랫폼</span>
+    <h1>야간과 주말 문의까지,<br/><span class="grad-txt">먼저 받아 접수하는</span> 콜봇</h1>
+    <p class="lead">반복 문의는 콜봇이 먼저 받아 처리하고, 판단이 필요한 건은 통화 요약과 함께 상담원에게 넘깁니다. 음성 인식, 대화 엔진, 음성 합성부터 실전화 연계까지 한 플랫폼에서 운영합니다.</p>
     <div class="cta">
-      <a class="btn btn-primary" href="/console">관리자 콘솔 열기 →</a>
+      <a class="btn btn-primary" href="/console">관리자 콘솔 열기</a>
       <a class="btn btn-ghost" href="#product">기능 살펴보기</a>
     </div>
     <div class="chips">
-      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> STT·LLM·TTS 올인원</span>
-      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> 코드 없이 실전화 연동</span>
-      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> 24/7 무중단 응대</span>
+      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> 음성 인식, 대화, 음성 합성 통합</span>
+      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> 웹훅 설정으로 실전화 연동</span>
+      <span class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg> 야간과 주말 응대</span>
     </div>
   </div>
 </section>
@@ -220,7 +220,7 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
 <div class="trust wrap">
   <div class="lbl">하나의 콘솔에서 함께 운영합니다</div>
   <div class="row">
-    <span>음성 상담</span><span>텍스트·챗</span><span>보이는 ARS</span><span>아웃바운드</span><span>멀티모달</span><span>CPaaS 실전화</span>
+    <span>음성 상담</span><span>텍스트 챗</span><span>보이는 ARS</span><span>아웃바운드</span><span>멀티모달</span><span>CPaaS 실전화</span>
   </div>
 </div>
 
@@ -228,25 +228,25 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
 <section class="blk" id="why">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">WHY CALLBOT</div>
-      <h2>인력은 한정적입니다.<br/>전화는 그렇지 않죠</h2>
-      <p>사람을 더 뽑는 대신, 반복 응대를 AI에게 넘기세요. 단순 문의는 콜봇이 즉시 끝내고, 복잡한 건만 상담사에게 정확히 이어집니다. 사람은 더 중요한 대화에 집중합니다.</p>
+      <div class="eyebrow">도입 이유</div>
+      <h2>반복 문의는 봇이,<br/>판단이 필요한 건은 상담원이</h2>
+      <p>배송 조회, 예약 확인, 운영 시간 안내처럼 답이 정해진 문의는 콜봇이 처리합니다. 복잡한 건만 상담 내용과 함께 상담원에게 이어집니다.</p>
     </div>
     <div class="grid g3">
       <div class="card">
         <div class="ico warm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
-        <h3>대기시간을 0으로</h3>
-        <p>피크 타임에도 콜봇이 동시에 수백 콜을 받습니다. 고객은 기다리지 않고, 상담 포기율이 곧바로 내려갑니다.</p>
+        <h3>몰리는 시간대 동시 응대</h3>
+        <p>상담원 연결 대기가 길어지는 시간대에도 콜봇이 먼저 받아 용건을 확인합니다. 동시 처리 규모는 도입 환경에서 확인합니다.</p>
       </div>
       <div class="card">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></div>
-        <h3>야간·주말에도 멈춤 없이</h3>
-        <p>상담센터가 닫힌 시간에도 조회·예약·안내를 처리하고, 필요하면 담당자 콜백까지 예약해 둡니다.</p>
+        <h3>야간과 주말 접수</h3>
+        <p>상담센터가 닫힌 시간에도 조회, 예약, 안내를 처리하고, 필요한 건은 담당자 콜백을 접수해 둡니다.</p>
       </div>
       <div class="card">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 11a4 4 0 10-8 0M4 20a8 8 0 0116 0"/></svg></div>
-        <h3>상담사는 고부가 대화에</h3>
-        <p>반복 응대를 걷어내면, 상담사는 이탈 방어·클레임 같은 진짜 중요한 대화에만 집중할 수 있습니다.</p>
+        <h3>상담원은 판단이 필요한 상담에</h3>
+        <p>반복 응대를 줄이면 상담원은 불만 접수나 해지 문의처럼 사람이 판단해야 하는 상담에 시간을 씁니다.</p>
       </div>
     </div>
   </div>
@@ -256,17 +256,17 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
 <section class="blk" id="features" style="background:linear-gradient(180deg,#fff,#faf9f7);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">CORE CAPABILITIES</div>
-      <h2>듣고 · 판단하고 · 응답하고,<br/>한 플랫폼에서 끝냅니다</h2>
-      <p>대화를 알아듣고, 판단하고, 응답하고, 기록하고, 분석합니다. 흩어진 솔루션 대신 하나로 이어진 AICC 스택.</p>
+      <div class="eyebrow">핵심 기능</div>
+      <h2>인식, 응답, 기록, 분석을<br/>한 플랫폼에서 운영합니다</h2>
+      <p>통화 내용을 인식해 응답하고, 이력을 남기고, 품질 지표로 분석합니다. 솔루션을 따로 연결할 필요가 없습니다.</p>
     </div>
     <div class="grid g3">
-      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 013 3v6a3 3 0 01-6 0V6a3 3 0 013-3z"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div><h3>AI 대화 엔진</h3><p>STT로 알아듣고, 의도 분류와 LLM으로 판단하고, 자연스러운 TTS로 답합니다. 시나리오 빌더와 A/B 테스트로 대화 품질을 데이터로 끌어올립니다.</p></div>
-      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><h3>상담지원 AI (Assist)</h3><p>실시간 요약·다음 발화 추천·지식 검색을 상담사 화면에 바로 띄웁니다. TA·QA 자동채점과 코칭까지 한 흐름으로.</p></div>
-      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 4-6"/></svg></div><h3>실시간 운영 콘솔</h3><p>세션·통계·전광판·알림을 한 화면에. 채널 점유율과 응답 현황, 통화 이력을 실시간으로 봅니다.</p></div>
-      <div class="card"><div class="ico warm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5a2 2 0 012-2h3l2 5-2 1a12 12 0 006 6l1-2 5 2v3a2 2 0 01-2 2A16 16 0 013 5z"/></svg></div><h3>CPaaS 실전화 연계</h3><p>Twilio·ClawOps 등 통신망에 코드 없이 연결. 웹훅 하나로 실인바운드를 받고, 필요하면 상담사에게 즉시 넘깁니다.</p></div>
-      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/></svg></div><h3>지식·검색 (sLLM·RAG)</h3><p>KMS 문서를 근거로 답하는 RAG, 요약·생성에 특화된 sLLM. 근거 없는 답이 아니라, 문서에 기반한 정확한 응대.</p></div>
-      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m13.5-6.5l-2 2m-7 7l-2 2m0-11l2 2m7 7l2 2"/></svg></div><h3>운영·품질 관리</h3><p>RBAC 권한, 공통·사유코드, 감사 로그, 전 화면 내보내기. 품질과 컴플라이언스를 함께 관리합니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 013 3v6a3 3 0 01-6 0V6a3 3 0 013-3z"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div><h3>AI 대화 엔진</h3><p>음성 인식으로 발화를 텍스트로 바꾸고, 의도를 분류해 응답한 뒤 음성 합성으로 안내합니다. 시나리오 빌더와 A/B 테스트로 대화 흐름을 조정합니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><h3>상담 어시스트</h3><p>통화 중 실시간 요약, 응대 문구 추천, 지식 검색 결과를 상담원 화면에 띄웁니다. 통화 후에는 QA 채점 결과를 코칭에 활용합니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 4-6"/></svg></div><h3>실시간 운영 콘솔</h3><p>진행 중인 세션, 통계, 알림을 한 화면에서 봅니다. 채널별 현황과 통화 이력도 같은 콘솔에서 조회합니다.</p></div>
+      <div class="card"><div class="ico warm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5a2 2 0 012-2h3l2 5-2 1a12 12 0 006 6l1-2 5 2v3a2 2 0 01-2 2A16 16 0 013 5z"/></svg></div><h3>CPaaS 실전화 연계</h3><p>통신 사업자 회선을 웹훅 설정으로 연결해 수신 통화를 받고, 필요하면 상담원에게 전환합니다. 실회선은 계약과 승인 후 개통합니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/></svg></div><h3>지식 검색</h3><p>고객사 지식 문서를 근거로 답변하고 출처를 함께 확인할 수 있습니다. 문서 연동 후 사용할 수 있습니다.</p></div>
+      <div class="card"><div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m13.5-6.5l-2 2m-7 7l-2 2m0-11l2 2m7 7l2 2"/></svg></div><h3>운영·품질 관리</h3><p>역할별 권한, 사유 코드, 감사 로그, 화면별 데이터 내보내기를 제공합니다. 품질과 규정 준수 현황을 함께 확인합니다.</p></div>
     </div>
   </div>
 </section>
@@ -276,13 +276,13 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
   <div class="wrap">
     <div class="split">
       <div class="txtcol">
-        <div class="eyebrow">VOICE AI</div>
-        <h2>걸려온 전화를,<br/>사람처럼 받아냅니다</h2>
-        <p>고객이 말로 물으면 콜봇이 알아듣고 처리합니다. 예약·조회·안내는 끝까지 자동으로, 복잡한 요청만 맥락과 함께 상담사에게 넘깁니다.</p>
+        <div class="eyebrow">음성 응대</div>
+        <h2>걸려온 전화를<br/>용건별로 나눠 처리합니다</h2>
+        <p>고객이 말로 문의하면 콜봇이 용건을 확인해 처리합니다. 예약, 조회, 안내는 통화 안에서 마치고, 복잡한 요청은 통화 내용과 함께 상담원에게 넘깁니다.</p>
         <ul>
-          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 실시간 STT 전사와 의도·감정 인식</li>
-          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 상황에 맞는 시나리오 자동 분기</li>
-          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 상담사 전환 시 대화 요약 자동 전달</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 실시간 음성 인식과 의도 분류</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 용건에 따른 시나리오 분기</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 상담원 전환 시 대화 요약 전달</li>
         </ul>
       </div>
       <div>
@@ -301,7 +301,7 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
               <div class="bubble usr">8342요.</div>
               <div class="bubble bot">내일 오후 도착 예정이에요. 문자로도 보내드릴까요?</div>
               <div class="mic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3a3 3 0 013 3v6a3 3 0 01-6 0V6a3 3 0 013-3z"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div>
-              <div class="listening"><span class="dot"></span>듣고 있어요…</div>
+              <div class="listening"><span class="dot"></span>음성 인식 중</div>
             </div>
           </div>
         </div>
@@ -315,24 +315,24 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
   <div class="wrap">
     <div class="split rev">
       <div class="txtcol">
-        <div class="eyebrow">OPERATIONS CONSOLE</div>
-        <h2>흩어진 상담을<br/>한 화면으로 모읍니다</h2>
-        <p>실시간 세션, 응답 지표, 채널 점유율, 통화 이력을 한 곳에서. 관리자는 상황을 전광판처럼 보고, 이상은 알림으로 먼저 압니다.</p>
+        <div class="eyebrow">운영 콘솔</div>
+        <h2>채널별 상담 현황을<br/>한 화면에서 확인합니다</h2>
+        <p>진행 중인 세션, 응답 지표, 채널별 현황, 통화 이력을 한곳에서 봅니다. 이상 징후는 알림으로 받습니다.</p>
         <ul>
-          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 인·아웃바운드 통합 대시보드</li>
-          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> STT·SOE·TTS 응답 현황</li>
-          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 자동 QA 채점과 코칭 캘린더</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 수신과 발신 통합 대시보드</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> 음성 인식과 합성 응답 현황</li>
+          <li><span class="ck"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span> QA 채점과 코칭 일정</li>
         </ul>
       </div>
       <div>
         <div class="console">
-          <div class="bar"><span class="d" style="background:#ff5f57"></span><span class="d" style="background:#febc2e"></span><span class="d" style="background:#28c840"></span><span class="t">CallBot · 에이전트 홈</span></div>
+          <div class="bar"><span class="d" style="background:#ff5f57"></span><span class="d" style="background:#febc2e"></span><span class="d" style="background:#28c840"></span><span class="t">CallBot 운영 화면 (샘플 표시)</span></div>
           <div class="body">
             <div class="kpi-row">
-              <div class="kpi"><div class="l">자동 처리율</div><div class="v">78%<small>▲6</small></div></div>
-              <div class="kpi"><div class="l">활성 세션</div><div class="v">142</div></div>
-              <div class="kpi"><div class="l">평균 응답</div><div class="v">0.9<small>초</small></div></div>
-              <div class="kpi"><div class="l">CSAT</div><div class="v">4.6</div></div>
+              <div class="kpi"><div class="l">자동 처리</div><div class="v">샘플</div></div>
+              <div class="kpi"><div class="l">진행 중 통화</div><div class="v">샘플</div></div>
+              <div class="kpi"><div class="l">응답 시간</div><div class="v">샘플</div></div>
+              <div class="kpi"><div class="l">상담 만족도</div><div class="v">샘플</div></div>
             </div>
             <div class="chartbox">
               <div class="ct"><span>시간대별 인입 콜</span><span style="color:var(--accent)">오늘</span></div>
@@ -351,25 +351,25 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
 <section class="blk">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">WHY IT'S HARD TO COPY</div>
-      <h2>따라 하기 어려운 세 가지</h2>
-      <p>데모가 아니라, 이미 현장에서 돌아가는 대화·연계·운영 기술이 콜봇의 진입장벽입니다.</p>
+      <div class="eyebrow">핵심 설계</div>
+      <h2>도입 전에 확인하실 세 가지</h2>
+      <p>대화 설계, 통신 연계, 근거 기반 답변을 한 제품 안에서 운영합니다.</p>
     </div>
     <div class="grid g3">
       <div class="diff">
-        <span class="tag">15년 AX·AICC 경험</span>
-        <h3>현장에서 검증된 대화 설계</h3>
-        <p>수많은 상담 시나리오에서 다듬어진 의도 분류·분기·예외 처리. 시나리오 빌더와 A/B 테스트로 대화 품질을 데이터로 개선합니다.</p>
+        <span class="tag">시나리오 설계</span>
+        <h3>업무별 대화 흐름 설계</h3>
+        <p>의도 분류, 분기, 예외 처리를 시나리오 빌더에서 직접 설정합니다. A/B 테스트로 문구별 결과를 비교할 수 있습니다.</p>
       </div>
       <div class="diff">
-        <span class="tag">무코드 통신 연계</span>
-        <h3>웹훅 하나로 실전화 연결</h3>
-        <p>Twilio·ClawOps 등 통신망을 코드 없이 연결하고, 웹에서 바로 무료 시뮬레이션으로 검증. 상담사 전환은 Dial/SIP로 즉시.</p>
+        <span class="tag">통신 연계</span>
+<h3>웹훅으로 실전화 연결</h3>
+        <p>통신 사업자 연동은 웹훅 설정으로 처리하고, 개통 전에는 웹 시뮬레이션으로 시나리오를 검증합니다. 상담원 전환은 Dial 또는 SIP로 연결합니다.</p>
       </div>
       <div class="diff">
         <span class="tag">근거 기반 응답</span>
-        <h3>sLLM·RAG로 헛소리를 막습니다</h3>
-        <p>KMS 문서를 근거로만 답하는 RAG 구조. 요약·생성 특화 sLLM과 LLMOps로 품질·비용·안전을 함께 관리합니다.</p>
+        <h3>문서에 근거한 답변</h3>
+        <p>지식 문서를 근거로 답하는 RAG 구조입니다. 근거를 찾지 못한 질문은 임의로 답하지 않고 상담원에게 넘깁니다.</p>
       </div>
     </div>
   </div>
@@ -380,12 +380,12 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
   <div class="wrap">
     <div class="stats">
       <div class="grid">
-        <div class="stat"><div class="v" data-count="78" data-suffix="%">0%</div><div class="l">반복 문의 자동 처리</div></div>
-        <div class="stat"><div class="v" data-count="24" data-suffix="/7">0</div><div class="l">무중단 응대</div></div>
-        <div class="stat"><div class="v" data-count="0" data-suffix="초" data-dec="0.9">0초</div><div class="l">평균 첫 응답</div></div>
-        <div class="stat"><div class="v" data-count="1" data-suffix="개 콘솔">0</div><div class="l">모든 채널을 하나로</div></div>
+        <div class="stat"><div class="v">접수</div><div class="l">반복 문의는 봇이 먼저 받습니다</div></div>
+        <div class="stat"><div class="v">이관</div><div class="l">판단이 필요한 건은 요약과 함께 상담원에게</div></div>
+        <div class="stat"><div class="v">기록</div><div class="l">통화마다 이력과 결과를 남깁니다</div></div>
+        <div class="stat"><div class="v">1개 콘솔</div><div class="l">채널별 이력을 한곳에서 확인합니다</div></div>
       </div>
-      <p style="color:#b3a695;font-size:12px;margin-top:26px;font-weight:600">※ 수치는 제품 설정·시나리오 예시 기준의 참고값입니다.</p>
+      <p style="color:#b3a695;font-size:12px;margin-top:26px;font-weight:600">처리율과 응답 시간은 도입 환경의 실제 인입 데이터로 측정한 뒤 안내합니다.</p>
     </div>
   </div>
 </section>
@@ -394,25 +394,25 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
 <section class="blk" style="background:linear-gradient(180deg,#fff,#faf9f7);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">VOICES</div>
-      <h2>현장의 목소리</h2>
-      <p>상담을 운영하는 사람들이 콜봇을 도입하고 달라진 것.</p>
+      <div class="eyebrow">활용 장면</div>
+      <h2>업무 장면별 활용 방식</h2>
+      <p>제품 기능 기준으로 정리한 대표 적용 시나리오입니다. 실제 이용 후기나 특정 고객사의 실적이 아닙니다.</p>
     </div>
     <div class="grid g3">
       <div class="quote">
-        <div class="stars">★★★★★</div>
-        <p>“밤사이 들어온 문의를 아침에 몰아서 처리하던 게 사라졌어요. 콜봇이 밤새 응대하고, 우린 예외 건만 봅니다.”</p>
-        <div class="who"><span class="av">센</span><div><b>상담센터장</b><span>이커머스 CS</span></div></div>
+        <div class="stars">예시 시나리오</div>
+        <p>야간과 주말 인입을 봇이 1차 응대하고, 예외 건만 상담원에게 넘기도록 시나리오를 구성할 수 있습니다.</p>
+        <div class="who"><span class="av">야</span><div><b>야간 1차 응대</b><span>상담센터 운영</span></div></div>
       </div>
       <div class="quote">
-        <div class="stars">★★★★★</div>
-        <p>“통신망 연결이 반나절이면 끝났어요. 웹에서 무료로 시나리오를 돌려보고 확신이 선 뒤에 실전화를 붙였습니다.”</p>
-        <div class="who"><span class="av">CX</span><div><b>CX 리드</b><span>구독 서비스</span></div></div>
+        <div class="stars">예시 시나리오</div>
+        <p>웹에서 시나리오를 먼저 검증한 뒤 CPaaS 실전화를 연결하는 단계적 도입 방식을 지원합니다.</p>
+        <div class="who"><span class="av">단</span><div><b>단계적 도입</b><span>시나리오 선검증</span></div></div>
       </div>
       <div class="quote">
-        <div class="stars">★★★★★</div>
-        <p>“상담사 화면에 요약과 다음 멘트가 떠서 신입도 금방 적응해요. QA 채점이 자동이라 코칭이 훨씬 쉬워졌습니다.”</p>
-        <div class="who"><span class="av">QA</span><div><b>품질 매니저</b><span>금융 콜센터</span></div></div>
+        <div class="stars">예시 시나리오</div>
+        <p>상담원 화면에 실시간 요약과 추천 문구를 띄우고, QA 채점 결과를 코칭 근거로 남깁니다.</p>
+        <div class="who"><span class="av">품</span><div><b>상담 품질 관리</b><span>상담 어시스트, QA 채점</span></div></div>
       </div>
     </div>
   </div>
@@ -426,12 +426,12 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
       <h2>자주 묻는 질문</h2>
     </div>
     <div class="faq">
-      <details class="qi" open><summary>도입하려면 개발이 필요한가요?<span class="pl">+</span></summary><p>아니요. 시나리오 빌더로 대화 흐름을 설계하고, 통신망은 웹훅으로 무코드 연결합니다. 웹에서 무료 시뮬레이션으로 먼저 검증한 뒤 실전화를 붙일 수 있습니다.</p></details>
-      <details class="qi"><summary>기존 상담망·통신사를 그대로 쓸 수 있나요?<span class="pl">+</span></summary><p>Twilio·ClawOps 등 CPaaS와 연계되며, 상담사 전환은 Dial/SIP로 처리합니다. 실통화 과금은 실제 연결 시에만 발생하고, 기본은 무과금 드라이런으로 안전하게 테스트합니다.</p></details>
+      <details class="qi" open><summary>도입하려면 개발이 필요한가요?<span class="pl">+</span></summary><p>시나리오 빌더로 대화 흐름을 설정하고, 통신망은 웹훅 설정으로 연결합니다. 웹 시뮬레이션으로 먼저 검증한 뒤 실전화를 개통합니다. 업무 시스템 연동은 범위를 협의해 진행합니다.</p></details>
+      <details class="qi"><summary>기존 상담망·통신사를 그대로 쓸 수 있나요?<span class="pl">+</span></summary><p>CPaaS와 연계하며 상담원 전환은 Dial 또는 SIP로 처리합니다. 실회선 과금은 개통 후 실제 연결 시에만 발생하고, 그 전에는 과금 없는 시뮬레이션으로 시험합니다.</p></details>
       <details class="qi"><summary>콜봇이 모르는 질문은 어떻게 하나요?<span class="pl">+</span></summary><p>KMS 지식을 근거로 답하는 RAG 구조이며, 확신이 낮거나 복잡한 요청은 대화 요약과 함께 상담사에게 즉시 전환합니다. 고객이 다시 설명할 필요가 없습니다.</p></details>
       <details class="qi"><summary>음성과 텍스트를 같이 운영할 수 있나요?<span class="pl">+</span></summary><p>네. 음성 상담, 텍스트·챗, 보이는 ARS, 아웃바운드, 멀티모달을 하나의 콘솔에서 함께 운영합니다. 통계와 이력도 통합해서 봅니다.</p></details>
       <details class="qi"><summary>품질과 규정 관리는 어떻게 되나요?<span class="pl">+</span></summary><p>RBAC 권한, 감사 로그, 자동 QA 채점, TA 분석, 코칭 캘린더를 제공하고, 전 화면 데이터를 내보낼 수 있습니다. 품질과 컴플라이언스를 함께 관리합니다.</p></details>
-      <details class="qi"><summary>지금 바로 체험해 볼 수 있나요?<span class="pl">+</span></summary><p>네. 상단의 ‘관리자 콘솔 열기’로 실제 운영 화면을 둘러보고, CPaaS 연계 테스트에서 웹에서 바로 무료 시뮬레이션을 실행할 수 있습니다.</p></details>
+      <details class="qi"><summary>지금 바로 체험해 볼 수 있나요?<span class="pl">+</span></summary><p>상단의 「관리자 콘솔 열기」에서 운영 화면을 둘러볼 수 있습니다. CPaaS 연계 테스트에서는 웹 시뮬레이션을 과금 없이 실행할 수 있습니다.</p></details>
     </div>
   </div>
 </section>
@@ -440,9 +440,9 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
 <section class="blk">
   <div class="wrap">
     <div class="final">
-      <h2>다음 전화는, 콜봇이 받게 하세요</h2>
-      <p>관리자 콘솔에서 실제 화면을 보고, 웹에서 바로 무료로 콜봇을 돌려보세요.</p>
-      <a class="btn btn-white" href="/console">관리자 콘솔 열기 →</a>
+      <h2>관리자 콘솔에서 운영 화면을 확인하실 수 있습니다</h2>
+      <p>시나리오와 통화 이력을 열어 보고, 웹 시뮬레이션으로 응대 흐름을 시험할 수 있습니다. 과금은 발생하지 않습니다.</p>
+      <a class="btn btn-white" href="/console">관리자 콘솔 열기</a>
     </div>
   </div>
 </section>
@@ -453,7 +453,7 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
     <div class="ft">
       <div>
         <a class="logo" href="/"><span class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A2.5 2.5 0 016.5 3h2.2c.9 0 1.7.6 1.9 1.5l.6 2.3c.2.8-.1 1.6-.7 2.1l-1.2 1a13 13 0 005.3 5.3l1-1.2c.5-.6 1.3-.9 2.1-.7l2.3.6c.9.2 1.5 1 1.5 1.9v2.2A2.5 2.5 0 0118.5 21C10.5 21 4 14.5 4 6.5v-1z" fill="#fff"/></svg></span> CallBot</a>
-        <p>음성·텍스트 상담을 AI로 자동화하는 AICC·CaaS 플랫폼. 사람이 놓치는 순간을 기술이 먼저 잡습니다.</p>
+        <p>음성과 텍스트 상담을 운영하는 AICC 플랫폼. 주식회사 고원이 운영합니다.</p>
       </div>
       <div>
         <h4>제품</h4>
@@ -474,8 +474,8 @@ footer{padding:52px 0 40px;border-top:1px solid var(--line);margin-top:60px}
       </div>
     </div>
     <div class="copy">
-      <span>© 2026 CallBot · 운영 주식회사 고원(GOWON)</span>
-      <span class="demo-note">AICC · CaaS 플랫폼 · 데모 모드</span>
+      <span>© 2026 CallBot. 운영 주식회사 고원(GOWON)</span>
+      <span class="demo-note">체험 화면입니다</span>
     </div>
   </div>
 </footer>
