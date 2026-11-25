@@ -6,6 +6,12 @@
 - 후: 업무 장면 중심 문장, 측정하지 않은 수치와 후기 삭제, 목업 KPI는 「샘플」 표기, 「데모」는 「체험」으로 변경.
 - 메모: `public/console.html` 파일 끝에 NUL 바이트가 있다(HEAD에도 있던 것, 이번 변경과 무관). 별도 정리 필요.
 
+## 2026-11-25 용어 표준 적용 (문구 용어표준 4절)
+- 바꾼 화면: `public/index.html`, `public/lp.html`, `public/console.html`. 색, 레이아웃, 기능 id는 그대로.
+- 전: 상담원, 상담원 연결, QA 채점, 「조회해 드릴게요」. 후: 상담사, 상담사 전환, QA 평가, 「바로 조회합니다」.
+- 미진행: DS 1~2단계(토큰, 골격). 토큰 원본 `gowon-ds.css`와 `시안.html`이 이 실행의 작업 폴더 밖이라 읽지 못했다. 다음 실행에서 접근 가능할 때 진행.
+- 미진행: `admin.html`, `react.html`, `privacy.html`, `terms.html` 문구 대조(다음 묶음).
+
 ## 2026-11-24 감리 지적 (디자인 시스템 감리, 직접 고치지 않음)
 - 감리 지적: 이 정적 포털 `public/` 은 DS v1.0 토큰(`--gw-*`, #0C66E4) 도입 0건. `admin.html`, `console-theme.css`, `console-pages.css` 가 옛 기준이다. 플랫폼의 콜봇 앱(DS 2단계 2차)과 구분해서 기록할 것.
 - 감리 지적: §2 금지 후보 검출은 `admin.html` 97, `index.html` 25, `lp.html` 27, `react.html` 16, `console-theme.css` 12, `console-pages.css` 7, `privacy.html`, `terms.html` 각 2.
