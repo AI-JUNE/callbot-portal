@@ -298,7 +298,7 @@ class TestHonestReporting(unittest.TestCase):
         """화면이 숫자만 보여주면 심사·운영자가 영속 큐로 읽는다."""
         html = open(os.path.join(ROOT, "public", "admin.html"),
                     encoding="utf-8").read()
-        i = html.find("상담원 연결 큐 · 녹취/감사 현황")
+        i = html.find("상담사 연결 큐, 녹취/감사 현황")
         self.assertGreater(i, 0)
         card = html[i:i + 1200]
         self.assertIn("재시작", card)

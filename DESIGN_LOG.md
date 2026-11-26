@@ -21,3 +21,9 @@
 - 감리 지적: 이 정적 포털 `public/` 은 DS v1.0 토큰(`--gw-*`, #0C66E4) 도입 0건. `admin.html`, `console-theme.css`, `console-pages.css` 가 옛 기준이다. 플랫폼의 콜봇 앱(DS 2단계 2차)과 구분해서 기록할 것.
 - 감리 지적: §2 금지 후보 검출은 `admin.html` 97, `index.html` 25, `lp.html` 27, `react.html` 16, `console-theme.css` 12, `console-pages.css` 7, `privacy.html`, `terms.html` 각 2.
 - 감리 지적: `public/console.html` 파일 끝 NUL 바이트 아직 정리 전. → 2026-11-24 정리함(367,867B → 35,404B, 본문 변경 없음).
+
+## 2026-11-26 문구 정리 3차 (admin.html)
+- 바꾼 화면: public/admin.html. 색, 레이아웃, 기능 id는 그대로.
+- 전: 상담원, 내려받기, 데모 데이터, 이모지, 가운뎃점 구분. 후: 상담사, 다운로드, 샘플 데이터, 이모지 제거, 쉼표 구분.
+- 정산 CSV 비고는 서버 표식(데모 데이터)과 일치시키려고 그대로 둠. 테스트 기대값 2건(test_escalation_store, test_settlement_lines)은 새 문구로 수정.
+- 미진행: DS 1~2단계(토큰 원본 폴더가 작업 범위 밖), console-theme.css와 console-pages.css 의 금지 후보, admin.html 의 줄표와 화살표.

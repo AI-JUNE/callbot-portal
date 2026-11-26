@@ -297,7 +297,7 @@ class Console(unittest.TestCase):
         self.assertIn('role="alert"', self.sec)
 
     def test_demo_badge_and_states(self):
-        self.assertIn("데모 데이터", self.js, "데모 배지")
+        self.assertIn("샘플 데이터", self.js, "샘플 배지")
         self.assertIn("d.demo", self.js)
         self.assertIn('role="status"', self.js, "로딩 표시")
         self.assertIn("아직 집계된 과금 라인이 없습니다", self.js, "빈 상태 + 다음 행동")
