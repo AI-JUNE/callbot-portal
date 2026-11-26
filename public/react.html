@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
-<title>CallBot · React</title>
+<title>CallBot React</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -76,7 +76,7 @@ const NAV=[
  {sec:'상담',items:[['voice','🎙️','음성 상담'],['chat','💬','텍스트 상담']]},
  {sec:'운영',items:[['home','📊','대시보드'],['stat','📈','콜봇 이용통계'],['scn','🧩','시나리오'],['qa','🎯','품질성능평가']]},
 ];
-const TITLES={voice:['음성 상담','실시간 음성 상담'],chat:['텍스트 상담','채팅 데모'],home:['대시보드','운영 현황'],stat:['콜봇 이용통계','인바운드 현황'],scn:['시나리오','대화 흐름·대본'],qa:['품질성능평가','시나리오·지표']};
+const TITLES={voice:['음성 상담','실시간 음성 상담'],chat:['텍스트 상담','채팅 샘플'],home:['운영 현황','인입 현황'],stat:['콜봇 이용통계','인바운드 현황'],scn:['시나리오','대화 흐름, 대본'],qa:['품질성능평가','시나리오, 지표']};
 const DEMO={refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담원입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담원입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
 const SCN={
  refund:{flow:[['콜처리','인입·본인확인'],['LLM','의도분석'],['조회','주문 API'],['조건부','사유 분기'],['LLM+RAG','정책·견적'],['DTMF','동의 게이트'],['종료','접수·SMS']],
@@ -112,7 +112,7 @@ function Voice({scn,setScn}){
    <div style={{fontWeight:800,fontSize:17}}>{status}</div>
    <div style={{marginTop:16}}>{!active?<button className="primary" style={{padding:'12px 24px',borderRadius:30}} onClick={start}>📞 통화 시작</button>:<button style={{padding:'12px 24px',borderRadius:30,border:'1px solid var(--red)',color:'var(--red)',background:'#fff'}} onClick={end}>⏹ 통화 종료</button>}</div>
    <div className="tr">{msgs.map((m,i)=><div key={i} className={'tb '+(m.role==='me'?'me':'bot')}>{m.text}</div>)}</div>
-   <div style={{color:'var(--dim)',fontSize:12,marginTop:12}}>연속 통화 모드 · 봇이 말한 뒤 자동으로 다시 듣습니다 (Chrome)</div>
+   <div style={{color:'var(--dim)',fontSize:12,marginTop:12}}>연속 통화 모드: 봇 발화 후 자동으로 다시 듣습니다 (Chrome)</div>
   </div></div>;
 }
 
@@ -161,7 +161,7 @@ function AdminMenu({go}){const [o,setO]=useState(false);
  return <div style={{position:'relative'}}>
   <div className="avatar" style={{cursor:'pointer'}} onClick={()=>setO(v=>!v)}>관</div>
   {o&&<div className="umenu" onMouseLeave={()=>setO(false)}>
-   <div className="uhead"><div className="uava">관</div><div><b>관리자</b><div style={{fontSize:11,color:'var(--dim)'}}>운영 관리자 · CS본부</div></div></div>
+   <div className="uhead"><div className="uava">관</div><div><b>관리자</b><div style={{fontSize:11,color:'var(--dim)'}}>운영 관리자, CS본부</div></div></div>
    <div className="uit" onClick={()=>{go('home');setO(false);}}>📊 대시보드</div>
    <div className="uit" onClick={()=>{go('qa');setO(false);}}>🎯 품질성능평가</div>
    <div className="uit" onClick={()=>{go('scn');setO(false);}}>🧩 시나리오</div>
