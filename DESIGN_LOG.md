@@ -32,3 +32,8 @@
 - 바꾼 화면: public/react.html, lp.html, console.html. 색, 레이아웃, 기능 id는 그대로.
 - 전: 이모지 메뉴 아이콘, 대시보드, 품질성능평가, 데모 표기. 후: 이모지 제거, 운영 현황, QA 평가, 샘플 표기.
 - 미진행: DS 1~2단계, admin.html 의 줄표와 화살표, console-theme.css와 console-pages.css 의 금지 후보.
+
+## 2026-11-27 문구 정리 5차 (조사 오류, react)
+- 바꾼 화면: public/admin.html, public/react.html. 색, 레이아웃, 기능 id는 그대로.
+- 전: 「상담사으로 전환되었습니다」, 「상담사이」, 흐름 화살표, 가운뎃점. 후: 「상담사로 전환했습니다」, 「상담사가」, 구분 기호 정리.
+- 미진행: DS 1~2단계(토큰 원본 폴더가 작업 범위 밖), admin.html 의 줄표 다수, console-theme.css와 console-pages.css 의 금지 후보.

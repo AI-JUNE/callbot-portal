@@ -1724,7 +1724,7 @@ function addC(role,t){const d=document.createElement('div');d.className='msg '+(
 async function send(){const i=$('#msg');const text=i.value.trim();if(!text)return;i.value='';addC('me',text);
   try{const st=await api(text);addC('bot',st.reply);speak(st.reply);$('#tturn').textContent='in '+st.usage.input+' / out '+st.usage.output;
     $('#tbudtxt').textContent=(totIn+totOut)+' / '+BUDGET;$('#tbar').style.width=Math.min(100,100*(totIn+totOut)/BUDGET)+'%';
-    if(st.transferred)addC('bot','— 상담사으로 전환되었습니다 —');}catch(e){addC('bot','[오류] '+e.message);}}
+    if(st.transferred)addC('bot','상담사로 전환했습니다');}catch(e){addC('bot','[오류] '+e.message);}}
 function _koVoice(){var vs=speechSynthesis.getVoices();return vs.find(v=>/Google/i.test(v.name)&&/ko/i.test(v.lang))||vs.find(v=>/ko-KR/i.test(v.lang))||vs.find(v=>/Korean|한국/i.test(v.name))||null;}
 function _brSpeak(t,cb){try{var u=new SpeechSynthesisUtterance(t);u.lang='ko-KR';var v=_koVoice();if(v)u.voice=v;u.rate=1.0;u.pitch=1.05;u.onend=function(){cb&&cb();};speechSynthesis.cancel();speechSynthesis.speak(u);}catch(e){cb&&cb();}}
 function speak(t,cb){if(!$('#speak').checked||!t){cb&&cb();return;}var a=new Audio('/api/tts?text='+encodeURIComponent(t));a.onended=function(){cb&&cb();};a.onerror=function(){_brSpeak(t,cb);};a.play().catch(function(){_brSpeak(t,cb);});}
@@ -1773,7 +1773,7 @@ async function precisionSTT(){var btn=document.getElementById('precBtn');
 async function voiceTurn(text){const i=$('#trInterim');if(i)i.remove();addTr('me',text);setOrb('processing','처리 중…','주문/정책 확인','⏳');
   try{const st=await api(text);addTr('bot',st.reply);$('#vTok').textContent=totIn+totOut;$('#vCost').textContent='₩'+won();
     setOrb('speaking','응답 중…','','');speak(st.reply,()=>{if(callActive)nextListen();else setOrb('','대기','','');});
-    if(st.transferred)addTr('bot','— 상담사으로 전환되었습니다 —');}catch(e){addTr('bot','[오류] '+e.message);setOrb('','오류','다시 시작하세요','');}}
+    if(st.transferred)addTr('bot','상담사로 전환했습니다');}catch(e){addTr('bot','[오류] '+e.message);setOrb('','오류','다시 시작하세요','');}}
 function setBars(h){document.querySelectorAll('#bars i').forEach(b=>b.style.height=(h||6)+'px');}
 function animBars(){clearInterval(barsId);barsId=setInterval(()=>{document.querySelectorAll('#bars i').forEach(b=>b.style.height=(6+Math.random()*24)+'px');},120);}
 (function(){const b=$('#bars');for(let i=0;i<11;i++)b.appendChild(document.createElement('i'));setBars(6);})();
@@ -2136,7 +2136,7 @@ function renderAgents(){var g=document.getElementById('agrid');if(!g)return;
   return '<div class="agent"><div class="top"><div class="ava">'+a.n[0]+'</div><div><div class="nm">'+a.n+'</div><div class="rl">'+a.r+'</div></div><span style="margin-left:auto">'+sp+'</span></div><div class="mini"><span>오늘 처리</span><b>'+a.t+'건</b></div><div class="mini"><span>평균 응대</span><b>'+avg+'분</b></div></div>';}).join('');
  var sm=document.getElementById('agSummary');if(sm){var on=AGENTS.filter(function(a){return a.s==='on';}).length,busy=AGENTS.filter(function(a){return a.s==='busy';}).length,off=AGENTS.filter(function(a){return a.s==='off';}).length,tot=AGENTS.reduce(function(x,a){return x+a.t;},0);
   sm.innerHTML='<div class="kpi"><div class="l">상담사</div><div class="v">'+AGENTS.length+'명</div><div class="s">대기 '+on+', 통화 '+busy+', 오프 '+off+'</div></div><div class="kpi"><div class="l">오늘 처리콜</div><div class="v">'+tot+'건</div><div class="s">인계 Fallback 포함</div></div><div class="kpi"><div class="l">평균 응대</div><div class="v">3.1분</div><div class="s">SLA 5분 이내</div></div><div class="kpi"><div class="l">가동률</div><div class="v">'+Math.round((on+busy)/AGENTS.length*100)+'%</div><div class="s">실시간</div></div>';}}
-const KB=[['서비스 신청 안내','가입 조건 충족 시 전화·온라인으로 신청할 수 있습니다. 신분증 등 본인확인 서류가 필요하며, 결과는 문자로 안내합니다.'],['예약·접수','고객 요청을 담당 부서·일정 기준으로 접수·배정합니다.'],['본인확인 절차','접수 전 본인확인과 제출 서류 검증 절차를 안내합니다.'],['멤버십 포인트','이용 실적에 따라 포인트가 적립되며, 적립분은 승인 후 반영됩니다.'],['필요 서류 안내','업무별 필요 서류가 다릅니다(신분증·증빙서류 등). 화면으로 목록을 안내하고, 미비 시 상담사이 보완을 안내합니다.'],['상담사 전환 기준','복잡한 상담·서류 보완·상담사 직접 연결 요청 시 AICC Portal 상담사에게 연결합니다.']];
+const KB=[['서비스 신청 안내','가입 조건 충족 시 전화·온라인으로 신청할 수 있습니다. 신분증 등 본인확인 서류가 필요하며, 결과는 문자로 안내합니다.'],['예약·접수','고객 요청을 담당 부서·일정 기준으로 접수·배정합니다.'],['본인확인 절차','접수 전 본인확인과 제출 서류 검증 절차를 안내합니다.'],['멤버십 포인트','이용 실적에 따라 포인트가 적립되며, 적립분은 승인 후 반영됩니다.'],['필요 서류 안내','업무별 필요 서류가 다릅니다(신분증·증빙서류 등). 화면으로 목록을 안내하고, 미비 시 상담사가 보완을 안내합니다.'],['상담사 전환 기준','복잡한 상담·서류 보완·상담사 직접 연결 요청 시 AICC Portal 상담사에게 연결합니다.']];
 function filterKb(){const q=($('#kbq').value||'').trim();const list=KB.filter(k=>!q||k[0].includes(q)||k[1].includes(q));
   $('#kbList').innerHTML=list.length?list.map(k=>`<div class="it"><b>${k[0]}</b><span class="summary">${k[1]}</span></div>`).join(''):'<div class="it" style="color:var(--dim)">검색 결과 없음</div>';}
 $('#msg').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
@@ -3614,7 +3614,7 @@ function vsParse(){var t=document.getElementById('vsScript').value,rows=[],seen=
     body=body.split('   #')[0].trim();if(!body)return;name=name.trim().replace(/[^0-9A-Za-z가-힣_\-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40)||String(rows.length+1).padStart(3,'0');
     seen[name]=(seen[name]||0)+1;if(seen[name]>1)name=name+'-'+seen[name];if(body.length>max&&!err)err='「'+name+'」 줄이 '+max+'자를 넘습니다. 문장을 나눠 주세요.';rows.push({name:name,text:body});});
   VS.rows=rows;document.getElementById('vsCount').textContent='('+rows.length+'줄)';document.getElementById('vsScriptErr').textContent=err;vsRender();return !err;}
-function vsSample(){document.getElementById('vsScript').value=['# 예시 — 파일이름 | 문장','welcome | 안녕하십니까, 고객센터입니다. 원하시는 서비스 번호를 눌러 주십시오.','menu | 예약 문의는 일 번, 변경과 취소는 이 번, 상담사 연결은 영 번을 눌러 주십시오.','busy | 죄송합니다. 지금은 모든 상담사이 통화 중입니다. 잠시만 기다려 주십시오.','closed | 지금은 상담 시간이 아닙니다. 평일 오전 아홉 시부터 오후 여섯 시까지 이용해 주십시오.'].join('\n');vsParse();}
+function vsSample(){document.getElementById('vsScript').value=['# 예시 — 파일이름 | 문장','welcome | 안녕하십니까, 고객센터입니다. 원하시는 서비스 번호를 눌러 주십시오.','menu | 예약 문의는 일 번, 변경과 취소는 이 번, 상담사 연결은 영 번을 눌러 주십시오.','busy | 죄송합니다. 지금은 모든 상담사가 통화 중입니다. 잠시만 기다려 주십시오.','closed | 지금은 상담 시간이 아닙니다. 평일 오전 아홉 시부터 오후 여섯 시까지 이용해 주십시오.'].join('\n');vsParse();}
 function vsLoadFile(ev){var f=ev.target.files&&ev.target.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){document.getElementById('vsScript').value=String(rd.result||'');vsParse();toast('대본 '+VS.rows.length+'줄을 불러왔습니다.');};rd.readAsText(f,'utf-8');ev.target.value='';}
 function vsRender(){var el=document.getElementById('vsOut');var done=Object.keys(VS.out).filter(function(k){return VS.out[k].blob;}).length;
   document.getElementById('vsSummary').textContent=VS.rows.length?(done+' / '+VS.rows.length+'건'):'0건';document.getElementById('vsZipBtn').disabled=!done||VS.busy;

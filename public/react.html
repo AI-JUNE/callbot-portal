@@ -77,7 +77,7 @@ const NAV=[
  {sec:'운영',items:[['home','','운영 현황'],['stat','','콜봇 이용통계'],['scn','','시나리오'],['qa','','QA 평가']]},
 ];
 const TITLES={voice:['음성 상담','실시간 음성 상담'],chat:['텍스트 상담','채팅 샘플'],home:['운영 현황','인입 현황'],stat:['콜봇 이용통계','인바운드 현황'],scn:['시나리오','대화 흐름, 대본'],qa:['품질성능평가','시나리오, 지표']};
-const DEMO={refund:{name:'반품·환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담사입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담사입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
+const DEMO={refund:{name:'반품, 환불',open:'고객센터입니다. 무엇을 도와드릴까요?'},integrity:{name:'여신 청렴도 조사',open:'안녕하세요, 고객센터 상담사입니다. 홍길동 고객님 되십니까?'},overdue:{name:'연체 안내',open:'AI 상담사입니다. 이용 중인 대출 상품에 연체가 발생하여 연락드렸습니다.'}};
 const SCN={
  refund:{flow:[['콜처리','인입·본인확인'],['LLM','의도분석'],['조회','주문 API'],['조건부','사유 분기'],['LLM+RAG','정책·견적'],['DTMF','동의 게이트'],['종료','접수·SMS']],
   script:[['의도/사유','반품하고 싶어요','반품·교환·환불 분기'],['확정 게이트','네','동의 직후에만 실행'],['접수','—','환불 접수·SMS']]},
@@ -147,7 +147,7 @@ function Stat(){const rows=[['소계',4182,2118,612,540,388,96,348,176],['2026-0
 function Scenario(){const [k,setK]=useState('refund');const d=SCN[k];
  return <div className="card"><h3>시나리오 빌더</h3>
   <div style={{padding:'12px 16px'}}><span className="seg">{Object.keys(SCN).map(x=><button key={x} className={k===x?'on':''} onClick={()=>setK(x)}>{DEMO[x].name}</button>)}</span></div>
-  <div style={{padding:'0 16px 8px',overflowX:'auto',whiteSpace:'nowrap'}}>{d.flow.map((n,i)=><span key={i}><span className="node"><span className="ty">{n[0]}</span><b>{n[1]}</b></span>{i<d.flow.length-1?' → ':''}</span>)}</div>
+  <div style={{padding:'0 16px 8px',overflowX:'auto',whiteSpace:'nowrap'}}>{d.flow.map((n,i)=><span key={i}><span className="node"><span className="ty">{n[0]}</span><b>{n[1]}</b></span>{i<d.flow.length-1?' > ':''}</span>)}</div>
   <table><thead><tr><th>단계/의도</th><th>고객 발화</th><th>분기·처리</th></tr></thead><tbody>{d.script.map((r,i)=><tr key={i}><td><b>{r[0]}</b></td><td style={{color:'var(--mut)'}}>{r[1]}</td><td style={{color:'var(--mut)'}}>{r[2]}</td></tr>)}</tbody></table></div>;}
 
 function Qa(){return <div>
@@ -176,10 +176,10 @@ function App(){
  const go=v=>{setView(v);setOpen(false);};
  return <div className="app">
   <aside className={'side'+(open?' open':'')}>
-   <div className="brand" onClick={()=>go('home')}><span className="lg">☎</span><div>CallBot<small>REACT · MOBILE</small></div></div>
+   <div className="brand" onClick={()=>go('home')}><span className="lg">☎</span><div>CallBot<small>REACT MOBILE</small></div></div>
    {NAV.map((g,i)=><div key={i}><div className="navsec">{g.sec}</div><nav className="nav">{g.items.map(it=>
     <a key={it[0]} className={view===it[0]?'on':''} onClick={()=>go(it[0])}><span>{it[1]}</span> {it[2]}</a>)}</nav></div>)}
-   <div style={{marginTop:'auto',color:'var(--dim)',fontSize:11,padding:10}}>React 반응형 · 동일 백엔드(/api)</div>
+   <div style={{marginTop:'auto',color:'var(--dim)',fontSize:11,padding:10}}>React 반응형, 동일 백엔드(/api)</div>
   </aside>
   <div className={'scrim'+(open?' on':'')} onClick={()=>setOpen(false)}></div>
   <main className="main">
