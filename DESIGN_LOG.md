@@ -27,3 +27,8 @@
 - 전: 상담원, 내려받기, 데모 데이터, 이모지, 가운뎃점 구분. 후: 상담사, 다운로드, 샘플 데이터, 이모지 제거, 쉼표 구분.
 - 정산 CSV 비고는 서버 표식(데모 데이터)과 일치시키려고 그대로 둠. 테스트 기대값 2건(test_escalation_store, test_settlement_lines)은 새 문구로 수정.
 - 미진행: DS 1~2단계(토큰 원본 폴더가 작업 범위 밖), console-theme.css와 console-pages.css 의 금지 후보, admin.html 의 줄표와 화살표.
+
+## 2026-11-27 문구 정리 4차 (react.html, lp.html, console.html)
+- 바꾼 화면: public/react.html, lp.html, console.html. 색, 레이아웃, 기능 id는 그대로.
+- 전: 이모지 메뉴 아이콘, 대시보드, 품질성능평가, 데모 표기. 후: 이모지 제거, 운영 현황, QA 평가, 샘플 표기.
+- 미진행: DS 1~2단계, admin.html 의 줄표와 화살표, console-theme.css와 console-pages.css 의 금지 후보.
