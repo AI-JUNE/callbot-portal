@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>AICC Portal | 관리 콘솔</title>
-<meta name="description" content="CallBot 콜봇 관리 포털 — 음성·텍스트 상담, 실시간 모니터링, 통계·품질관리 통합 콘솔"/>
+<meta name="description" content="CallBot 콜봇 관리 포털. 음성과 텍스트 상담, 실시간 모니터링, 통계와 품질 관리 통합 콘솔"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#2457C5"/>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
@@ -638,10 +638,10 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
               <div style="min-width:200px">
                 <label for="wbProfile" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">응답 프로필 <span style="color:var(--mut);font-weight:400">(시연 대본)</span></label>
                 <select id="wbProfile" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
-                  <option value="ok">ok — 「잘 지낸다」 응답 대본</option>
-                  <option value="watch">watch — 「입맛 없고 자주 깬다」 응답 대본</option>
-                  <option value="risk">risk — 「못 먹고 어지럽다」 응답 대본</option>
-                  <option value="no_answer">no_answer — 전화를 받지 않음</option>
+                  <option value="ok">ok: 「잘 지낸다」 응답 대본</option>
+                  <option value="watch">watch: 「입맛 없고 자주 깬다」 응답 대본</option>
+                  <option value="risk">risk: 「못 먹고 어지럽다」 응답 대본</option>
+                  <option value="no_answer">no_answer: 전화를 받지 않음</option>
                 </select>
               </div>
               <div style="min-width:280px;flex:1">
@@ -671,7 +671,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
               <div style="min-width:120px"><label for="vsRate" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">말 속도</label>
                 <select id="vsRate" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px"><option value="0.9">천천히 (0.9)</option><option value="1" selected>보통 (1.0)</option><option value="1.1">조금 빠르게 (1.1)</option></select></div>
               <div style="min-width:220px"><label for="vsFormat" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">저장 형식</label>
-                <select id="vsFormat" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px"><option value="pcm8k" selected>ARS 표준 — 8kHz 16bit PCM WAV</option><option value="ulaw8k">ARS — 8kHz μ-law WAV (G.711u)</option><option value="alaw8k">ARS — 8kHz A-law WAV (G.711a)</option><option value="wav24k">고음질 — 24kHz 16bit WAV (검수·편집용)</option></select></div>
+                <select id="vsFormat" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px"><option value="pcm8k" selected>ARS 표준, 8kHz 16bit PCM WAV</option><option value="ulaw8k">ARS, 8kHz μ-law WAV (G.711u)</option><option value="alaw8k">ARS, 8kHz A-law WAV (G.711a)</option><option value="wav24k">고음질, 24kHz 16bit WAV (검수·편집용)</option></select></div>
               <label for="vsNotice" style="display:flex;align-items:center;gap:6px;font-size:13px;min-height:36px"><input id="vsNotice" type="checkbox" style="width:17px;height:17px"> 파일 앞에 AI 안내 음성 붙이기</label>
             </div>
             <div id="vsCloneNote" class="hint" style="margin-top:8px"></div>
@@ -727,7 +727,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
       <section id="view-callerid" class="hidden">
         <div class="card" style="margin-bottom:16px"><h3>발신번호 등록 관리 <span class="r"><span class="tag neu">전기통신사업법 사전등록, 증빙·만료</span></span></h3>
           <div style="padding:14px 18px">
-            <div class="hint" style="margin-bottom:14px">아웃바운드에 쓰는 번호는 사용 권한을 <b>증빙해 사전 등록</b>해야 하고, 증빙서류에는 유효기간이 있습니다. 이 대장은 번호별 등록 상태·증빙·만료일을 한 곳에서 관리합니다. <b>증빙 없이는 승인되지 않으며</b>, 저장된 상태가 「등록 완료」여도 만료일이 지나면 목록에 <b>만료</b>로 표시됩니다. 등록 요건 충족(<code>발신 가능</code>)과 실제 발신 허용은 다른 문제입니다 — 실발신은 <b>[승인 필요]</b>. 저장은 현재 서버 인스턴스 메모리에만 남습니다(영속 저장소 <b>[승인 필요]</b>).</div>
+            <div class="hint" style="margin-bottom:14px">아웃바운드에 쓰는 번호는 사용 권한을 <b>증빙해 사전 등록</b>해야 하고, 증빙서류에는 유효기간이 있습니다. 이 대장은 번호별 등록 상태·증빙·만료일을 한 곳에서 관리합니다. <b>증빙 없이는 승인되지 않으며</b>, 저장된 상태가 「등록 완료」여도 만료일이 지나면 목록에 <b>만료</b>로 표시됩니다. 등록 요건 충족(<code>발신 가능</code>)과 실제 발신 허용은 별개이며, 실발신은 <b>[승인 필요]</b>. 저장은 현재 서버 인스턴스 메모리에만 남습니다(영속 저장소 <b>[승인 필요]</b>).</div>
             <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
               <div style="min-width:170px">
                 <label for="ciTenant" style="display:block;font-size:12px;font-weight:700;margin-bottom:5px">테넌트 ID <span style="color:var(--mut);font-weight:400">(영문 소문자·숫자·-·_)</span></label>
@@ -865,8 +865,8 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
               <button onclick="cpaasCopyHook()">복사</button></div>
             <div class="hint" style="margin-bottom:12px">전화 제공사 번호의 음성 웹훅에 위 URL을 지정하면, 그 번호로 전화가 올 때 콜봇이 응대합니다. 인입 콜은 아래에 실시간 표시됩니다.</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-              <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px"><b style="color:#2f6fbf">Twilio, 해외번호, 무료 체험</b><div class="hint" style="margin-top:5px">체험 계정 → 번호 발급 → Voice 웹훅(POST)에 위 URL → 번호로 전화. TwiML 방식 지원.</div></div>
-              <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px"><b style="color:#1a8f54">ClawOps, 국내 070, 무료 체험</b><div class="hint" style="margin-top:5px">무료 가입(카드 불필요) → 070 발급 시 webhookUrl에 위 URL, 수신통화 무료. 국내 실전에 적합.</div></div>
+              <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px"><b style="color:#2f6fbf">Twilio, 해외번호, 무료 체험</b><div class="hint" style="margin-top:5px">체험 계정 가입, 번호 발급, Voice 웹훅(POST)에 위 URL 등록, 번호로 전화 순서로 진행합니다. TwiML 방식 지원.</div></div>
+              <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px"><b style="color:#1a8f54">ClawOps, 국내 070, 무료 체험</b><div class="hint" style="margin-top:5px">무료 가입(카드 불필요) 후 070 발급 시 webhookUrl에 위 URL을 등록합니다. 수신 통화는 무료입니다. 국내 실전에 적합.</div></div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:12px">실시간 인입 콜 로그 <span style="color:var(--dim);font-weight:400;font-size:11px">(4초 자동 갱신)</span></b><button onclick="cpaasRefreshLog()">새로고침</button></div>
             <div id="cpaasLog" style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px"></div>

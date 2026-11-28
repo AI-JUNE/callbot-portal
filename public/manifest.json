@@ -1,7 +1,7 @@
 {
-  "name": "AICC Portal · 고원",
+  "name": "AICC Portal, 고원",
   "short_name": "AICC Portal",
-  "description": "AI 콜봇 · 챗봇 · 보이는 ARS 통합 운영 포털",
+  "description": "AI 콜봇, 챗봇, 보이는 ARS 통합 운영 포털",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F7F8FA",

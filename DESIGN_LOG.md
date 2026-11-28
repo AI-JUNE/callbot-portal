@@ -42,3 +42,8 @@
 - 바꾼 화면: public/admin.html, public/react.html. 색, 레이아웃, 기능 id는 그대로.
 - 전: 「데모, 실측 아님」, 「데모용 샘플」, 「내려받았습니다」, 「로컬·데모 환경」, 「⚙ 운영설정」, 시나리오 표의 가운뎃점, 줄표, 화살표. 후: 샘플 표기, 다운로드, 「운영 설정」, 쉼표와 「~ 시」 표기.
 - 미진행: 메뉴 「콜봇 데모」 명칭(번역 사전과 안내문이 묶여 있어 별도 정리), admin.html 주석 밖 줄표 일부, console-theme.css와 console-pages.css 의 금지 후보, DS 1~2단계(토큰 원본이 작업 범위 밖).
+
+## 2026-11-28 문구 정리 7차 (admin, manifest)
+- 바꾼 화면: public/admin.html, public/manifest.json. 색, 레이아웃, 기능 id는 그대로.
+- 전: 옵션 목록의 줄표, 연동 안내의 화살표, 가운뎃점 구분. 후: 쌍점과 쉼표, 문장형 순서 표기.
+- 미진행: 값 없음 표시용 줄표(JS 렌더), 메뉴 「콜봇 데모」, console-theme.css와 console-pages.css 금지 후보, DS 1~2단계(토큰 원본이 작업 범위 밖).
