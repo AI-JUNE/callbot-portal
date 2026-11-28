@@ -133,7 +133,7 @@ function Chat({scn,setScn}){
 
 function Home(){return <div>
  <div className="kpis">
-  {[['🎯 STT 인식률','96.2%','목표 ≥90%'],['🧠 답변정확도','94.8%','목표 ≥90%'],['⚡ 응답속도','1.1s','≤2s'],['🛒 자동완결률','71%','목표 75%'],['😊 CSAT','4.4/5','감정기반'],['📞 처리 통화','214','오늘']].map((k,i)=>
+  {[['STT 인식률','96.2%','목표 90% 이상'],['답변 정확도','94.8%','목표 90% 이상'],['응답 속도','1.1s','목표 2s 이하'],['봇 처리율','71%','목표 75%'],['CSAT','4.4/5','감정 기반'],['인입','214','금일']].map((k,i)=>
    <div className="kpi" key={i}><div className="l">{k[0]} <span style={{fontSize:9,color:'var(--dim)'}}>샘플</span></div><div className="v">{k[1]}</div><div className="s">{k[2]}</div></div>)}
  </div>
  <div className="card"><h3>처리 유형 분포 <span style={{fontSize:10,color:'var(--dim)'}}>샘플</span></h3><div style={{padding:16}}><Donut data={[2118,612,540,388,96,348,176]}/></div></div>

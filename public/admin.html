@@ -993,7 +993,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
           <div id="schedInfo" style="padding:0 18px 8px;font-size:12px;color:var(--dim)"></div>
         <div class="kpis">
           <div class="kpi"><div class="l">주간 인입</div><div class="v">1,486</div><div class="s">+6.2%</div></div>
-          <div class="kpi"><div class="l">자동완결률</div><div class="v">71%</div><div class="s w">목표 75%</div></div>
+          <div class="kpi"><div class="l">봇 처리율</div><div class="v">71%</div><div class="s w">목표 75%</div></div>
           <div class="kpi"><div class="l">⏱ 평균응대(AHT)</div><div class="v">1m48s</div><div class="s">-12s</div></div>
           <div class="kpi"><div class="l">CSAT</div><div class="v">4.3/5</div><div class="s">+0.2</div></div>
           <div class="kpi"><div class="l">재문의율</div><div class="v">8.1%</div><div class="s">-1.4%p</div></div>
@@ -1217,7 +1217,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
 
       <!-- ===== 멀티모달 ===== -->
       <section id="view-mm" class="hidden">
-        <div class="card"><h3>멀티모달 접속 종합현황 <span class="r"><span class="seg"><button class="on" onclick="segPick(this)">멀티모달</button><button onclick="segPick(this)">스마트ARS</button></span></span></h3>
+        <div class="card"><h3>멀티모달 접속 종합현황 <span class="r"><span class="seg"><button class="on" onclick="segPick(this)">멀티모달</button><button onclick="segPick(this)">보이는 ARS</button></span></span></h3>
           <div class="twocol" style="padding:16px 18px">
             <div><h3 style="border:0;padding:0 0 8px;color:var(--mut)">전체 인입 / 서비스별</h3><div class="chartbody" style="padding:0"><canvas id="chMm"></canvas></div></div>
             <div><div class="row" style="padding:6px 0"><span>발송 건수</span><b>1,220</b></div>
@@ -1235,7 +1235,7 @@ body:not(.dark){--bg:#F6F8FC; --line:#E2E8F0; --line2:#EEF2F7;
 
       <section id="view-mmhist" class="hidden">
         <div class="card"><h3>멀티모달 이력</h3>
-          <div class="toolbar"><span class="seg"><button class="on" onclick="segPick(this)">전체</button><button onclick="segPick(this)">멀티모달</button><button onclick="segPick(this)">스마트ARS</button></span>
+          <div class="toolbar"><span class="seg"><button class="on" onclick="segPick(this)">전체</button><button onclick="segPick(this)">멀티모달</button><button onclick="segPick(this)">보이는 ARS</button></span>
             <span class="sp"></span><input id="mmQ" aria-label="멀티모달 이력 검색" oninput="renderMmhist()" style="background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;width:200px" placeholder="번호·서비스 검색"/><button onclick="renderMmhist()">조회</button></div>
           <table><thead><tr><th>구분</th><th>일자</th><th>휴대폰</th><th>시작</th><th>종료</th><th>연결시간</th><th>이용서비스</th><th>최종접속</th><th>여정</th><th>로그</th></tr></thead><tbody id="mmBody"></tbody></table>
           <div class="hint" style="padding:12px 18px">휴대폰번호 마스킹, 여정/로그 상세 팝업</div></div>
@@ -2256,9 +2256,9 @@ function svcAdd(){var b=document.getElementById('svcBody');if(!b)return;var n=b.
 function acctToggle(el){var on=el.classList.contains('pos');el.classList.toggle('pos',!on);el.classList.toggle('neu',on);el.textContent=on?'비활성':'활성';toast(({ko:'계정 상태 변경',en:'Account status changed',ja:'アカウント状態を変更'})[LANG]||'계정 상태 변경');}
 function acctAdd(){var b=document.getElementById('acctBody');if(!b)return;var n=b.querySelectorAll('tr').length+1,tr=document.createElement('tr');tr.innerHTML='<td>신규사용자'+n+'</td><td>user'+n+'@callbot</td><td>통계 조회</td><td>운영 현황</td><td>ID/PW</td><td><span class="tag pos" onclick="acctToggle(this)" style="cursor:pointer">활성</span></td>';b.appendChild(tr);toast(({ko:'사용자 추가됨',en:'User added',ja:'ユーザーを追加'})[LANG]||'사용자 추가됨');}
 function renderMmhist(){var el=document.getElementById('mmBody');if(!el)return;
- var q=((document.getElementById('mmQ')||{}).value||'').trim(),tf='전체';document.querySelectorAll('#view-mmhist .seg button.on').forEach(function(b){var t=b.textContent.trim();if(['전체','멀티모달','스마트ARS'].indexOf(t)>=0)tf=t;});
+ var q=((document.getElementById('mmQ')||{}).value||'').trim(),tf='전체';document.querySelectorAll('#view-mmhist .seg button.on').forEach(function(b){var t=b.textContent.trim();if(['전체','멀티모달','보이는 ARS'].indexOf(t)>=0)tf=t;});
  var svcmap={'주문조회':'주문상세','배송조회':'배송추적','반품·교환':'반품접수','상품문의':'상품안내','결제문의':'영수증발급'};
- var rows=CALLLOG.filter(function(c){return c.day<7;}).map(function(c,i){var kind=(i%2===0)?'멀티모달':'스마트ARS';return {c:c,kind:kind,svc:svcmap[c.scn]||c.scn};});
+ var rows=CALLLOG.filter(function(c){return c.day<7;}).map(function(c,i){var kind=(i%2===0)?'멀티모달':'보이는 ARS';return {c:c,kind:kind,svc:svcmap[c.scn]||c.scn};});
  if(tf!=='전체')rows=rows.filter(function(r){return r.kind===tf;});
  if(q)rows=rows.filter(function(r){return (r.c.ph+r.svc).indexOf(q)>=0;});
  if(!rows.length){el.innerHTML='<tr><td colspan="10" style="color:var(--dim)">이력이 없습니다.</td></tr>';return;}
